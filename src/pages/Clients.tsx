@@ -25,6 +25,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useOrganization } from "@/hooks/useOrganization";
 import { Plus, Search, Pencil, Trash2, Users } from "lucide-react";
 
 type Client = Tables<"clients">;
@@ -39,6 +40,7 @@ const emptyForm = {
 
 export default function Clients() {
   const { user } = useAuth();
+  const { organizationId } = useOrganization();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -115,9 +117,14 @@ export default function Clients() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!organizationId) {
+      toast({ title: "Erro", description: "Organização não encontrada.", variant: "destructive" });
+      return;
+    }
     upsertMutation.mutate({
       ...form,
       created_by: user?.id,
+      organization_id: organizationId,
     });
   };
 
