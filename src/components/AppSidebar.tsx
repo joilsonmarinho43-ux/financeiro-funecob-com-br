@@ -125,6 +125,7 @@ const menuSections: MenuSection[] = [
   { title: "Indicações", icon: Gift, url: "/indicacoes" },
   { title: "Outros", icon: MoreHorizontal, url: "/outros" },
   { title: "Logs", icon: ScrollText, url: "/logs" },
+  { title: "Configurações", icon: Settings, url: "/configuracoes" },
 ];
 
 function CollapsibleMenuItem({ section }: { section: MenuSection }) {
