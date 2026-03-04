@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Progress } from "@/components/ui/progress";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/AppLayout";
@@ -487,7 +488,31 @@ function PairTab({ organizationId }: { organizationId: string }) {
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState<any>(null);
   const [qrLoading, setQrLoading] = useState(false);
+  const [qrKey, setQrKey] = useState(0);
+  const [countdown, setCountdown] = useState(30);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [form, setForm] = useState({ name: "", phone: "", api_url: "", api_key: "" });
+
+  const regenerateQr = useCallback(() => {
+    setQrKey((k) => k + 1);
+    setCountdown(30);
+  }, []);
+
+  // Auto-regenerate QR every 30s
+  useEffect(() => {
+    if (!qrDialogOpen || qrLoading) return;
+    setCountdown(30);
+    timerRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          regenerateQr();
+          return 30;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [qrDialogOpen, qrLoading, qrKey, regenerateQr]);
 
   const { data: instances = [], isLoading } = useQuery({
     queryKey: ["whatsapp-instances", organizationId],
@@ -661,23 +686,35 @@ function PairTab({ organizationId }: { organizationId: string }) {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : (
-              <div className="p-3 bg-white rounded-xl shadow-sm">
-                <QRCodeSVG
-                  value={`whatsapp-connect:${selectedInstance?.id || "demo"}-${Date.now()}`}
-                  size={208}
-                  level="M"
-                  includeMargin={false}
-                  bgColor="#ffffff"
-                  fgColor="#000000"
-                />
-              </div>
+              <>
+                <div className="p-3 bg-white rounded-xl shadow-sm relative">
+                  <QRCodeSVG
+                    value={`whatsapp-connect:${selectedInstance?.id || "demo"}-${qrKey}-${Date.now()}`}
+                    size={208}
+                    level="M"
+                    includeMargin={false}
+                    bgColor="#ffffff"
+                    fgColor="#000000"
+                  />
+                </div>
+                <div className="w-full space-y-1.5">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      Expira em <span className="font-mono font-medium text-foreground">{countdown}s</span>
+                    </span>
+                    <span className="text-[10px]">Regenera automaticamente</span>
+                  </div>
+                  <Progress value={(countdown / 30) * 100} className="h-1.5" />
+                </div>
+              </>
             )}
             <p className="text-xs text-muted-foreground text-center">
               {selectedInstance?.name && <span className="font-medium text-foreground">{selectedInstance.name}</span>}
               {selectedInstance?.phone && <span> • {selectedInstance.phone}</span>}
             </p>
             <div className="flex gap-2 w-full">
-              <Button variant="outline" size="sm" className="flex-1" onClick={() => handleConnect(selectedInstance)} disabled={qrLoading}>
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => { regenerateQr(); }} disabled={qrLoading}>
                 <RefreshCw className="h-3.5 w-3.5 mr-1" /> Gerar Novo QR
               </Button>
               <Button size="sm" className="flex-1 gradient-primary text-primary-foreground" onClick={handleSimulateConnect}>
