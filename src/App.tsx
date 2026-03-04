@@ -9,6 +9,7 @@ import Auth from "./pages/Auth";
 import Clients from "./pages/Clients";
 import Settings from "./pages/Settings";
 import Plans from "./pages/Plans";
+import Invoices from "./pages/Invoices";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -45,6 +46,7 @@ const App = () => (
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/clientes/planos" element={<ProtectedRoute><Plans /></ProtectedRoute>} />
             <Route path="/clientes/*" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
+            <Route path="/financeiro/*" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
