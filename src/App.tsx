@@ -12,6 +12,7 @@ import Plans from "./pages/Plans";
 import Invoices from "./pages/Invoices";
 import Reports from "./pages/Reports";
 import Transactions from "./pages/Transactions";
+import WhatsApp from "./pages/WhatsApp";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -51,6 +52,7 @@ const App = () => (
             <Route path="/financeiro/*" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
             <Route path="/relatorios/*" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
             <Route path="/movimentacoes/*" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
+            <Route path="/whatsapp/*" element={<ProtectedRoute><WhatsApp /></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
