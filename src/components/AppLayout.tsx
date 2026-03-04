@@ -2,8 +2,10 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Home, Grid3X3, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useOrgTheme } from "@/hooks/useOrgTheme";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
+  useOrgTheme();
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
