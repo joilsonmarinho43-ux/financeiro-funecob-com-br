@@ -15,6 +15,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
   Table,
   TableBody,
   TableCell,
@@ -26,9 +34,11 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
-import { Plus, Search, Pencil, Trash2, Users } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Users, CalendarDays, Repeat, BookOpen } from "lucide-react";
+import { addMonths, format } from "date-fns";
 
 type Client = Tables<"clients">;
+type Plan = Tables<"plans">;
 
 const emptyForm = {
   name: "",
@@ -36,6 +46,11 @@ const emptyForm = {
   phone: "",
   document: "",
   address: "",
+  plan_id: "",
+  custom_value: "",
+  due_day: "5",
+  billing_type: "recorrencia" as "recorrencia" | "carne",
+  carne_installments: "12",
 };
 
 export default function Clients() {
@@ -60,22 +75,113 @@ export default function Clients() {
     },
   });
 
+  const { data: plans = [] } = useQuery({
+    queryKey: ["plans", organizationId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("plans")
+        .select("*")
+        .eq("active", true)
+        .order("name");
+      if (error) throw error;
+      return data as Plan[];
+    },
+    enabled: !!organizationId,
+  });
+
+  const selectedPlan = plans.find((p) => p.id === form.plan_id);
+  const invoiceAmount = form.custom_value
+    ? parseFloat(form.custom_value)
+    : selectedPlan
+    ? Number(selectedPlan.price)
+    : 0;
+
   const upsertMutation = useMutation({
-    mutationFn: async (client: TablesInsert<"clients">) => {
+    mutationFn: async () => {
+      if (!organizationId || !user) throw new Error("Organização não encontrada");
+
+      const clientPayload: TablesInsert<"clients"> = {
+        name: form.name,
+        email: form.email || null,
+        phone: form.phone || null,
+        document: form.document || null,
+        address: form.address || null,
+        created_by: user.id,
+        organization_id: organizationId,
+      };
+
+      let clientId = editingClient?.id;
+
       if (editingClient) {
         const { error } = await supabase
           .from("clients")
-          .update(client)
+          .update(clientPayload)
           .eq("id", editingClient.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("clients").insert(client);
+        const { data, error } = await supabase
+          .from("clients")
+          .insert(clientPayload)
+          .select("id")
+          .single();
         if (error) throw error;
+        clientId = data.id;
+      }
+
+      // Generate invoices for new clients only
+      if (!editingClient && clientId && invoiceAmount > 0) {
+        const dueDay = parseInt(form.due_day) || 5;
+        const now = new Date();
+        const invoices: TablesInsert<"invoices">[] = [];
+
+        if (form.billing_type === "recorrencia") {
+          // Generate 12 months of recurring invoices
+          for (let i = 0; i < 12; i++) {
+            const dueDate = new Date(now.getFullYear(), now.getMonth() + i, dueDay);
+            invoices.push({
+              client_id: clientId,
+              organization_id: organizationId,
+              plan_id: form.plan_id || null,
+              amount: invoiceAmount,
+              due_date: format(dueDate, "yyyy-MM-dd"),
+              description: selectedPlan
+                ? `${selectedPlan.name} - Parcela ${i + 1}/12`
+                : `Mensalidade - Parcela ${i + 1}/12`,
+              status: "aberto",
+            });
+          }
+        } else {
+          // Carnê with custom number of installments
+          const totalInstallments = parseInt(form.carne_installments) || 12;
+          for (let i = 0; i < totalInstallments; i++) {
+            const dueDate = new Date(now.getFullYear(), now.getMonth() + i, dueDay);
+            invoices.push({
+              client_id: clientId,
+              organization_id: organizationId,
+              plan_id: form.plan_id || null,
+              amount: invoiceAmount,
+              due_date: format(dueDate, "yyyy-MM-dd"),
+              description: selectedPlan
+                ? `${selectedPlan.name} - Carnê ${i + 1}/${totalInstallments}`
+                : `Carnê - Parcela ${i + 1}/${totalInstallments}`,
+              status: "aberto",
+            });
+          }
+        }
+
+        if (invoices.length > 0) {
+          const { error: invError } = await supabase.from("invoices").insert(invoices);
+          if (invError) throw invError;
+        }
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
-      toast({ title: editingClient ? "Cliente atualizado!" : "Cliente cadastrado!" });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-clients"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-financial"] });
+      toast({
+        title: editingClient ? "Cliente atualizado!" : "Cliente cadastrado com faturas geradas!",
+      });
       closeDialog();
     },
     onError: (err: Error) => {
@@ -106,6 +212,7 @@ export default function Clients() {
   const openEdit = (client: Client) => {
     setEditingClient(client);
     setForm({
+      ...emptyForm,
       name: client.name,
       email: client.email || "",
       phone: client.phone || "",
@@ -117,15 +224,11 @@ export default function Clients() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!organizationId) {
-      toast({ title: "Erro", description: "Organização não encontrada.", variant: "destructive" });
+    if (!form.name.trim()) {
+      toast({ title: "Nome é obrigatório", variant: "destructive" });
       return;
     }
-    upsertMutation.mutate({
-      ...form,
-      created_by: user?.id,
-      organization_id: organizationId,
-    });
+    upsertMutation.mutate();
   };
 
   const filtered = clients.filter(
@@ -146,6 +249,9 @@ export default function Clients() {
     }
   };
 
+  const formatCurrency = (v: number) =>
+    v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -163,33 +269,173 @@ export default function Clients() {
                 Novo Cliente
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editingClient ? "Editar Cliente" : "Novo Cliente"}</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Nome *</Label>
-                  <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+              <form onSubmit={handleSubmit} className="space-y-5 mt-2">
+                {/* Dados Pessoais */}
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Users className="h-4 w-4 text-primary" /> Dados Pessoais
+                  </p>
                   <div className="space-y-2">
-                    <Label htmlFor="email">E-mail</Label>
-                    <Input id="email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                    <Label htmlFor="name">Nome *</Label>
+                    <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Telefone</Label>
-                    <Input id="phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="email">E-mail</Label>
+                      <Input id="email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Telefone</Label>
+                      <Input id="phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="document">CPF/CNPJ</Label>
+                      <Input id="document" value={form.document} onChange={(e) => setForm({ ...form, document: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="address">Endereço</Label>
+                      <Input id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+                    </div>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="document">CPF/CNPJ</Label>
-                  <Input id="document" value={form.document} onChange={(e) => setForm({ ...form, document: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="address">Endereço</Label>
-                  <Input id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-                </div>
+
+                {/* Plano e Cobrança - somente para novos */}
+                {!editingClient && (
+                  <>
+                    <div className="border-t border-border pt-4 space-y-3">
+                      <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                        <CalendarDays className="h-4 w-4 text-primary" /> Plano e Cobrança
+                      </p>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Plano</Label>
+                          <Select value={form.plan_id} onValueChange={(v) => setForm({ ...form, plan_id: v, custom_value: "" })}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione um plano" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {plans.map((p) => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  {p.name} — {formatCurrency(Number(p.price))}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="custom_value">Valor Personalizado (R$)</Label>
+                          <Input
+                            id="custom_value"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder={selectedPlan ? formatCurrency(Number(selectedPlan.price)) : "0,00"}
+                            value={form.custom_value}
+                            onChange={(e) => setForm({ ...form, custom_value: e.target.value })}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="due_day">Dia de Vencimento</Label>
+                          <Select value={form.due_day} onValueChange={(v) => setForm({ ...form, due_day: v })}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {[1, 5, 10, 15, 20, 25].map((d) => (
+                                <SelectItem key={d} value={String(d)}>
+                                  Dia {d}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tipo de Cobrança */}
+                    <div className="border-t border-border pt-4 space-y-3">
+                      <p className="text-sm font-semibold text-foreground">Tipo de Cobrança</p>
+                      <RadioGroup
+                        value={form.billing_type}
+                        onValueChange={(v: "recorrencia" | "carne") => setForm({ ...form, billing_type: v })}
+                        className="grid grid-cols-2 gap-4"
+                      >
+                        <label
+                          className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${
+                            form.billing_type === "recorrencia" ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"
+                          }`}
+                        >
+                          <RadioGroupItem value="recorrencia" className="mt-0.5" />
+                          <div>
+                            <p className="font-medium text-sm text-foreground flex items-center gap-1.5">
+                              <Repeat className="h-3.5 w-3.5 text-primary" /> Recorrência
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Gera 12 faturas mensais automáticas
+                            </p>
+                          </div>
+                        </label>
+                        <label
+                          className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${
+                            form.billing_type === "carne" ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"
+                          }`}
+                        >
+                          <RadioGroupItem value="carne" className="mt-0.5" />
+                          <div>
+                            <p className="font-medium text-sm text-foreground flex items-center gap-1.5">
+                              <BookOpen className="h-3.5 w-3.5 text-primary" /> Carnê
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Defina o número de parcelas
+                            </p>
+                          </div>
+                        </label>
+                      </RadioGroup>
+
+                      {form.billing_type === "carne" && (
+                        <div className="space-y-2 max-w-[200px]">
+                          <Label htmlFor="installments">Nº de Parcelas</Label>
+                          <Input
+                            id="installments"
+                            type="number"
+                            min="1"
+                            max="120"
+                            value={form.carne_installments}
+                            onChange={(e) => setForm({ ...form, carne_installments: e.target.value })}
+                          />
+                        </div>
+                      )}
+
+                      {/* Summary */}
+                      {invoiceAmount > 0 && (
+                        <div className="rounded-lg bg-muted/50 border border-border p-3 text-sm space-y-1">
+                          <p className="font-medium text-foreground">Resumo da cobrança:</p>
+                          <p className="text-muted-foreground">
+                            {form.billing_type === "recorrencia"
+                              ? `12× de ${formatCurrency(invoiceAmount)} (mensal)`
+                              : `${form.carne_installments}× de ${formatCurrency(invoiceAmount)}`}
+                          </p>
+                          <p className="text-muted-foreground">
+                            Total: {formatCurrency(
+                              invoiceAmount * (form.billing_type === "recorrencia" ? 12 : parseInt(form.carne_installments) || 12)
+                            )}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
                 <div className="flex justify-end gap-2 pt-2">
                   <Button type="button" variant="outline" onClick={closeDialog}>Cancelar</Button>
                   <Button type="submit" className="gradient-primary text-primary-foreground" disabled={upsertMutation.isPending}>
