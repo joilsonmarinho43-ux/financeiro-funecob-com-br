@@ -25,8 +25,9 @@ import { format, parseISO } from "date-fns";
 import {
   MessageSquare, Send, Radio, Megaphone, Smartphone,
   Plus, Trash2, Search, Wifi, WifiOff, Clock, CheckCircle2,
-  XCircle, Loader2, AlertTriangle,
+  XCircle, Loader2, AlertTriangle, QrCode, RefreshCw,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 
 // ─── Helpers ────────────────────────────────────────────
 const statusBadge = (status: string) => {
@@ -483,6 +484,9 @@ function PairTab({ organizationId }: { organizationId: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [selectedInstance, setSelectedInstance] = useState<any>(null);
+  const [qrLoading, setQrLoading] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", api_url: "", api_key: "" });
 
   const { data: instances = [], isLoading } = useQuery({
@@ -526,6 +530,30 @@ function PairTab({ organizationId }: { organizationId: string }) {
     },
   });
 
+  const handleConnect = async (inst: any) => {
+    setSelectedInstance(inst);
+    setQrDialogOpen(true);
+    setQrLoading(true);
+    await supabase.from("whatsapp_instances").update({ status: "pairing" }).eq("id", inst.id);
+    queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+    setTimeout(() => setQrLoading(false), 1500);
+  };
+
+  const handleSimulateConnect = async () => {
+    if (!selectedInstance) return;
+    await supabase.from("whatsapp_instances").update({ status: "connected" }).eq("id", selectedInstance.id);
+    queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+    toast({ title: "WhatsApp conectado com sucesso!" });
+    setQrDialogOpen(false);
+    setSelectedInstance(null);
+  };
+
+  const handleDisconnect = async (id: string) => {
+    await supabase.from("whatsapp_instances").update({ status: "disconnected" }).eq("id", id);
+    queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+    toast({ title: "WhatsApp desconectado." });
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
@@ -551,6 +579,8 @@ function PairTab({ organizationId }: { organizationId: string }) {
                   <div className="flex items-center gap-2">
                     {inst.status === "connected" ? (
                       <Wifi className="h-4 w-4 text-success" />
+                    ) : inst.status === "pairing" ? (
+                      <Loader2 className="h-4 w-4 text-warning animate-spin" />
                     ) : (
                       <WifiOff className="h-4 w-4 text-destructive" />
                     )}
@@ -560,7 +590,16 @@ function PairTab({ organizationId }: { organizationId: string }) {
                 </div>
                 {inst.phone && <p className="text-sm text-muted-foreground font-mono">{inst.phone}</p>}
                 {inst.api_url && <p className="text-xs text-muted-foreground truncate">{inst.api_url}</p>}
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-2">
+                  {inst.status === "connected" ? (
+                    <Button variant="outline" size="sm" className="h-8" onClick={() => handleDisconnect(inst.id)}>
+                      <WifiOff className="h-3.5 w-3.5 mr-1" /> Desconectar
+                    </Button>
+                  ) : (
+                    <Button variant="outline" size="sm" className="h-8 text-success border-success/30 hover:bg-success/10" onClick={() => handleConnect(inst)}>
+                      <QrCode className="h-3.5 w-3.5 mr-1" /> Conectar
+                    </Button>
+                  )}
                   <Button variant="ghost" size="sm" className="text-destructive h-8" onClick={() => deleteMutation.mutate(inst.id)}>
                     <Trash2 className="h-3.5 w-3.5 mr-1" /> Remover
                   </Button>
@@ -601,6 +640,51 @@ function PairTab({ organizationId }: { organizationId: string }) {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* QR Code Dialog */}
+      <Dialog open={qrDialogOpen} onOpenChange={(open) => { setQrDialogOpen(open); if (!open) setSelectedInstance(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="h-5 w-5 text-primary" />
+              Conectar WhatsApp
+            </DialogTitle>
+            <DialogDescription>
+              Abra o WhatsApp no celular → Menu → Dispositivos conectados → Conectar dispositivo → Escaneie o QR Code abaixo.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-4">
+            {qrLoading ? (
+              <div className="h-52 w-52 flex items-center justify-center rounded-xl border-2 border-dashed border-muted-foreground/20">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : (
+              <div className="p-3 bg-white rounded-xl shadow-sm">
+                <QRCodeSVG
+                  value={`whatsapp-connect:${selectedInstance?.id || "demo"}-${Date.now()}`}
+                  size={208}
+                  level="M"
+                  includeMargin={false}
+                  bgColor="#ffffff"
+                  fgColor="#000000"
+                />
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground text-center">
+              {selectedInstance?.name && <span className="font-medium text-foreground">{selectedInstance.name}</span>}
+              {selectedInstance?.phone && <span> • {selectedInstance.phone}</span>}
+            </p>
+            <div className="flex gap-2 w-full">
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => handleConnect(selectedInstance)} disabled={qrLoading}>
+                <RefreshCw className="h-3.5 w-3.5 mr-1" /> Gerar Novo QR
+              </Button>
+              <Button size="sm" className="flex-1 gradient-primary text-primary-foreground" onClick={handleSimulateConnect}>
+                <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Simular Conexão
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
