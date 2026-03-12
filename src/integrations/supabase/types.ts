@@ -14,6 +14,116 @@ export type Database = {
   }
   public: {
     Tables: {
+      billing_reminders: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          invoice_id: string
+          organization_id: string
+          reminder_type: string
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          invoice_id: string
+          organization_id: string
+          reminder_type: string
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          invoice_id?: string
+          organization_id?: string
+          reminder_type?: string
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_reminders_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_reminders_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_settings: {
+        Row: {
+          billing_mode: string
+          created_at: string
+          gateway_api_key: string | null
+          gateway_provider: string | null
+          gateway_webhook_url: string | null
+          id: string
+          organization_id: string
+          pix_key: string | null
+          pix_key_type: string | null
+          reminder_days_before: number
+          reminder_enabled: boolean
+          template_due_date: string
+          template_overdue: string
+          template_reminder: string
+          updated_at: string
+        }
+        Insert: {
+          billing_mode?: string
+          created_at?: string
+          gateway_api_key?: string | null
+          gateway_provider?: string | null
+          gateway_webhook_url?: string | null
+          id?: string
+          organization_id: string
+          pix_key?: string | null
+          pix_key_type?: string | null
+          reminder_days_before?: number
+          reminder_enabled?: boolean
+          template_due_date?: string
+          template_overdue?: string
+          template_reminder?: string
+          updated_at?: string
+        }
+        Update: {
+          billing_mode?: string
+          created_at?: string
+          gateway_api_key?: string | null
+          gateway_provider?: string | null
+          gateway_webhook_url?: string | null
+          id?: string
+          organization_id?: string
+          pix_key?: string | null
+          pix_key_type?: string | null
+          reminder_days_before?: number
+          reminder_enabled?: boolean
+          template_due_date?: string
+          template_overdue?: string
+          template_reminder?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           address: string | null

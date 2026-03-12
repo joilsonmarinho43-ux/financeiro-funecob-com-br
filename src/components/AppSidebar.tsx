@@ -107,6 +107,12 @@ const menuSections: MenuSection[] = [
     ],
   },
   { title: "Tags", icon: Tag, url: "/tags" },
+  {
+    title: "Cobrança",
+    icon: Receipt,
+    url: "/cobranca",
+    badge: "Novo!",
+  },
   { title: "V3Pay", icon: Zap, url: "/v3pay", badge: "Novo!" },
   { title: "Gateways", icon: Globe, url: "/gateways" },
   { title: "WebHook", icon: Webhook, url: "/webhook" },
