@@ -13,6 +13,7 @@ import Invoices from "./pages/Invoices";
 import Reports from "./pages/Reports";
 import Transactions from "./pages/Transactions";
 import WhatsApp from "./pages/WhatsApp";
+import BillingSettings from "./pages/BillingSettings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
