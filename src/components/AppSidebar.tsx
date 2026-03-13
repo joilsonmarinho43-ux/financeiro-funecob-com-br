@@ -1,47 +1,23 @@
 import {
   LayoutDashboard,
   Users,
-  UserPlus,
   Settings,
   FileText,
   DollarSign,
   Receipt,
-  CheckCircle,
-  ShoppingCart,
-  Server,
   ArrowLeftRight,
-  TrendingUp,
-  TrendingDown,
   BarChart3,
-  Building2,
-  Download,
-  Tag,
-  Zap,
-  Globe,
-  Webhook,
   MessageSquare,
-  Mail,
-  Send,
-  Radio,
-  Megaphone,
-  Smartphone,
-  MessageCircle,
-  Gift,
-  MoreHorizontal,
-  ScrollText,
   ChevronDown,
-  Home,
-  Grid3X3,
+  LogOut,
 } from "lucide-react";
 import { useState } from "react";
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Sidebar,
   SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -58,7 +34,7 @@ import {
 interface MenuSection {
   title: string;
   icon: React.ElementType;
-  items?: { title: string; url: string; icon: React.ElementType; badge?: string }[];
+  items?: { title: string; url: string; icon: React.ElementType }[];
   url?: string;
   badge?: string;
 }
@@ -72,66 +48,43 @@ const menuSections: MenuSection[] = [
   {
     title: "Clientes",
     icon: Users,
-    items: [
-      { title: "Adicionar", url: "/clientes/adicionar", icon: UserPlus },
-      { title: "Gerenciar", url: "/clientes/gerenciar", icon: Settings },
-      { title: "Planos", url: "/clientes/planos", icon: FileText },
-    ],
+    url: "/clientes",
   },
   {
-    title: "Financeiro",
+    title: "Planos",
+    icon: FileText,
+    url: "/clientes/planos",
+  },
+  {
+    title: "Faturas",
     icon: DollarSign,
-    items: [
-      { title: "Faturas em Aberto", url: "/financeiro/aberto", icon: Receipt },
-      { title: "Faturas Pagas", url: "/financeiro/pagas", icon: CheckCircle },
-      { title: "Gerenciar Vendas", url: "/financeiro/vendas", icon: ShoppingCart },
-      { title: "Gerenciar Custo Servidor", url: "/financeiro/servidor", icon: Server },
-      { title: "Entradas e Saídas", url: "/financeiro/entradas-saidas", icon: ArrowLeftRight },
-    ],
+    url: "/financeiro",
   },
   {
     title: "Movimentações",
     icon: ArrowLeftRight,
-    items: [
-      { title: "Gerenciar Entradas", url: "/movimentacoes/entradas", icon: TrendingUp },
-      { title: "Gerenciar Saídas", url: "/movimentacoes/saidas", icon: TrendingDown },
-    ],
+    url: "/movimentacoes",
   },
   {
     title: "Relatórios",
     icon: BarChart3,
-    items: [
-      { title: "Gráfico/Detalhamento", url: "/relatorios/grafico", icon: BarChart3 },
-      { title: "Detalhamento por Banco", url: "/relatorios/banco", icon: Building2 },
-      { title: "Exportar Relatórios", url: "/relatorios/exportar", icon: Download },
-    ],
+    url: "/relatorios",
   },
-  { title: "Tags", icon: Tag, url: "/tags" },
   {
     title: "Cobrança",
     icon: Receipt,
     url: "/cobranca",
-    badge: "Novo!",
   },
-  { title: "V3Pay", icon: Zap, url: "/v3pay", badge: "Novo!" },
-  { title: "Gateways", icon: Globe, url: "/gateways" },
-  { title: "WebHook", icon: Webhook, url: "/webhook" },
   {
     title: "WhatsApp",
     icon: MessageSquare,
-    items: [
-      { title: "Gerenciar Mensagens", url: "/whatsapp/mensagens", icon: Mail },
-      { title: "Fila de Mensagens", url: "/whatsapp/fila", icon: Send },
-      { title: "Envios em Massa", url: "/whatsapp/massa", icon: Radio },
-      { title: "Gerenciar Campanhas", url: "/whatsapp/campanhas", icon: Megaphone },
-      { title: "Parear WhatsApp", url: "/whatsapp/parear", icon: Smartphone },
-    ],
+    url: "/whatsapp",
   },
-  { title: "SMS", icon: MessageCircle, url: "/sms" },
-  { title: "Indicações", icon: Gift, url: "/indicacoes" },
-  { title: "Outros", icon: MoreHorizontal, url: "/outros" },
-  { title: "Logs", icon: ScrollText, url: "/logs" },
-  { title: "Configurações", icon: Settings, url: "/configuracoes" },
+  {
+    title: "Configurações",
+    icon: Settings,
+    url: "/configuracoes",
+  },
 ];
 
 function CollapsibleMenuItem({ section }: { section: MenuSection }) {
@@ -169,11 +122,6 @@ function CollapsibleMenuItem({ section }: { section: MenuSection }) {
                 >
                   <item.icon className="h-3.5 w-3.5 mr-2 shrink-0" />
                   {!collapsed && <span className="text-sm">{item.title}</span>}
-                  {item.badge && !collapsed && (
-                    <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">
-                      {item.badge}
-                    </span>
-                  )}
                 </NavLink>
               </SidebarMenuButton>
             ))}
@@ -187,6 +135,16 @@ function CollapsibleMenuItem({ section }: { section: MenuSection }) {
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
+  const { user, signOut } = useAuth();
+
+  const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Usuário";
+  const displayEmail = user?.email || "";
+  const initials = displayName
+    .split(" ")
+    .map((n: string) => n[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 
   return (
     <Sidebar collapsible="icon" className="gradient-sidebar border-r-0">
@@ -237,13 +195,22 @@ export function AppSidebar() {
       <SidebarFooter className="p-3 border-t border-sidebar-border">
         <div className="flex items-center gap-3">
           <div className="h-8 w-8 rounded-full bg-sidebar-accent flex items-center justify-center shrink-0">
-            <span className="text-xs font-medium text-sidebar-accent-foreground">AD</span>
+            <span className="text-xs font-medium text-sidebar-accent-foreground">{initials}</span>
           </div>
           {!collapsed && (
-            <div className="overflow-hidden">
-              <p className="text-xs font-medium text-sidebar-accent-foreground truncate">Administrador</p>
-              <p className="text-[11px] text-sidebar-muted truncate">admin@funecob.com</p>
+            <div className="overflow-hidden flex-1">
+              <p className="text-xs font-medium text-sidebar-accent-foreground truncate">{displayName}</p>
+              <p className="text-[11px] text-sidebar-muted truncate">{displayEmail}</p>
             </div>
+          )}
+          {!collapsed && (
+            <button
+              onClick={signOut}
+              className="text-sidebar-muted hover:text-sidebar-accent-foreground transition-colors shrink-0"
+              title="Sair"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           )}
         </div>
       </SidebarFooter>
