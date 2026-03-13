@@ -49,12 +49,12 @@ const App = () => (
             <Route path="/auth" element={<AuthRoute><Auth /></AuthRoute>} />
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/clientes/planos" element={<ProtectedRoute><Plans /></ProtectedRoute>} />
-            <Route path="/clientes/*" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
-            <Route path="/financeiro/*" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
-            <Route path="/relatorios/*" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-            <Route path="/movimentacoes/*" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
-            <Route path="/whatsapp/*" element={<ProtectedRoute><WhatsApp /></ProtectedRoute>} />
-            <Route path="/cobranca/*" element={<ProtectedRoute><BillingSettings /></ProtectedRoute>} />
+            <Route path="/clientes" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
+            <Route path="/financeiro" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
+            <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+            <Route path="/movimentacoes" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
+            <Route path="/whatsapp" element={<ProtectedRoute><WhatsApp /></ProtectedRoute>} />
+            <Route path="/cobranca" element={<ProtectedRoute><BillingSettings /></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
