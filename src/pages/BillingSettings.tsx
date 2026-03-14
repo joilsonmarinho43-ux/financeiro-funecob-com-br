@@ -399,6 +399,85 @@ export default function BillingSettings() {
               </CardContent>
             </Card>
 
+            {/* Execute Now & Status */}
+            <Card className="border-0 shadow-sm border-l-4 border-l-primary">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-primary" /> Robô de Cobrança
+                </CardTitle>
+                <CardDescription>
+                  O robô processa faturas diariamente às 08:00 e envia mensagens via WhatsApp a cada 2 minutos
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-success/10 border border-success/20">
+                    <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Régua de Cobrança</p>
+                      <p className="text-sm font-semibold text-foreground">Diário 08:00</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-success/10 border border-success/20">
+                    <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Envio WhatsApp</p>
+                      <p className="text-sm font-semibold text-foreground">A cada 2 min</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/10 border border-primary/20">
+                    <Bell className="h-5 w-5 text-primary shrink-0" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Status</p>
+                      <p className="text-sm font-semibold text-foreground">{reminderEnabled ? "Ativo" : "Pausado"}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        toast({ title: "Executando régua de cobrança..." });
+                        const { data, error } = await supabase.functions.invoke("billing-cron");
+                        if (error) throw error;
+                        toast({ title: "Régua executada!", description: `${data?.processed || 0} faturas processadas, ${data?.queued || 0} mensagens enfileiradas.` });
+                        queryClient.invalidateQueries({ queryKey: ["billing-reminders"] });
+                      } catch (err: any) {
+                        toast({ title: "Erro", description: err.message, variant: "destructive" });
+                      }
+                    }}
+                  >
+                    <Zap className="h-4 w-4 mr-2" /> Executar Régua Agora
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        toast({ title: "Processando fila de envio..." });
+                        const { data, error } = await supabase.functions.invoke("whatsapp-sender");
+                        if (error) throw error;
+                        toast({ title: "Fila processada!", description: `${data?.sent || 0} enviadas, ${data?.failed || 0} falhas.` });
+                      } catch (err: any) {
+                        toast({ title: "Erro", description: err.message, variant: "destructive" });
+                      }
+                    }}
+                  >
+                    <MessageSquare className="h-4 w-4 mr-2" /> Enviar Fila Agora
+                  </Button>
+                </div>
+
+                <div className="rounded-lg bg-muted/50 border border-border p-3 text-xs text-muted-foreground space-y-1">
+                  <p><strong className="text-foreground">Como funciona o robô:</strong></p>
+                  <p>1. Todos os dias às 08:00, o sistema identifica faturas com vencimento próximo, no dia ou vencidas</p>
+                  <p>2. Monta a mensagem usando os templates configurados e enfileira no WhatsApp</p>
+                  <p>3. A cada 2 minutos, as mensagens da fila são enviadas pela instância WhatsApp conectada</p>
+                  <p>4. Cada envio é registrado no histórico para acompanhamento</p>
+                </div>
+              </CardContent>
+            </Card>
+
             <div className="flex justify-end">
               <Button
                 onClick={() => saveMutation.mutate()}
