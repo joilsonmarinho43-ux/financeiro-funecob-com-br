@@ -485,6 +485,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState<any>(null);
   const [qrLoading, setQrLoading] = useState(false);
@@ -492,6 +493,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
   const [countdown, setCountdown] = useState(30);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [form, setForm] = useState({ name: "", phone: "", api_url: "", api_key: "" });
+  const [editForm, setEditForm] = useState({ id: "", name: "", phone: "", api_url: "", api_key: "" });
 
   const regenerateQr = useCallback(() => {
     setQrKey((k) => k + 1);
