@@ -83,6 +83,69 @@ export default function BillingSettings() {
     enabled: !!organizationId,
   });
 
+  // Monitor queries
+  const { data: queueStats } = useQuery({
+    queryKey: ["robot-queue-stats", organizationId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_queue")
+        .select("status");
+      if (error) throw error;
+      const stats = { queued: 0, sending: 0, sent: 0, failed: 0, total: data?.length || 0 };
+      data?.forEach((q: any) => {
+        if (q.status in stats) (stats as any)[q.status]++;
+      });
+      return stats;
+    },
+    enabled: !!organizationId,
+    refetchInterval: 30000,
+  });
+
+  const { data: reminderStats } = useQuery({
+    queryKey: ["robot-reminder-stats", organizationId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("billing_reminders")
+        .select("status, reminder_type, created_at");
+      if (error) throw error;
+      const today = new Date().toISOString().split("T")[0];
+      const stats = {
+        totalSent: 0, totalPending: 0, totalFailed: 0,
+        todaySent: 0, todayPending: 0, todayFailed: 0,
+        byType: { reminder: 0, due_date: 0, overdue: 0 } as Record<string, number>,
+      };
+      data?.forEach((r: any) => {
+        if (r.status === "sent") stats.totalSent++;
+        else if (r.status === "pending") stats.totalPending++;
+        else if (r.status === "failed") stats.totalFailed++;
+        if (r.created_at?.startsWith(today)) {
+          if (r.status === "sent") stats.todaySent++;
+          else if (r.status === "pending") stats.todayPending++;
+          else if (r.status === "failed") stats.todayFailed++;
+        }
+        if (r.reminder_type in stats.byType) stats.byType[r.reminder_type]++;
+      });
+      return stats;
+    },
+    enabled: !!organizationId,
+    refetchInterval: 30000,
+  });
+
+  const { data: whatsappInstance } = useQuery({
+    queryKey: ["robot-whatsapp-instance", organizationId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_instances")
+        .select("name, status, api_url, api_key")
+        .eq("status", "connected")
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!organizationId,
+  });
+
   useEffect(() => {
     if (settings) {
       setBillingMode(settings.billing_mode as "pix_direto" | "gateway");
