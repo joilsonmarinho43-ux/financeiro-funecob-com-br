@@ -546,6 +546,24 @@ function PairTab({ organizationId }: { organizationId: string }) {
     onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("whatsapp_instances").update({
+        name: editForm.name,
+        phone: editForm.phone || null,
+        api_url: editForm.api_url || null,
+        api_key: editForm.api_key || null,
+      }).eq("id", editForm.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+      toast({ title: "Instância atualizada!" });
+      setEditDialogOpen(false);
+    },
+    onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("whatsapp_instances").delete().eq("id", id);
@@ -556,6 +574,17 @@ function PairTab({ organizationId }: { organizationId: string }) {
       toast({ title: "Instância removida!" });
     },
   });
+
+  const handleEdit = (inst: any) => {
+    setEditForm({
+      id: inst.id,
+      name: inst.name,
+      phone: inst.phone || "",
+      api_url: inst.api_url || "",
+      api_key: inst.api_key || "",
+    });
+    setEditDialogOpen(true);
+  };
 
   const handleConnect = async (inst: any) => {
     setSelectedInstance(inst);
