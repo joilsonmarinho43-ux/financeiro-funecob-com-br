@@ -645,8 +645,22 @@ function PairTab({ organizationId }: { organizationId: string }) {
                   {statusBadge(inst.status)}
                 </div>
                 {inst.phone && <p className="text-sm text-muted-foreground font-mono">{inst.phone}</p>}
-                {inst.api_url && <p className="text-xs text-muted-foreground truncate">{inst.api_url}</p>}
-                <div className="flex justify-end gap-2">
+                {inst.api_url ? (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <CheckCircle2 className="h-3 w-3 text-success" />
+                    <span className="text-success font-medium">API configurada</span>
+                    <span className="text-muted-foreground truncate max-w-[120px]">({inst.api_url})</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <AlertTriangle className="h-3 w-3 text-warning" />
+                    <span className="text-warning font-medium">API não configurada</span>
+                  </div>
+                )}
+                <div className="flex justify-end gap-2 flex-wrap">
+                  <Button variant="outline" size="sm" className="h-8" onClick={() => handleEdit(inst)}>
+                    Editar
+                  </Button>
                   {inst.status === "connected" ? (
                     <Button variant="outline" size="sm" className="h-8" onClick={() => handleDisconnect(inst.id)}>
                       <WifiOff className="h-3.5 w-3.5 mr-1" /> Desconectar
@@ -657,7 +671,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
                     </Button>
                   )}
                   <Button variant="ghost" size="sm" className="text-destructive h-8" onClick={() => deleteMutation.mutate(inst.id)}>
-                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Remover
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               </CardContent>
