@@ -713,6 +713,46 @@ function PairTab({ organizationId }: { organizationId: string }) {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Instance Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Instância</DialogTitle>
+            <DialogDescription>Atualize a URL e chave da API para que o envio automático funcione.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => { e.preventDefault(); updateMutation.mutate(); }} className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label>Nome da Instância *</Label>
+              <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <Label>Telefone</Label>
+              <Input placeholder="5511999999999" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>URL da API *</Label>
+              <Input placeholder="https://sua-evolution-api.com" value={editForm.api_url} onChange={(e) => setEditForm({ ...editForm, api_url: e.target.value })} required />
+              <p className="text-xs text-muted-foreground">Ex: https://api.evolution.com.br — URL base da sua Evolution API, Z-API ou WPPConnect.</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Chave da API *</Label>
+              <Input type="password" placeholder="sua-chave-api" value={editForm.api_key} onChange={(e) => setEditForm({ ...editForm, api_key: e.target.value })} required />
+              <p className="text-xs text-muted-foreground">Token de autenticação fornecido pela sua API de WhatsApp.</p>
+            </div>
+            <div className="rounded-lg bg-primary/5 border border-primary/10 p-3 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground mb-1">⚡ Importante para o Robô de Cobrança</p>
+              <p>A URL e chave da API são obrigatórias para que o envio automático de cobranças funcione. Sem elas, as mensagens ficarão na fila mas não serão enviadas.</p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>Cancelar</Button>
+              <Button type="submit" className="gradient-primary text-primary-foreground" disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? "Salvando..." : "Salvar"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* QR Code Dialog */}
       <Dialog open={qrDialogOpen} onOpenChange={(open) => { setQrDialogOpen(open); if (!open) setSelectedInstance(null); }}>
         <DialogContent className="sm:max-w-sm">
