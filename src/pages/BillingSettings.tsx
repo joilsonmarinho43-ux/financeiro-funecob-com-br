@@ -22,7 +22,8 @@ import { format, parseISO } from "date-fns";
 import {
   Save, Zap, Key, MessageSquare, Clock, Bell, BellRing,
   AlertTriangle, CheckCircle2, XCircle, Loader2, CreditCard,
-  QrCode, Settings2, FileText,
+  QrCode, Settings2, FileText, Activity, TrendingUp, RefreshCw,
+  Send, BarChart3,
 } from "lucide-react";
 
 const TEMPLATE_VARS = [
