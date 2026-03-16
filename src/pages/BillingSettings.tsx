@@ -241,18 +241,223 @@ export default function BillingSettings() {
           </p>
         </div>
 
-        <Tabs defaultValue="config" className="w-full">
-          <TabsList className="w-full grid grid-cols-3">
+        <Tabs defaultValue="monitor" className="w-full">
+          <TabsList className="w-full grid grid-cols-4">
+            <TabsTrigger value="monitor" className="gap-1.5">
+              <Activity className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Monitor</span>
+            </TabsTrigger>
             <TabsTrigger value="config" className="gap-1.5">
-              <Settings2 className="h-3.5 w-3.5" /> Configuração
+              <Settings2 className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Config</span>
             </TabsTrigger>
             <TabsTrigger value="templates" className="gap-1.5">
-              <FileText className="h-3.5 w-3.5" /> Templates
+              <FileText className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Templates</span>
             </TabsTrigger>
             <TabsTrigger value="history" className="gap-1.5">
-              <Clock className="h-3.5 w-3.5" /> Histórico
+              <Clock className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Histórico</span>
             </TabsTrigger>
           </TabsList>
+
+          {/* ─── Monitor Tab ─── */}
+          <TabsContent value="monitor" className="space-y-4 mt-4">
+            {/* Connection Status */}
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-primary" /> Status do Robô
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-border">
+                    {reminderEnabled ? (
+                      <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-destructive shrink-0" />
+                    )}
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Régua</p>
+                      <p className="text-xs font-semibold text-foreground">{reminderEnabled ? "Ativo" : "Pausado"}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-border">
+                    {whatsappInstance ? (
+                      <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
+                    )}
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">WhatsApp</p>
+                      <p className="text-xs font-semibold text-foreground">{whatsappInstance ? whatsappInstance.name : "Sem conexão"}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-border">
+                    {whatsappInstance?.api_url ? (
+                      <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-destructive shrink-0" />
+                    )}
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">API</p>
+                      <p className="text-xs font-semibold text-foreground">{whatsappInstance?.api_url ? "Configurada" : "Pendente"}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-border">
+                    <Clock className="h-4 w-4 text-primary shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Próxima exec.</p>
+                      <p className="text-xs font-semibold text-foreground">08:00</p>
+                    </div>
+                  </div>
+                </div>
+
+                {!whatsappInstance && (
+                  <div className="rounded-lg bg-warning/10 border border-warning/20 p-3 text-sm flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+                    <p className="text-muted-foreground">
+                      <strong className="text-foreground">Atenção:</strong> Nenhuma instância WhatsApp conectada com API configurada.
+                      Vá em <strong>WhatsApp → Parear</strong> para configurar.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Metrics Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Enviadas", value: reminderStats?.totalSent || 0, today: reminderStats?.todaySent || 0, icon: Send, gradient: "gradient-success" },
+                { label: "Pendentes", value: reminderStats?.totalPending || 0, today: reminderStats?.todayPending || 0, icon: Clock, gradient: "gradient-warning" },
+                { label: "Falhas", value: reminderStats?.totalFailed || 0, today: reminderStats?.todayFailed || 0, icon: XCircle, gradient: "gradient-danger" },
+                { label: "Na Fila", value: queueStats?.queued || 0, today: null, icon: MessageSquare, gradient: "gradient-primary" },
+              ].map((m) => (
+                <Card key={m.label} className="border-0 shadow-sm">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`h-8 w-8 rounded-lg ${m.gradient} flex items-center justify-center`}>
+                        <m.icon className="h-4 w-4 text-primary-foreground" />
+                      </div>
+                      <span className="text-xs text-muted-foreground">{m.label}</span>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground">{m.value}</p>
+                    {m.today !== null && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Hoje: {m.today}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* By Type Breakdown */}
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-primary" /> Notificações por Tipo
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {[
+                    { label: "Lembretes", value: reminderStats?.byType.reminder || 0, cls: "bg-primary" },
+                    { label: "Vencimento", value: reminderStats?.byType.due_date || 0, cls: "bg-warning" },
+                    { label: "Atraso", value: reminderStats?.byType.overdue || 0, cls: "bg-destructive" },
+                  ].map((t) => {
+                    const total = (reminderStats?.byType.reminder || 0) + (reminderStats?.byType.due_date || 0) + (reminderStats?.byType.overdue || 0);
+                    const pct = total > 0 ? (t.value / total) * 100 : 0;
+                    return (
+                      <div key={t.label} className="space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">{t.label}</span>
+                          <span className="font-semibold text-foreground">{t.value}</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-muted overflow-hidden">
+                          <div className={`h-full rounded-full ${t.cls} transition-all`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Queue Summary */}
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Send className="h-4 w-4 text-primary" /> Fila de Envio
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-4 gap-3 text-center">
+                  {[
+                    { label: "Na fila", value: queueStats?.queued || 0, cls: "text-muted-foreground" },
+                    { label: "Enviando", value: queueStats?.sending || 0, cls: "text-warning" },
+                    { label: "Enviadas", value: queueStats?.sent || 0, cls: "text-success" },
+                    { label: "Falhas", value: queueStats?.failed || 0, cls: "text-destructive" },
+                  ].map((s) => (
+                    <div key={s.label}>
+                      <p className={`text-xl font-bold ${s.cls}`}>{s.value}</p>
+                      <p className="text-[10px] text-muted-foreground">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground text-center mt-3">
+                  Total processado: {queueStats?.total || 0} mensagens
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Quick Actions */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={async () => {
+                  try {
+                    toast({ title: "Executando régua de cobrança..." });
+                    const { data, error } = await supabase.functions.invoke("billing-cron");
+                    if (error) throw error;
+                    toast({ title: "Régua executada!", description: `${data?.processed || 0} faturas, ${data?.queued || 0} enfileiradas.` });
+                    queryClient.invalidateQueries({ queryKey: ["robot-reminder-stats"] });
+                    queryClient.invalidateQueries({ queryKey: ["robot-queue-stats"] });
+                  } catch (err: any) {
+                    toast({ title: "Erro", description: err.message, variant: "destructive" });
+                  }
+                }}
+              >
+                <Zap className="h-4 w-4 mr-2" /> Executar Régua
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={async () => {
+                  try {
+                    toast({ title: "Processando fila..." });
+                    const { data, error } = await supabase.functions.invoke("whatsapp-sender");
+                    if (error) throw error;
+                    toast({ title: "Fila processada!", description: `${data?.sent || 0} enviadas, ${data?.failed || 0} falhas.` });
+                    queryClient.invalidateQueries({ queryKey: ["robot-queue-stats"] });
+                    queryClient.invalidateQueries({ queryKey: ["robot-reminder-stats"] });
+                  } catch (err: any) {
+                    toast({ title: "Erro", description: err.message, variant: "destructive" });
+                  }
+                }}
+              >
+                <Send className="h-4 w-4 mr-2" /> Enviar Fila
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  queryClient.invalidateQueries({ queryKey: ["robot-queue-stats"] });
+                  queryClient.invalidateQueries({ queryKey: ["robot-reminder-stats"] });
+                  queryClient.invalidateQueries({ queryKey: ["robot-whatsapp-instance"] });
+                  toast({ title: "Dados atualizados!" });
+                }}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" /> Atualizar
+              </Button>
+            </div>
+          </TabsContent>
 
           {/* ─── Config Tab ─── */}
           <TabsContent value="config" className="space-y-4 mt-4">
