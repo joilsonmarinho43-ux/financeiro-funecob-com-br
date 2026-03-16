@@ -485,6 +485,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState<any>(null);
   const [qrLoading, setQrLoading] = useState(false);
@@ -492,6 +493,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
   const [countdown, setCountdown] = useState(30);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [form, setForm] = useState({ name: "", phone: "", api_url: "", api_key: "" });
+  const [editForm, setEditForm] = useState({ id: "", name: "", phone: "", api_url: "", api_key: "" });
 
   const regenerateQr = useCallback(() => {
     setQrKey((k) => k + 1);
@@ -544,6 +546,24 @@ function PairTab({ organizationId }: { organizationId: string }) {
     onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("whatsapp_instances").update({
+        name: editForm.name,
+        phone: editForm.phone || null,
+        api_url: editForm.api_url || null,
+        api_key: editForm.api_key || null,
+      }).eq("id", editForm.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+      toast({ title: "Instância atualizada!" });
+      setEditDialogOpen(false);
+    },
+    onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("whatsapp_instances").delete().eq("id", id);
@@ -554,6 +574,17 @@ function PairTab({ organizationId }: { organizationId: string }) {
       toast({ title: "Instância removida!" });
     },
   });
+
+  const handleEdit = (inst: any) => {
+    setEditForm({
+      id: inst.id,
+      name: inst.name,
+      phone: inst.phone || "",
+      api_url: inst.api_url || "",
+      api_key: inst.api_key || "",
+    });
+    setEditDialogOpen(true);
+  };
 
   const handleConnect = async (inst: any) => {
     setSelectedInstance(inst);
@@ -614,8 +645,22 @@ function PairTab({ organizationId }: { organizationId: string }) {
                   {statusBadge(inst.status)}
                 </div>
                 {inst.phone && <p className="text-sm text-muted-foreground font-mono">{inst.phone}</p>}
-                {inst.api_url && <p className="text-xs text-muted-foreground truncate">{inst.api_url}</p>}
-                <div className="flex justify-end gap-2">
+                {inst.api_url ? (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <CheckCircle2 className="h-3 w-3 text-success" />
+                    <span className="text-success font-medium">API configurada</span>
+                    <span className="text-muted-foreground truncate max-w-[120px]">({inst.api_url})</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <AlertTriangle className="h-3 w-3 text-warning" />
+                    <span className="text-warning font-medium">API não configurada</span>
+                  </div>
+                )}
+                <div className="flex justify-end gap-2 flex-wrap">
+                  <Button variant="outline" size="sm" className="h-8" onClick={() => handleEdit(inst)}>
+                    Editar
+                  </Button>
                   {inst.status === "connected" ? (
                     <Button variant="outline" size="sm" className="h-8" onClick={() => handleDisconnect(inst.id)}>
                       <WifiOff className="h-3.5 w-3.5 mr-1" /> Desconectar
@@ -626,7 +671,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
                     </Button>
                   )}
                   <Button variant="ghost" size="sm" className="text-destructive h-8" onClick={() => deleteMutation.mutate(inst.id)}>
-                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Remover
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               </CardContent>
@@ -662,6 +707,46 @@ function PairTab({ organizationId }: { organizationId: string }) {
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
               <Button type="submit" className="gradient-primary text-primary-foreground" disabled={createMutation.isPending}>
                 {createMutation.isPending ? "Salvando..." : "Adicionar"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Instance Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Instância</DialogTitle>
+            <DialogDescription>Atualize a URL e chave da API para que o envio automático funcione.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => { e.preventDefault(); updateMutation.mutate(); }} className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label>Nome da Instância *</Label>
+              <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <Label>Telefone</Label>
+              <Input placeholder="5511999999999" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>URL da API *</Label>
+              <Input placeholder="https://sua-evolution-api.com" value={editForm.api_url} onChange={(e) => setEditForm({ ...editForm, api_url: e.target.value })} required />
+              <p className="text-xs text-muted-foreground">Ex: https://api.evolution.com.br — URL base da sua Evolution API, Z-API ou WPPConnect.</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Chave da API *</Label>
+              <Input type="password" placeholder="sua-chave-api" value={editForm.api_key} onChange={(e) => setEditForm({ ...editForm, api_key: e.target.value })} required />
+              <p className="text-xs text-muted-foreground">Token de autenticação fornecido pela sua API de WhatsApp.</p>
+            </div>
+            <div className="rounded-lg bg-primary/5 border border-primary/10 p-3 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground mb-1">⚡ Importante para o Robô de Cobrança</p>
+              <p>A URL e chave da API são obrigatórias para que o envio automático de cobranças funcione. Sem elas, as mensagens ficarão na fila mas não serão enviadas.</p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>Cancelar</Button>
+              <Button type="submit" className="gradient-primary text-primary-foreground" disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? "Salvando..." : "Salvar"}
               </Button>
             </div>
           </form>
