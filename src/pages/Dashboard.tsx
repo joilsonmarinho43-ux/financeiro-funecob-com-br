@@ -356,10 +356,25 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* Status Clientes Últimos 7 Dias */}
+      {/* Period filter */}
+      <div className="flex items-center justify-end gap-1">
+        {[7, 15, 30].map((d) => (
+          <Button
+            key={d}
+            size="sm"
+            variant={chartDays === d ? "default" : "outline"}
+            className="h-7 text-xs px-2.5"
+            onClick={() => setChartDays(d)}
+          >
+            {d} dias
+          </Button>
+        ))}
+      </div>
+
+      {/* Status Clientes */}
       <Card className="border-0 shadow-sm">
         <CardContent className="p-4">
-          <h3 className="font-semibold text-sm text-foreground mb-3">Status Clientes Últimos 7 Dias</h3>
+          <h3 className="font-semibold text-sm text-foreground mb-3">Status Clientes — Últimos {chartDays} Dias</h3>
           <div className="h-[200px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={clientChartData ?? []}>
