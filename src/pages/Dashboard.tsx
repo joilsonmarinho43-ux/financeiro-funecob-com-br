@@ -194,14 +194,14 @@ export default function Dashboard() {
     enabled: !!organizationId,
   });
 
-  // Last 7 days transactions
+  // Transactions by period
   const { data: txChartData } = useQuery({
-    queryKey: ["dashboard-tx-7d", organizationId],
+    queryKey: ["dashboard-tx-chart", organizationId, chartDays],
     queryFn: async () => {
       if (!organizationId) return [];
       const now = new Date();
       const days: { date: string; label: string }[] = [];
-      for (let i = 6; i >= 0; i--) {
+      for (let i = chartDays - 1; i >= 0; i--) {
         const d = new Date(now);
         d.setDate(d.getDate() - i);
         days.push({
