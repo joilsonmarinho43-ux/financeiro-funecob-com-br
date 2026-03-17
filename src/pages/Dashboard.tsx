@@ -31,7 +31,90 @@ import {
 
 export default function Dashboard() {
   const [showValues, setShowValues] = useState(false);
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const { organizationId } = useOrganization();
+
+  // Fetch WhatsApp instance for sending
+  const { data: whatsappInstance } = useQuery({
+    queryKey: ["whatsapp-instance", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return null;
+      const { data } = await supabase
+        .from("whatsapp_instances")
+        .select("id, api_url, api_key, status")
+        .eq("organization_id", organizationId)
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!organizationId,
+  });
+
+  // Fetch billing settings for message template
+  const { data: billingSettings } = useQuery({
+    queryKey: ["billing-settings", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return null;
+      const { data } = await supabase
+        .from("billing_settings")
+        .select("template_overdue, pix_key")
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!organizationId,
+  });
+
+  const sendWhatsAppMessage = async (inv: any) => {
+    const client = inv.clients as any;
+    const phone = client?.phone;
+    if (!phone) {
+      toast({ title: "Erro", description: "Cliente sem telefone cadastrado.", variant: "destructive" });
+      return;
+    }
+    if (!whatsappInstance?.api_url || !whatsappInstance?.api_key) {
+      toast({ title: "Erro", description: "Instância WhatsApp não configurada. Vá em WhatsApp → Parear.", variant: "destructive" });
+      return;
+    }
+
+    setSendingId(inv.id);
+    try {
+      let message = billingSettings?.template_overdue || 
+        "Olá {nome}! Sua fatura no valor de {valor} com vencimento em {vencimento} está em atraso. Por favor, regularize o pagamento.";
+      message = message
+        .replace("{nome}", client?.name || "")
+        .replace("{valor}", inv.amount?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) || "")
+        .replace("{vencimento}", new Date(inv.due_date).toLocaleDateString("pt-BR"))
+        .replace("{link_ou_chave_pix}", billingSettings?.pix_key ? `Chave PIX: ${billingSettings.pix_key}` : "");
+
+      // Queue the message
+      const { error } = await supabase.from("whatsapp_queue").insert({
+        phone: phone.replace(/\D/g, ""),
+        message,
+        organization_id: organizationId,
+        status: "queued",
+      });
+
+      if (error) throw error;
+      toast({ title: "Mensagem enfileirada!", description: `Cobrança enviada para ${client?.name}.` });
+    } catch (e: any) {
+      toast({ title: "Erro ao enviar", description: e.message, variant: "destructive" });
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const openWhatsAppDirect = (inv: any) => {
+    const client = inv.clients as any;
+    const phone = client?.phone?.replace(/\D/g, "");
+    if (!phone) {
+      toast({ title: "Erro", description: "Cliente sem telefone cadastrado.", variant: "destructive" });
+      return;
+    }
+    let message = `Olá ${client?.name}! Sua fatura no valor de ${inv.amount?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} venceu em ${new Date(inv.due_date).toLocaleDateString("pt-BR")}. Por favor, regularize o pagamento.`;
+    if (billingSettings?.pix_key) message += ` Chave PIX: ${billingSettings.pix_key}`;
+    window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
+  };
 
   const { data: clientStats, isLoading: loadingClients } = useQuery({
     queryKey: ["dashboard-clients", organizationId],
