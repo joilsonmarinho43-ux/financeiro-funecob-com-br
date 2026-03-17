@@ -395,7 +395,7 @@ export default function Dashboard() {
       {/* Movimentações Últimos 7 Dias */}
       <Card className="border-0 shadow-sm">
         <CardContent className="p-4">
-          <h3 className="font-semibold text-sm text-foreground mb-3">Movimentações Últimos 7 Dias</h3>
+          <h3 className="font-semibold text-sm text-foreground mb-3">Movimentações — Últimos {chartDays} Dias</h3>
           <div className="h-[200px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={txChartData ?? []}>
