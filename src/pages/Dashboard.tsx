@@ -32,6 +32,7 @@ import {
 export default function Dashboard() {
   const [showValues, setShowValues] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [chartDays, setChartDays] = useState(7);
   const { organizationId } = useOrganization();
 
   // Fetch WhatsApp instance for sending
@@ -158,14 +159,14 @@ export default function Dashboard() {
     enabled: !!organizationId,
   });
 
-  // Last 7 days client activity
+  // Client activity by period
   const { data: clientChartData } = useQuery({
-    queryKey: ["dashboard-client-7d", organizationId],
+    queryKey: ["dashboard-client-chart", organizationId, chartDays],
     queryFn: async () => {
       if (!organizationId) return [];
       const now = new Date();
       const days: { date: string; label: string }[] = [];
-      for (let i = 6; i >= 0; i--) {
+      for (let i = chartDays - 1; i >= 0; i--) {
         const d = new Date(now);
         d.setDate(d.getDate() - i);
         days.push({
@@ -193,14 +194,14 @@ export default function Dashboard() {
     enabled: !!organizationId,
   });
 
-  // Last 7 days transactions
+  // Transactions by period
   const { data: txChartData } = useQuery({
-    queryKey: ["dashboard-tx-7d", organizationId],
+    queryKey: ["dashboard-tx-chart", organizationId, chartDays],
     queryFn: async () => {
       if (!organizationId) return [];
       const now = new Date();
       const days: { date: string; label: string }[] = [];
-      for (let i = 6; i >= 0; i--) {
+      for (let i = chartDays - 1; i >= 0; i--) {
         const d = new Date(now);
         d.setDate(d.getDate() - i);
         days.push({
@@ -355,10 +356,25 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* Status Clientes Últimos 7 Dias */}
+      {/* Period filter */}
+      <div className="flex items-center justify-end gap-1">
+        {[7, 15, 30].map((d) => (
+          <Button
+            key={d}
+            size="sm"
+            variant={chartDays === d ? "default" : "outline"}
+            className="h-7 text-xs px-2.5"
+            onClick={() => setChartDays(d)}
+          >
+            {d} dias
+          </Button>
+        ))}
+      </div>
+
+      {/* Status Clientes */}
       <Card className="border-0 shadow-sm">
         <CardContent className="p-4">
-          <h3 className="font-semibold text-sm text-foreground mb-3">Status Clientes Últimos 7 Dias</h3>
+          <h3 className="font-semibold text-sm text-foreground mb-3">Status Clientes — Últimos {chartDays} Dias</h3>
           <div className="h-[200px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={clientChartData ?? []}>
@@ -379,7 +395,7 @@ export default function Dashboard() {
       {/* Movimentações Últimos 7 Dias */}
       <Card className="border-0 shadow-sm">
         <CardContent className="p-4">
-          <h3 className="font-semibold text-sm text-foreground mb-3">Movimentações Últimos 7 Dias</h3>
+          <h3 className="font-semibold text-sm text-foreground mb-3">Movimentações — Últimos {chartDays} Dias</h3>
           <div className="h-[200px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={txChartData ?? []}>
