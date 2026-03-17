@@ -32,6 +32,7 @@ import {
 export default function Dashboard() {
   const [showValues, setShowValues] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [chartDays, setChartDays] = useState(7);
   const { organizationId } = useOrganization();
 
   // Fetch WhatsApp instance for sending
