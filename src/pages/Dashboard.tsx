@@ -452,10 +452,23 @@ export default function Dashboard() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button size="icon" variant="ghost" className="h-7 w-7 text-primary hover:text-primary">
-                            <Send className="h-3.5 w-3.5" />
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
+                            className="h-7 w-7 text-primary hover:text-primary"
+                            onClick={() => sendWhatsAppMessage(inv)}
+                            disabled={sendingId === inv.id}
+                            title="Enviar cobrança via robô"
+                          >
+                            {sendingId === inv.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                           </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 text-success hover:text-success">
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
+                            className="h-7 w-7 text-success hover:text-success"
+                            onClick={() => openWhatsAppDirect(inv)}
+                            title="Abrir WhatsApp Web"
+                          >
                             <MessageSquare className="h-3.5 w-3.5" />
                           </Button>
                         </div>
