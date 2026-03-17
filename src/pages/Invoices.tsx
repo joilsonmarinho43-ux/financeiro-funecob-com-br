@@ -240,6 +240,29 @@ export default function Invoices() {
                   Limpar datas
                 </Button>
               )}
+
+              <div className="flex gap-1 ml-auto">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  onClick={() => exportToExcel(filtered)}
+                  disabled={filtered.length === 0}
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-1" />
+                  Excel
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  onClick={() => exportToPDF(filtered)}
+                  disabled={filtered.length === 0}
+                >
+                  <FileText className="h-4 w-4 mr-1" />
+                  PDF
+                </Button>
+              </div>
             </div>
           </CardHeader>
 
