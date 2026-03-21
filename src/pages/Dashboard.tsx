@@ -21,6 +21,9 @@ import {
   Area,
   LineChart,
   Line,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -246,6 +249,41 @@ export default function Dashboard() {
     enabled: !!organizationId,
   });
 
+  const PIE_COLORS = [
+    "hsl(var(--primary))",
+    "hsl(var(--success))",
+    "hsl(var(--warning))",
+    "hsl(var(--destructive))",
+    "hsl(210, 70%, 55%)",
+    "hsl(280, 60%, 55%)",
+    "hsl(30, 80%, 55%)",
+    "hsl(180, 60%, 45%)",
+  ];
+
+  const { data: clientsByPlan } = useQuery({
+    queryKey: ["dashboard-clients-by-plan", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      const { data: invoices, error } = await supabase
+        .from("invoices")
+        .select("client_id, plans(name)")
+        .eq("organization_id", organizationId)
+        .eq("status", "aberto");
+      if (error) throw error;
+      const planMap: Record<string, Set<string>> = {};
+      for (const inv of invoices) {
+        const planName = (inv.plans as any)?.name || "Sem plano";
+        if (!planMap[planName]) planMap[planName] = new Set();
+        planMap[planName].add(inv.client_id);
+      }
+      return Object.entries(planMap).map(([name, clients]) => ({
+        name,
+        value: clients.size,
+      }));
+    },
+    enabled: !!organizationId,
+  });
+
   const formatCurrency = (value: number) =>
     value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -418,6 +456,50 @@ export default function Dashboard() {
                 <Legend wrapperStyle={{ fontSize: 10 }} />
               </AreaChart>
             </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Distribuição de Clientes por Plano */}
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-4">
+          <h3 className="font-semibold text-sm text-foreground mb-3">Distribuição de Clientes por Plano</h3>
+          <div className="h-[260px]">
+            {(!clientsByPlan || clientsByPlan.length === 0) ? (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                Nenhum dado disponível
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={clientsByPlan}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={90}
+                    paddingAngle={3}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                    labelLine={{ stroke: "hsl(var(--muted-foreground))" }}
+                  >
+                    {clientsByPlan.map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                      fontSize: 12,
+                    }}
+                    formatter={(value: number) => [`${value} cliente(s)`, "Quantidade"]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </CardContent>
       </Card>
