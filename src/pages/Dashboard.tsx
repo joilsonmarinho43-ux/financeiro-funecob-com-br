@@ -249,6 +249,41 @@ export default function Dashboard() {
     enabled: !!organizationId,
   });
 
+  const PIE_COLORS = [
+    "hsl(var(--primary))",
+    "hsl(var(--success))",
+    "hsl(var(--warning))",
+    "hsl(var(--destructive))",
+    "hsl(210, 70%, 55%)",
+    "hsl(280, 60%, 55%)",
+    "hsl(30, 80%, 55%)",
+    "hsl(180, 60%, 45%)",
+  ];
+
+  const { data: clientsByPlan } = useQuery({
+    queryKey: ["dashboard-clients-by-plan", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      const { data: invoices, error } = await supabase
+        .from("invoices")
+        .select("client_id, plans(name)")
+        .eq("organization_id", organizationId)
+        .eq("status", "aberto");
+      if (error) throw error;
+      const planMap: Record<string, Set<string>> = {};
+      for (const inv of invoices) {
+        const planName = (inv.plans as any)?.name || "Sem plano";
+        if (!planMap[planName]) planMap[planName] = new Set();
+        planMap[planName].add(inv.client_id);
+      }
+      return Object.entries(planMap).map(([name, clients]) => ({
+        name,
+        value: clients.size,
+      }));
+    },
+    enabled: !!organizationId,
+  });
+
   const formatCurrency = (value: number) =>
     value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
