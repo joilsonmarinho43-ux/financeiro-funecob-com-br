@@ -460,6 +460,50 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
+      {/* Distribuição de Clientes por Plano */}
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-4">
+          <h3 className="font-semibold text-sm text-foreground mb-3">Distribuição de Clientes por Plano</h3>
+          <div className="h-[260px]">
+            {(!clientsByPlan || clientsByPlan.length === 0) ? (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                Nenhum dado disponível
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={clientsByPlan}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={90}
+                    paddingAngle={3}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                    labelLine={{ stroke: "hsl(var(--muted-foreground))" }}
+                  >
+                    {clientsByPlan.map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                      fontSize: 12,
+                    }}
+                    formatter={(value: number) => [`${value} cliente(s)`, "Quantidade"]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Clientes com Plano Vencido */}
       <Card className="border-0 shadow-sm overflow-hidden">
         <div className="bg-destructive px-4 py-3">
