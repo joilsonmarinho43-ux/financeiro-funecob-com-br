@@ -1,4 +1,4 @@
-import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2 } from "lucide-react";
+import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -36,6 +36,7 @@ export default function Dashboard() {
   const [showValues, setShowValues] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [chartDays, setChartDays] = useState(7);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const { organizationId } = useOrganization();
 
   // Fetch WhatsApp instance for sending
@@ -284,6 +285,44 @@ export default function Dashboard() {
     enabled: !!organizationId,
   });
 
+  // Fetch clients for selected plan slice
+  const { data: planClients, isLoading: loadingPlanClients } = useQuery({
+    queryKey: ["dashboard-plan-clients", organizationId, selectedPlan],
+    queryFn: async () => {
+      if (!organizationId || !selectedPlan) return [];
+      const { data: invoices, error } = await supabase
+        .from("invoices")
+        .select("client_id, clients(name, phone, email, status)")
+        .eq("organization_id", organizationId)
+        .eq("status", "aberto");
+      if (error) throw error;
+
+      // If "Sem plano", get invoices with no plan
+      let filtered = invoices;
+      if (selectedPlan !== "Sem plano") {
+        const { data: planInvoices, error: e2 } = await supabase
+          .from("invoices")
+          .select("client_id, plans!inner(name), clients(name, phone, email, status)")
+          .eq("organization_id", organizationId)
+          .eq("status", "aberto")
+          .eq("plans.name", selectedPlan);
+        if (e2) throw e2;
+        filtered = planInvoices;
+      } else {
+        filtered = invoices.filter((inv) => !(inv as any).plan_id);
+      }
+
+      // Deduplicate by client_id
+      const seen = new Set<string>();
+      return filtered.filter((inv) => {
+        if (seen.has(inv.client_id)) return false;
+        seen.add(inv.client_id);
+        return true;
+      }).map((inv) => inv.clients as any);
+    },
+    enabled: !!organizationId && !!selectedPlan,
+  });
+
   const formatCurrency = (value: number) =>
     value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -482,9 +521,19 @@ export default function Dashboard() {
                     dataKey="value"
                     label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                     labelLine={{ stroke: "hsl(var(--muted-foreground))" }}
+                    onClick={(_, index) => {
+                      const planName = clientsByPlan[index]?.name;
+                      setSelectedPlan(selectedPlan === planName ? null : planName);
+                    }}
+                    cursor="pointer"
                   >
-                    {clientsByPlan.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    {clientsByPlan.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={PIE_COLORS[index % PIE_COLORS.length]}
+                        stroke={selectedPlan === entry.name ? "hsl(var(--foreground))" : "transparent"}
+                        strokeWidth={selectedPlan === entry.name ? 3 : 0}
+                      />
                     ))}
                   </Pie>
                   <Tooltip
@@ -503,6 +552,63 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Selected Plan Clients Detail */}
+      {selectedPlan && (
+        <Card className="border-0 shadow-sm overflow-hidden">
+          <div className="bg-primary px-4 py-3 flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-sm text-primary-foreground">Clientes — {selectedPlan}</h3>
+              <p className="text-xs text-primary-foreground/80">Clique na fatia novamente para fechar</p>
+            </div>
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-primary-foreground hover:text-primary-foreground/80" onClick={() => setSelectedPlan(null)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Nome</TableHead>
+                    <TableHead className="text-xs">Telefone</TableHead>
+                    <TableHead className="text-xs">Email</TableHead>
+                    <TableHead className="text-xs">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loadingPlanClients ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-6">
+                        <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
+                      </TableCell>
+                    </TableRow>
+                  ) : (!planClients || planClients.length === 0) ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-6">
+                        Nenhum cliente encontrado
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    planClients.map((client: any, idx: number) => (
+                      <TableRow key={idx}>
+                        <TableCell className="text-xs font-medium">{client?.name ?? "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{client?.phone ?? "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{client?.email ?? "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-[10px]">
+                            {client?.status ?? "—"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Clientes com Plano Vencido */}
       <Card className="border-0 shadow-sm overflow-hidden">
