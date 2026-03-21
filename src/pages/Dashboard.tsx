@@ -521,9 +521,19 @@ export default function Dashboard() {
                     dataKey="value"
                     label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                     labelLine={{ stroke: "hsl(var(--muted-foreground))" }}
+                    onClick={(_, index) => {
+                      const planName = clientsByPlan[index]?.name;
+                      setSelectedPlan(selectedPlan === planName ? null : planName);
+                    }}
+                    cursor="pointer"
                   >
-                    {clientsByPlan.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    {clientsByPlan.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={PIE_COLORS[index % PIE_COLORS.length]}
+                        stroke={selectedPlan === entry.name ? "hsl(var(--foreground))" : "transparent"}
+                        strokeWidth={selectedPlan === entry.name ? 3 : 0}
+                      />
                     ))}
                   </Pie>
                   <Tooltip
