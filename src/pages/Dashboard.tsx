@@ -553,6 +553,63 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
+      {/* Selected Plan Clients Detail */}
+      {selectedPlan && (
+        <Card className="border-0 shadow-sm overflow-hidden">
+          <div className="bg-primary px-4 py-3 flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-sm text-primary-foreground">Clientes — {selectedPlan}</h3>
+              <p className="text-xs text-primary-foreground/80">Clique na fatia novamente para fechar</p>
+            </div>
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-primary-foreground hover:text-primary-foreground/80" onClick={() => setSelectedPlan(null)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Nome</TableHead>
+                    <TableHead className="text-xs">Telefone</TableHead>
+                    <TableHead className="text-xs">Email</TableHead>
+                    <TableHead className="text-xs">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loadingPlanClients ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-6">
+                        <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
+                      </TableCell>
+                    </TableRow>
+                  ) : (!planClients || planClients.length === 0) ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-6">
+                        Nenhum cliente encontrado
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    planClients.map((client: any, idx: number) => (
+                      <TableRow key={idx}>
+                        <TableCell className="text-xs font-medium">{client?.name ?? "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{client?.phone ?? "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{client?.email ?? "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-[10px]">
+                            {client?.status ?? "—"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Clientes com Plano Vencido */}
       <Card className="border-0 shadow-sm overflow-hidden">
         <div className="bg-destructive px-4 py-3">
