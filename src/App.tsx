@@ -14,12 +14,18 @@ import Reports from "./pages/Reports";
 import Transactions from "./pages/Transactions";
 import WhatsApp from "./pages/WhatsApp";
 import BillingSettings from "./pages/BillingSettings";
+import V3Pay from "./pages/V3Pay";
+import Gateways from "./pages/Gateways";
+import WebHooks from "./pages/WebHooks";
+import SMS from "./pages/SMS";
+import SystemLogs from "./pages/SystemLogs";
+import AdminPanel from "./pages/AdminPanel";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, licenseExpired } = useAuth();
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -28,6 +34,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   if (!user) return <Navigate to="/auth" replace />;
+  if (licenseExpired) return <Navigate to="/license-expired" replace />;
   return <>{children}</>;
 }
 
@@ -36,6 +43,32 @@ function AuthRoute({ children }: { children: React.ReactNode }) {
   if (loading) return null;
   if (user) return <Navigate to="/" replace />;
   return <>{children}</>;
+}
+
+function LicenseExpiredPage() {
+  const { user, signOut, licenseExpired } = useAuth();
+  if (!user) return <Navigate to="/auth" replace />;
+  if (!licenseExpired) return <Navigate to="/" replace />;
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="max-w-md w-full text-center space-y-6">
+        <div className="mx-auto h-20 w-20 rounded-2xl bg-destructive/10 flex items-center justify-center">
+          <span className="text-4xl">🔒</span>
+        </div>
+        <h1 className="text-2xl font-bold text-foreground">Licença Expirada</h1>
+        <p className="text-muted-foreground">
+          Sua licença de acesso ao FuneCob expirou. Entre em contato com o administrador para renovar seu acesso.
+        </p>
+        <button
+          onClick={signOut}
+          className="inline-flex items-center justify-center rounded-md bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          Sair da conta
+        </button>
+      </div>
+    </div>
+  );
 }
 
 const App = () => (
@@ -47,6 +80,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/auth" element={<AuthRoute><Auth /></AuthRoute>} />
+            <Route path="/license-expired" element={<LicenseExpiredPage />} />
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/clientes/planos" element={<ProtectedRoute><Plans /></ProtectedRoute>} />
             <Route path="/clientes" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
@@ -56,7 +90,12 @@ const App = () => (
             <Route path="/whatsapp" element={<ProtectedRoute><WhatsApp /></ProtectedRoute>} />
             <Route path="/cobranca" element={<ProtectedRoute><BillingSettings /></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="/v3pay" element={<ProtectedRoute><V3Pay /></ProtectedRoute>} />
+            <Route path="/gateways" element={<ProtectedRoute><Gateways /></ProtectedRoute>} />
+            <Route path="/webhooks" element={<ProtectedRoute><WebHooks /></ProtectedRoute>} />
+            <Route path="/sms" element={<ProtectedRoute><SMS /></ProtectedRoute>} />
+            <Route path="/logs" element={<ProtectedRoute><SystemLogs /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

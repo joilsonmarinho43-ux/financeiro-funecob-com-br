@@ -6,6 +6,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  licenseExpired: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -17,17 +18,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [licenseExpired, setLicenseExpired] = useState(false);
+
+  const checkLicense = async (userId: string) => {
+    try {
+      // Check if user is admin — admins bypass license check
+      const { data: isAdmin } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
+      if (isAdmin) {
+        setLicenseExpired(false);
+        return;
+      }
+
+      // Get user's organization
+      const { data: membership } = await supabase
+        .from("organization_members")
+        .select("organization_id")
+        .eq("user_id", userId)
+        .limit(1)
+        .maybeSingle();
+
+      if (!membership) {
+        setLicenseExpired(false);
+        return;
+      }
+
+      // Check subscription
+      const { data: sub } = await supabase
+        .from("subscriptions")
+        .select("expires_at, status")
+        .eq("organization_id", membership.organization_id)
+        .maybeSingle();
+
+      if (!sub) {
+        // No subscription = expired (unless it's a fresh account with no sub yet)
+        setLicenseExpired(true);
+        return;
+      }
+
+      const expired = new Date(sub.expires_at) < new Date();
+      setLicenseExpired(expired);
+    } catch {
+      setLicenseExpired(false);
+    }
+  };
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+      if (session?.user) {
+        setTimeout(() => checkLicense(session.user.id), 0);
+      } else {
+        setLicenseExpired(false);
+      }
       setLoading(false);
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+      if (session?.user) {
+        checkLicense(session.user.id);
+      }
       setLoading(false);
     });
 
@@ -56,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, licenseExpired, signIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   );

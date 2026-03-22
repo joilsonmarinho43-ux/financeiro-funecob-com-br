@@ -8,13 +8,18 @@ import {
   ArrowLeftRight,
   BarChart3,
   MessageSquare,
-  ChevronDown,
   LogOut,
+  CreditCard,
+  Settings2,
+  Webhook,
+  MessageCircle,
+  ScrollText,
+  Shield,
 } from "lucide-react";
-import { useState } from "react";
 import { NavLink } from "@/components/NavLink";
-import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Sidebar,
   SidebarContent,
@@ -23,112 +28,81 @@ import {
   SidebarMenuItem,
   SidebarHeader,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarGroupContent,
   useSidebar,
 } from "@/components/ui/sidebar";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 
-interface MenuSection {
+interface MenuItem {
   title: string;
   icon: React.ElementType;
-  items?: { title: string; url: string; icon: React.ElementType }[];
-  url?: string;
+  url: string;
   badge?: string;
 }
 
-const menuSections: MenuSection[] = [
-  {
-    title: "Dashboard",
-    icon: LayoutDashboard,
-    url: "/",
-  },
-  {
-    title: "Clientes",
-    icon: Users,
-    url: "/clientes",
-  },
-  {
-    title: "Planos",
-    icon: FileText,
-    url: "/clientes/planos",
-  },
-  {
-    title: "Faturas",
-    icon: DollarSign,
-    url: "/financeiro",
-  },
-  {
-    title: "Movimentações",
-    icon: ArrowLeftRight,
-    url: "/movimentacoes",
-  },
-  {
-    title: "Relatórios",
-    icon: BarChart3,
-    url: "/relatorios",
-  },
-  {
-    title: "Cobrança",
-    icon: Receipt,
-    url: "/cobranca",
-  },
-  {
-    title: "WhatsApp",
-    icon: MessageSquare,
-    url: "/whatsapp",
-  },
-  {
-    title: "Configurações",
-    icon: Settings,
-    url: "/configuracoes",
-  },
+const mainItems: MenuItem[] = [
+  { title: "Dashboard", icon: LayoutDashboard, url: "/" },
+  { title: "Clientes", icon: Users, url: "/clientes" },
+  { title: "Planos", icon: FileText, url: "/clientes/planos" },
+  { title: "Faturas", icon: DollarSign, url: "/financeiro" },
+  { title: "Movimentações", icon: ArrowLeftRight, url: "/movimentacoes" },
+  { title: "Relatórios", icon: BarChart3, url: "/relatorios" },
 ];
 
-function CollapsibleMenuItem({ section }: { section: MenuSection }) {
-  const [open, setOpen] = useState(false);
+const billingItems: MenuItem[] = [
+  { title: "V3Pay", icon: CreditCard, url: "/v3pay", badge: "Novo!" },
+  { title: "Gateways", icon: Settings2, url: "/gateways" },
+  { title: "WebHooks", icon: Webhook, url: "/webhooks" },
+  { title: "Cobrança", icon: Receipt, url: "/cobranca" },
+];
+
+const communicationItems: MenuItem[] = [
+  { title: "WhatsApp", icon: MessageSquare, url: "/whatsapp" },
+  { title: "SMS", icon: MessageCircle, url: "/sms", badge: "Novo!" },
+];
+
+const systemItems: MenuItem[] = [
+  { title: "Logs", icon: ScrollText, url: "/logs" },
+  { title: "Configurações", icon: Settings, url: "/configuracoes" },
+];
+
+function MenuGroup({ label, items }: { label: string; items: MenuItem[] }) {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <SidebarMenuItem>
-        <CollapsibleTrigger asChild>
-          <SidebarMenuButton className="w-full justify-between hover:bg-sidebar-accent cursor-pointer">
-            <span className="flex items-center gap-3">
-              <section.icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span>{section.title}</span>}
-            </span>
-            {!collapsed && (
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 transition-transform duration-200",
-                  open && "rotate-180"
-                )}
-              />
-            )}
-          </SidebarMenuButton>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="ml-4 border-l border-sidebar-border pl-2 mt-1 space-y-0.5">
-            {section.items?.map((item) => (
-              <SidebarMenuButton key={item.url} asChild className="h-8">
+    <SidebarGroup>
+      {!collapsed && (
+        <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-sidebar-muted font-semibold px-3">
+          {label}
+        </SidebarGroupLabel>
+      )}
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map((item) => (
+            <SidebarMenuItem key={item.url}>
+              <SidebarMenuButton asChild>
                 <NavLink
                   to={item.url}
-                  className="hover:bg-sidebar-accent text-sidebar-foreground"
+                  end={item.url === "/"}
+                  className="hover:bg-sidebar-accent rounded-lg transition-colors"
                   activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
                 >
-                  <item.icon className="h-3.5 w-3.5 mr-2 shrink-0" />
+                  <item.icon className="h-4 w-4 mr-3 shrink-0" />
                   {!collapsed && <span className="text-sm">{item.title}</span>}
+                  {item.badge && !collapsed && (
+                    <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">
+                      {item.badge}
+                    </span>
+                  )}
                 </NavLink>
               </SidebarMenuButton>
-            ))}
-          </div>
-        </CollapsibleContent>
-      </SidebarMenuItem>
-    </Collapsible>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }
 
@@ -136,6 +110,16 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const { user, signOut } = useAuth();
+
+  const { data: isAdmin } = useQuery({
+    queryKey: ["is-admin-sidebar", user?.id],
+    queryFn: async () => {
+      if (!user) return false;
+      const { data } = await supabase.rpc("has_role", { _user_id: user.id, _role: "admin" });
+      return !!data;
+    },
+    enabled: !!user,
+  });
 
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Usuário";
   const displayEmail = user?.email || "";
@@ -162,34 +146,14 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="px-2 py-3">
-        <SidebarMenu>
-          {menuSections.map((section) => {
-            if (section.items) {
-              return <CollapsibleMenuItem key={section.title} section={section} />;
-            }
-            return (
-              <SidebarMenuItem key={section.title}>
-                <SidebarMenuButton asChild>
-                  <NavLink
-                    to={section.url!}
-                    end={section.url === "/"}
-                    className="hover:bg-sidebar-accent"
-                    activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
-                  >
-                    <section.icon className="h-4 w-4 mr-3 shrink-0" />
-                    {!collapsed && <span>{section.title}</span>}
-                    {section.badge && !collapsed && (
-                      <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">
-                        {section.badge}
-                      </span>
-                    )}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            );
-          })}
-        </SidebarMenu>
+      <SidebarContent className="px-2 py-2 space-y-1">
+        <MenuGroup label="Principal" items={mainItems} />
+        <MenuGroup label="Pagamentos" items={billingItems} />
+        <MenuGroup label="Comunicação" items={communicationItems} />
+        <MenuGroup label="Sistema" items={[
+          ...systemItems,
+          ...(isAdmin ? [{ title: "Admin", icon: Shield, url: "/admin", badge: "" }] : []),
+        ]} />
       </SidebarContent>
 
       <SidebarFooter className="p-3 border-t border-sidebar-border">
