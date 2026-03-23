@@ -38,8 +38,8 @@ export default function V3Pay() {
     (t.invoices?.clients?.name || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalReceitas = transactions.filter((t: any) => t.type === "receita").reduce((s: number, t: any) => s + Number(t.amount), 0);
-  const totalDespesas = transactions.filter((t: any) => t.type === "despesa").reduce((s: number, t: any) => s + Number(t.amount), 0);
+  const totalReceitas = transactions.filter((t: any) => t.type === "entrada" || t.type === "receita").reduce((s: number, t: any) => s + Number(t.amount), 0);
+  const totalDespesas = transactions.filter((t: any) => t.type === "saida" || t.type === "despesa").reduce((s: number, t: any) => s + Number(t.amount), 0);
 
   return (
     <AppLayout>
