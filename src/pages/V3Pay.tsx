@@ -118,8 +118,8 @@ export default function V3Pay() {
                       <TableCell className="text-sm">{t.description || "-"}</TableCell>
                       <TableCell className="text-sm">{t.invoices?.clients?.name || "-"}</TableCell>
                       <TableCell>
-                        <Badge variant={t.type === "receita" ? "default" : "destructive"} className="text-xs">
-                          {t.type === "receita" ? "Receita" : "Despesa"}
+                        <Badge variant={t.type === "entrada" || t.type === "receita" ? "default" : "destructive"} className="text-xs">
+                          {t.type === "entrada" || t.type === "receita" ? "Entrada" : "Saída"}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right font-medium text-sm">R$ {Number(t.amount).toFixed(2)}</TableCell>

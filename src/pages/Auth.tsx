@@ -30,7 +30,7 @@ export default function Auth() {
       if (error) {
         toast({ title: "Erro ao cadastrar", description: error.message, variant: "destructive" });
       } else {
-        toast({ title: "Cadastro realizado!", description: "Verifique seu e-mail para confirmar a conta." });
+        toast({ title: "Cadastro realizado!", description: "Você já pode fazer login com suas credenciais." });
         setIsLogin(true);
       }
     }
