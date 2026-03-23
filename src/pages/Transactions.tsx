@@ -245,7 +245,11 @@ export default function Transactions() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-destructive hover:text-destructive"
-                            onClick={() => deleteMutation.mutate(tx.id)}
+                            onClick={() => {
+                              if (window.confirm("Tem certeza que deseja remover esta movimentação?")) {
+                                deleteMutation.mutate(tx.id);
+                              }
+                            }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

@@ -252,7 +252,9 @@ export default function Plans() {
                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(plan)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => deleteMutation.mutate(plan.id)}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => {
+                              if (window.confirm(`Remover plano "${plan.name}"?`)) deleteMutation.mutate(plan.id);
+                            }}>
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>

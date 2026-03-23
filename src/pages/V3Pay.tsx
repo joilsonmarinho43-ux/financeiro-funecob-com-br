@@ -38,8 +38,8 @@ export default function V3Pay() {
     (t.invoices?.clients?.name || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalReceitas = transactions.filter((t: any) => t.type === "receita").reduce((s: number, t: any) => s + Number(t.amount), 0);
-  const totalDespesas = transactions.filter((t: any) => t.type === "despesa").reduce((s: number, t: any) => s + Number(t.amount), 0);
+  const totalReceitas = transactions.filter((t: any) => t.type === "entrada" || t.type === "receita").reduce((s: number, t: any) => s + Number(t.amount), 0);
+  const totalDespesas = transactions.filter((t: any) => t.type === "saida" || t.type === "despesa").reduce((s: number, t: any) => s + Number(t.amount), 0);
 
   return (
     <AppLayout>
@@ -118,8 +118,8 @@ export default function V3Pay() {
                       <TableCell className="text-sm">{t.description || "-"}</TableCell>
                       <TableCell className="text-sm">{t.invoices?.clients?.name || "-"}</TableCell>
                       <TableCell>
-                        <Badge variant={t.type === "receita" ? "default" : "destructive"} className="text-xs">
-                          {t.type === "receita" ? "Receita" : "Despesa"}
+                        <Badge variant={t.type === "entrada" || t.type === "receita" ? "default" : "destructive"} className="text-xs">
+                          {t.type === "entrada" || t.type === "receita" ? "Entrada" : "Saída"}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right font-medium text-sm">R$ {Number(t.amount).toFixed(2)}</TableCell>

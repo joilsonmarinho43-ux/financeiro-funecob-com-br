@@ -399,7 +399,6 @@ export default function Dashboard() {
                   {showValues ? <EyeOff className="h-3.5 w-3.5 text-muted-foreground" /> : <Eye className="h-3.5 w-3.5 text-muted-foreground" />}
                 </button>
               )}
-              <DollarSign className="h-6 w-6 text-primary shrink-0" />
             </div>
           </CardContent>
         </Card>
@@ -428,7 +427,6 @@ export default function Dashboard() {
                 {showValues ? <EyeOff className="h-3.5 w-3.5 text-muted-foreground" /> : <Eye className="h-3.5 w-3.5 text-muted-foreground" />}
               </button>
             )}
-            <DollarSign className="h-6 w-6 text-primary shrink-0" />
           </div>
         </CardContent>
       </Card>

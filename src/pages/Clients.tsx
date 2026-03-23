@@ -35,7 +35,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
 import { Plus, Search, Pencil, Trash2, Users, CalendarDays, Repeat, BookOpen } from "lucide-react";
-import { addMonths, format } from "date-fns";
+import { format } from "date-fns";
 
 type Client = Tables<"clients">;
 type Plan = Tables<"plans">;
@@ -522,7 +522,11 @@ export default function Clients() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-destructive hover:text-destructive"
-                              onClick={() => deleteMutation.mutate(client.id)}
+                              onClick={() => {
+                                if (window.confirm(`Tem certeza que deseja remover "${client.name}"? Esta ação não pode ser desfeita.`)) {
+                                  deleteMutation.mutate(client.id);
+                                }
+                              }}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
