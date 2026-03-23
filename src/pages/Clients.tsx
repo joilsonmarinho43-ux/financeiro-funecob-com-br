@@ -35,7 +35,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
 import { Plus, Search, Pencil, Trash2, Users, CalendarDays, Repeat, BookOpen } from "lucide-react";
-import { addMonths, format } from "date-fns";
 
 type Client = Tables<"clients">;
 type Plan = Tables<"plans">;
