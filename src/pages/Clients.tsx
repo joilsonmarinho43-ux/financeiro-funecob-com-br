@@ -522,7 +522,11 @@ export default function Clients() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-destructive hover:text-destructive"
-                              onClick={() => deleteMutation.mutate(client.id)}
+                              onClick={() => {
+                                if (window.confirm(`Tem certeza que deseja remover "${client.name}"? Esta ação não pode ser desfeita.`)) {
+                                  deleteMutation.mutate(client.id);
+                                }
+                              }}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>

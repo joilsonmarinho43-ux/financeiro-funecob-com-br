@@ -314,7 +314,9 @@ export default function Invoices() {
                                   size="sm"
                                   variant="ghost"
                                   className="h-8 text-destructive"
-                                  onClick={() => cancelMutation.mutate(inv.id)}
+                                  onClick={() => {
+                                    if (window.confirm("Cancelar esta fatura?")) cancelMutation.mutate(inv.id);
+                                  }}
                                 >
                                   Cancelar
                                 </Button>
