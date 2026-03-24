@@ -17,6 +17,16 @@ const GATEWAYS = [
   { id: "mercadopago", name: "Mercado Pago", description: "Gateway completo de pagamentos" },
   { id: "v3pay", name: "V3Pay", description: "Solução de pagamentos integrada" },
   { id: "efi", name: "Efí (Gerencianet)", description: "PIX, boleto e carnê" },
+  { id: "caixa", name: "Caixa Econômica", description: "Boleto e PIX via Caixa Federal" },
+  { id: "bb", name: "Banco do Brasil", description: "Cobranças via API do BB" },
+  { id: "itau", name: "Itaú", description: "Integração Itaú Shopline / API" },
+  { id: "bradesco", name: "Bradesco", description: "Boleto e PIX via Bradesco" },
+  { id: "santander", name: "Santander", description: "Cobranças e PIX Santander" },
+  { id: "sicoob", name: "Sicoob", description: "Cooperativa de crédito — boleto e PIX" },
+  { id: "sicredi", name: "Sicredi", description: "Cooperativa — boleto e PIX" },
+  { id: "inter", name: "Banco Inter", description: "PIX e boleto via Inter" },
+  { id: "pagseguro", name: "PagSeguro", description: "Gateway PagBank/PagSeguro" },
+  { id: "cielo", name: "Cielo", description: "Adquirente — cartão e boleto" },
 ];
 
 export default function Gateways() {
