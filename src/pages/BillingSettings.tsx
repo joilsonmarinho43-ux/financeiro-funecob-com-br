@@ -31,6 +31,7 @@ const TEMPLATE_VARS = [
   { var: "{valor}", desc: "Valor da fatura (R$)" },
   { var: "{vencimento}", desc: "Data de vencimento" },
   { var: "{link_ou_chave_pix}", desc: "Link de pagamento ou chave Pix" },
+  { var: "{link_portal}", desc: "Link do portal do cliente" },
 ];
 
 export default function BillingSettings() {
