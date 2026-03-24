@@ -22,6 +22,7 @@ import WebHooks from "./pages/WebHooks";
 import SMS from "./pages/SMS";
 import SystemLogs from "./pages/SystemLogs";
 import AdminPanel from "./pages/AdminPanel";
+import ClientPortal from "./pages/ClientPortal";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
