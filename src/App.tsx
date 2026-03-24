@@ -116,6 +116,7 @@ const App = () => (
             <Route path="/sms" element={<ProtectedRoute><SMS /></ProtectedRoute>} />
             <Route path="/logs" element={<ProtectedRoute><SystemLogs /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
+            <Route path="/portal/:token" element={<ClientPortal />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
