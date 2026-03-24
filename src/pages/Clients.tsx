@@ -515,6 +515,7 @@ export default function Clients() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
+                            <PortalLinkButton clientId={client.id} organizationId={organizationId} />
                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(client)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
