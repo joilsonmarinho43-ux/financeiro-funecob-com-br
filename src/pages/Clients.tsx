@@ -34,7 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
-import { Plus, Search, Pencil, Trash2, Users, CalendarDays, Repeat, BookOpen } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Users, CalendarDays, Repeat, BookOpen, Link2, Copy, Check } from "lucide-react";
 import { format } from "date-fns";
 
 type Client = Tables<"clients">;
@@ -515,6 +515,7 @@ export default function Clients() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
+                            <PortalLinkButton clientId={client.id} organizationId={organizationId} />
                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(client)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -542,5 +543,59 @@ export default function Clients() {
         </Card>
       </div>
     </AppLayout>
+  );
+}
+
+function PortalLinkButton({ clientId, organizationId }: { clientId: string; organizationId: string | null }) {
+  const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const generateAndCopy = async () => {
+    if (!organizationId) return;
+    setLoading(true);
+    try {
+      // Check if token already exists
+      const { data: existing } = await supabase
+        .from("client_portal_tokens" as any)
+        .select("token")
+        .eq("client_id", clientId)
+        .maybeSingle();
+
+      let token = (existing as any)?.token;
+
+      if (!token) {
+        const { data: created, error } = await supabase
+          .from("client_portal_tokens" as any)
+          .insert({ client_id: clientId, organization_id: organizationId } as any)
+          .select("token")
+          .single();
+        if (error) throw error;
+        token = (created as any).token;
+      }
+
+      const link = `${window.location.origin}/portal/${token}`;
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      toast({ title: "Link copiado!", description: "O link do portal do cliente foi copiado." });
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8"
+      onClick={generateAndCopy}
+      disabled={loading}
+      title="Copiar link do portal"
+    >
+      {copied ? <Check className="h-4 w-4 text-green-500" /> : <Link2 className="h-4 w-4" />}
+    </Button>
   );
 }

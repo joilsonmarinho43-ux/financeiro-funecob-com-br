@@ -108,11 +108,37 @@ Deno.serve(async (req) => {
 
         const formattedDueDate = dueDate.split("-").reverse().join("/");
 
+        // Generate or get portal link for client
+        let portalLink = "";
+        try {
+          const { data: existingToken } = await supabase
+            .from("client_portal_tokens")
+            .select("token")
+            .eq("client_id", invoice.client_id)
+            .maybeSingle();
+
+          if (existingToken?.token) {
+            portalLink = `https://funeraria-flow.lovable.app/portal/${existingToken.token}`;
+          } else {
+            const { data: newToken } = await supabase
+              .from("client_portal_tokens")
+              .insert({ client_id: invoice.client_id, organization_id: orgId })
+              .select("token")
+              .single();
+            if (newToken?.token) {
+              portalLink = `https://funeraria-flow.lovable.app/portal/${newToken.token}`;
+            }
+          }
+        } catch (e) {
+          console.error("Error generating portal token:", e);
+        }
+
         const message = template
           .replace(/{nome}/g, client.name || "Cliente")
           .replace(/{valor}/g, amount)
           .replace(/{vencimento}/g, formattedDueDate)
-          .replace(/{link_ou_chave_pix}/g, pixOrLink);
+          .replace(/{link_ou_chave_pix}/g, pixOrLink)
+          .replace(/{link_portal}/g, portalLink || "");
 
         // Insert into billing_reminders
         await supabase.from("billing_reminders").insert({

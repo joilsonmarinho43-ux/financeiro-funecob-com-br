@@ -22,6 +22,7 @@ import WebHooks from "./pages/WebHooks";
 import SMS from "./pages/SMS";
 import SystemLogs from "./pages/SystemLogs";
 import AdminPanel from "./pages/AdminPanel";
+import ClientPortal from "./pages/ClientPortal";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -115,6 +116,7 @@ const App = () => (
             <Route path="/sms" element={<ProtectedRoute><SMS /></ProtectedRoute>} />
             <Route path="/logs" element={<ProtectedRoute><SystemLogs /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
+            <Route path="/portal/:token" element={<ClientPortal />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
