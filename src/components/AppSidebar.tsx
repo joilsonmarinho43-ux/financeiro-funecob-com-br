@@ -15,6 +15,7 @@ import {
   MessageCircle,
   ScrollText,
   Shield,
+  ScanBarcode,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -47,6 +48,7 @@ const mainItems: MenuItem[] = [
   { title: "Planos", icon: FileText, url: "/clientes/planos" },
   { title: "Faturas", icon: DollarSign, url: "/financeiro" },
   { title: "Movimentações", icon: ArrowLeftRight, url: "/movimentacoes" },
+  { title: "Prestação", icon: ScanBarcode, url: "/prestacao", badge: "Novo!" },
   { title: "Relatórios", icon: BarChart3, url: "/relatorios" },
 ];
 

@@ -23,6 +23,7 @@ import SMS from "./pages/SMS";
 import SystemLogs from "./pages/SystemLogs";
 import AdminPanel from "./pages/AdminPanel";
 import ClientPortal from "./pages/ClientPortal";
+import Settlement from "./pages/Settlement";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -107,6 +108,7 @@ const App = () => (
             <Route path="/financeiro" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
             <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
             <Route path="/movimentacoes" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
+            <Route path="/prestacao" element={<ProtectedRoute><Settlement /></ProtectedRoute>} />
             <Route path="/whatsapp" element={<ProtectedRoute><WhatsApp /></ProtectedRoute>} />
             <Route path="/cobranca" element={<ProtectedRoute><BillingSettings /></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><Settings /></ProtectedRoute>} />

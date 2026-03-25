@@ -46,6 +46,7 @@ const emptyForm = {
   phone: "",
   document: "",
   address: "",
+  client_code: "",
   plan_id: "",
   custom_value: "",
   due_day: "5",
@@ -100,14 +101,16 @@ export default function Clients() {
     mutationFn: async () => {
       if (!organizationId || !user) throw new Error("Organização não encontrada");
 
-      const clientPayload: TablesInsert<"clients"> = {
+      const clientPayload: any = {
         name: form.name,
         email: form.email || null,
         phone: form.phone || null,
         document: form.document || null,
         address: form.address || null,
+        client_code: form.client_code || null,
         created_by: user.id,
         organization_id: organizationId,
+        collector_id: user.id,
       };
 
       let clientId = editingClient?.id;
@@ -218,6 +221,7 @@ export default function Clients() {
       phone: client.phone || "",
       document: client.document || "",
       address: client.address || "",
+      client_code: (client as any).client_code || "",
     });
     setDialogOpen(true);
   };
@@ -285,8 +289,9 @@ export default function Clients() {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="email">E-mail</Label>
-                      <Input id="email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                      <Label htmlFor="client_code">Código do Cliente</Label>
+                      <Input id="client_code" value={form.client_code} onChange={(e) => setForm({ ...form, client_code: e.target.value })} placeholder="Ex: 0022008" className="font-mono" />
+                      <p className="text-xs text-muted-foreground">Código usado no leitor de barras</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="phone">Telefone</Label>
@@ -295,13 +300,17 @@ export default function Clients() {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
+                      <Label htmlFor="email">E-mail</Label>
+                      <Input id="email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
                       <Label htmlFor="document">CPF/CNPJ</Label>
                       <Input id="document" value={form.document} onChange={(e) => setForm({ ...form, document: e.target.value })} />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="address">Endereço</Label>
-                      <Input id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="address">Endereço</Label>
+                    <Input id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
                   </div>
                 </div>
 

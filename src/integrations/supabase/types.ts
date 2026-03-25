@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      barcode_configs: {
+        Row: {
+          client_id_length: number
+          created_at: string
+          id: string
+          month_length: number
+          organization_id: string
+          updated_at: string
+          year_length: number
+        }
+        Insert: {
+          client_id_length?: number
+          created_at?: string
+          id?: string
+          month_length?: number
+          organization_id: string
+          updated_at?: string
+          year_length?: number
+        }
+        Update: {
+          client_id_length?: number
+          created_at?: string
+          id?: string
+          month_length?: number
+          organization_id?: string
+          updated_at?: string
+          year_length?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "barcode_configs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       billing_reminders: {
         Row: {
           created_at: string
@@ -124,6 +162,73 @@ export type Database = {
           },
         ]
       }
+      bips: {
+        Row: {
+          action: string
+          amount: number | null
+          barcode_raw: string
+          client_id: string | null
+          collector_id: string | null
+          created_at: string
+          id: string
+          invoice_id: string | null
+          new_due_date: string | null
+          organization_id: string
+          status: string
+          whatsapp_sent: boolean
+        }
+        Insert: {
+          action?: string
+          amount?: number | null
+          barcode_raw: string
+          client_id?: string | null
+          collector_id?: string | null
+          created_at?: string
+          id?: string
+          invoice_id?: string | null
+          new_due_date?: string | null
+          organization_id: string
+          status?: string
+          whatsapp_sent?: boolean
+        }
+        Update: {
+          action?: string
+          amount?: number | null
+          barcode_raw?: string
+          client_id?: string | null
+          collector_id?: string | null
+          created_at?: string
+          id?: string
+          invoice_id?: string | null
+          new_due_date?: string | null
+          organization_id?: string
+          status?: string
+          whatsapp_sent?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bips_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bips_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bips_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_portal_tokens: {
         Row: {
           client_id: string
@@ -169,6 +274,8 @@ export type Database = {
       clients: {
         Row: {
           address: string | null
+          client_code: string | null
+          collector_id: string | null
           created_at: string
           created_by: string | null
           document: string | null
@@ -182,6 +289,8 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          client_code?: string | null
+          collector_id?: string | null
           created_at?: string
           created_by?: string | null
           document?: string | null
@@ -195,6 +304,8 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          client_code?: string | null
+          collector_id?: string | null
           created_at?: string
           created_by?: string | null
           document?: string | null
@@ -276,6 +387,38 @@ export type Database = {
             columns: ["plan_id"]
             isOneToOne: false
             referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_api_keys: {
+        Row: {
+          active: boolean
+          api_key: string
+          created_at: string
+          id: string
+          organization_id: string
+        }
+        Insert: {
+          active?: boolean
+          api_key?: string
+          created_at?: string
+          id?: string
+          organization_id: string
+        }
+        Update: {
+          active?: boolean
+          api_key?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_api_keys_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -766,6 +909,7 @@ export type Database = {
         Row: {
           api_key: string | null
           api_url: string | null
+          collector_id: string | null
           created_at: string
           id: string
           name: string
@@ -777,6 +921,7 @@ export type Database = {
         Insert: {
           api_key?: string | null
           api_url?: string | null
+          collector_id?: string | null
           created_at?: string
           id?: string
           name: string
@@ -788,6 +933,7 @@ export type Database = {
         Update: {
           api_key?: string | null
           api_url?: string | null
+          collector_id?: string | null
           created_at?: string
           id?: string
           name?: string
@@ -934,6 +1080,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_collector: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "user"
