@@ -46,6 +46,7 @@ const emptyForm = {
   phone: "",
   document: "",
   address: "",
+  client_code: "",
   plan_id: "",
   custom_value: "",
   due_day: "5",
