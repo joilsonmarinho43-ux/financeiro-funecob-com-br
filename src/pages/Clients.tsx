@@ -221,6 +221,7 @@ export default function Clients() {
       phone: client.phone || "",
       document: client.document || "",
       address: client.address || "",
+      client_code: (client as any).client_code || "",
     });
     setDialogOpen(true);
   };
