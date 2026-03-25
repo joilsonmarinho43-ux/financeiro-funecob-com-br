@@ -48,6 +48,7 @@ const mainItems: MenuItem[] = [
   { title: "Planos", icon: FileText, url: "/clientes/planos" },
   { title: "Faturas", icon: DollarSign, url: "/financeiro" },
   { title: "Movimentações", icon: ArrowLeftRight, url: "/movimentacoes" },
+  { title: "Prestação", icon: ScanBarcode, url: "/prestacao", badge: "Novo!" },
   { title: "Relatórios", icon: BarChart3, url: "/relatorios" },
 ];
 
