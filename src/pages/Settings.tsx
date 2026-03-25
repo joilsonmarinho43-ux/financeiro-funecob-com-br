@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/hooks/useOrganization";
-import { Building2, Upload, Palette, Tag, Save, X } from "lucide-react";
+import { Building2, Upload, Palette, Tag, Save, X, Key, Copy, Check, ScanBarcode, RefreshCw } from "lucide-react";
 
 export default function Settings() {
   const { organization, organizationId, isLoading } = useOrganization();
