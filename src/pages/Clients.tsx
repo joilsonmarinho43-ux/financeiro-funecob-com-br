@@ -101,14 +101,16 @@ export default function Clients() {
     mutationFn: async () => {
       if (!organizationId || !user) throw new Error("Organização não encontrada");
 
-      const clientPayload: TablesInsert<"clients"> = {
+      const clientPayload: any = {
         name: form.name,
         email: form.email || null,
         phone: form.phone || null,
         document: form.document || null,
         address: form.address || null,
+        client_code: form.client_code || null,
         created_by: user.id,
         organization_id: organizationId,
+        collector_id: user.id,
       };
 
       let clientId = editingClient?.id;
