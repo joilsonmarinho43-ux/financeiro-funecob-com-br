@@ -259,6 +259,12 @@ export default function Settings() {
           </CardContent>
         </Card>
 
+        {/* API Key & Endpoint */}
+        <ApiKeySection organizationId={organizationId} />
+
+        {/* Barcode Config */}
+        <BarcodeConfigSection organizationId={organizationId} />
+
         {/* Salvar */}
         <div className="flex justify-end pb-6">
           <Button
@@ -272,5 +278,199 @@ export default function Settings() {
         </div>
       </div>
     </AppLayout>
+  );
+}
+
+function ApiKeySection({ organizationId }: { organizationId: string | null }) {
+  const { toast } = useToast();
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const { data: apiKeyData, refetch } = useQuery({
+    queryKey: ["org-api-key", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return null;
+      const { data } = await supabase
+        .from("org_api_keys" as any)
+        .select("*")
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+      return data as any;
+    },
+    enabled: !!organizationId,
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      if (!organizationId) throw new Error("Org not found");
+      if (apiKeyData) {
+        // Regenerate
+        await supabase
+          .from("org_api_keys" as any)
+          .delete()
+          .eq("organization_id", organizationId);
+      }
+      const { error } = await supabase
+        .from("org_api_keys" as any)
+        .insert({ organization_id: organizationId } as any);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      refetch();
+      toast({ title: "API Key gerada com sucesso!" });
+    },
+    onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+  });
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(label);
+    toast({ title: `${label} copiado!` });
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const endpointUrl = `${window.location.origin.replace("localhost:8080", "jxhgssqzyhrlfpvlqliv.supabase.co")}/functions/v1/bip-receiver`;
+
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Key className="h-4 w-4 text-primary" /> API de Integração
+        </CardTitle>
+        <CardDescription>Use estes dados para conectar a Extensão do Chrome ou sistemas externos ao FuneCob</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label>Endpoint da API</Label>
+          <div className="flex gap-2">
+            <Input value={endpointUrl} readOnly className="font-mono text-xs bg-muted/50" />
+            <Button variant="outline" size="icon" className="shrink-0" onClick={() => copyToClipboard(endpointUrl, "URL")}>
+              {copied === "URL" ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>API Key</Label>
+          {apiKeyData ? (
+            <div className="flex gap-2">
+              <Input value={apiKeyData.api_key} readOnly className="font-mono text-xs bg-muted/50" />
+              <Button variant="outline" size="icon" className="shrink-0" onClick={() => copyToClipboard(apiKeyData.api_key, "API Key")}>
+                {copied === "API Key" ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+              </Button>
+              <Button variant="outline" size="icon" className="shrink-0" onClick={() => {
+                if (window.confirm("Regenerar a API Key invalidará a chave anterior. Continuar?")) generateMutation.mutate();
+              }}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <Button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} variant="outline">
+              <Key className="h-4 w-4 mr-2" />
+              {generateMutation.isPending ? "Gerando..." : "Gerar API Key"}
+            </Button>
+          )}
+        </div>
+
+        <div className="rounded-lg bg-primary/5 border border-primary/10 p-3 text-sm text-muted-foreground space-y-2">
+          <p className="font-medium text-foreground">📡 Como usar na Extensão do Chrome:</p>
+          <p>1. Configure a <strong>URL do Endpoint</strong> e a <strong>API Key</strong> na extensão.</p>
+          <p>2. Ao bipar um código de barras, a extensão envia um POST com o campo <code className="bg-muted px-1 rounded">barcode</code>.</p>
+          <p>3. O FuneCob identifica o cliente, processa a ação e dispara o WhatsApp automaticamente.</p>
+          <pre className="bg-muted rounded p-2 text-xs overflow-x-auto mt-2">{`POST ${endpointUrl}
+Headers: { "x-api-key": "SUA_API_KEY" }
+Body: { "barcode": "0022008202602", "action": "baixa" }`}</pre>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function BarcodeConfigSection({ organizationId }: { organizationId: string | null }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [clientIdLen, setClientIdLen] = useState("7");
+  const [yearLen, setYearLen] = useState("4");
+  const [monthLen, setMonthLen] = useState("2");
+
+  const { data: config } = useQuery({
+    queryKey: ["barcode-config-settings", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return null;
+      const { data } = await supabase
+        .from("barcode_configs" as any)
+        .select("*")
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+      return data as any;
+    },
+    enabled: !!organizationId,
+  });
+
+  useEffect(() => {
+    if (config) {
+      setClientIdLen(String(config.client_id_length));
+      setYearLen(String(config.year_length));
+      setMonthLen(String(config.month_length));
+    }
+  }, [config]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!organizationId) throw new Error("Org not found");
+      const payload = {
+        organization_id: organizationId,
+        client_id_length: parseInt(clientIdLen) || 7,
+        year_length: parseInt(yearLen) || 4,
+        month_length: parseInt(monthLen) || 2,
+      };
+      if (config) {
+        await supabase.from("barcode_configs" as any).update(payload as any).eq("id", config.id);
+      } else {
+        await supabase.from("barcode_configs" as any).insert(payload as any);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["barcode-config-settings"] });
+      toast({ title: "Configuração de código de barras salva!" });
+    },
+    onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+  });
+
+  const total = (parseInt(clientIdLen) || 0) + (parseInt(yearLen) || 0) + (parseInt(monthLen) || 0);
+  const example = "0".repeat(parseInt(clientIdLen) || 7) + "2026" + "02";
+
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <ScanBarcode className="h-4 w-4 text-primary" /> Código de Barras (Fatiamento)
+        </CardTitle>
+        <CardDescription>Configure o formato do código de barras para identificação de clientes</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label>ID do Cliente (dígitos)</Label>
+            <Input type="number" min="1" max="20" value={clientIdLen} onChange={(e) => setClientIdLen(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Ano (dígitos)</Label>
+            <Input type="number" min="2" max="4" value={yearLen} onChange={(e) => setYearLen(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Mês (dígitos)</Label>
+            <Input type="number" min="1" max="2" value={monthLen} onChange={(e) => setMonthLen(e.target.value)} />
+          </div>
+        </div>
+        <div className="rounded-lg bg-muted/50 border border-border p-3 text-sm">
+          <p className="text-muted-foreground">Formato: <strong>{total} dígitos</strong> — [{clientIdLen} cliente][{yearLen} ano][{monthLen} mês]</p>
+          <p className="text-muted-foreground">Exemplo: <code className="font-mono bg-muted px-1 rounded">{example.substring(0, total)}</code></p>
+        </div>
+        <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} variant="outline" className="w-full">
+          <Save className="h-4 w-4 mr-2" />
+          {saveMutation.isPending ? "Salvando..." : "Salvar Configuração de Código de Barras"}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
