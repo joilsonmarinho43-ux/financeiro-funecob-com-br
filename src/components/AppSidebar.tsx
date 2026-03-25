@@ -15,6 +15,7 @@ import {
   MessageCircle,
   ScrollText,
   Shield,
+  ScanBarcode,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
