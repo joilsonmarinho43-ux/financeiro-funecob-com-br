@@ -68,10 +68,12 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
       const { data, error } = await supabase
         .from("whatsapp_messages")
         .select("*, clients(name)")
+        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
+    enabled: !!organizationId,
   });
 
   const sendMutation = useMutation({
