@@ -76,9 +76,11 @@ export default function Settlement() {
   const { data: recentBips = [] } = useQuery({
     queryKey: ["recent-bips", organizationId],
     queryFn: async () => {
+      if (!organizationId) return [];
       const { data } = await supabase
-        .from("bips" as any)
+        .from("bips")
         .select("*, clients(name, phone)")
+        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
         .limit(20);
       return (data as any[]) || [];
