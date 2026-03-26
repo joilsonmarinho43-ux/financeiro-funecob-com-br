@@ -266,6 +266,9 @@ export default function Settings() {
         {/* Barcode Config */}
         <BarcodeConfigSection organizationId={organizationId} />
 
+        {/* Integration / Extension Download */}
+        <ExtensionDownloadSection organizationId={organizationId} orgName={name} />
+
         {/* Salvar */}
         <div className="flex justify-end pb-6">
           <Button

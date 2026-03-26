@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
       status: "processed",
     }).select().single();
 
-    // Send WhatsApp if client has phone
+    // Send WhatsApp via collector's instance if client has phone
     if (client.phone) {
       let message = "";
       if (action === "baixa") {
@@ -147,12 +147,43 @@ Deno.serve(async (req) => {
         message = `🔔 Retorno registrado!\n\nCliente: ${client.name}\nNosso cobrador esteve no endereço.`;
       }
 
-      await supabase.from("whatsapp_queue").insert({
-        organization_id: organizationId,
-        phone: client.phone,
-        message,
-        status: "queued",
-      });
+      // Try to send directly via collector's WhatsApp instance
+      let directSent = false;
+      if (client.collector_id) {
+        const { data: collectorInstance } = await supabase
+          .from("whatsapp_instances")
+          .select("*")
+          .eq("organization_id", organizationId)
+          .eq("collector_id", client.collector_id)
+          .eq("status", "connected")
+          .maybeSingle();
+
+        if (collectorInstance?.api_url && collectorInstance?.api_key) {
+          try {
+            const phone = client.phone.replace(/\D/g, "");
+            const apiUrl = collectorInstance.api_url.replace(/\/$/, "");
+            const sendUrl = `${apiUrl}/message/sendText/${collectorInstance.name}`;
+            const resp = await fetch(sendUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", apikey: collectorInstance.api_key },
+              body: JSON.stringify({ number: phone, text: message }),
+            });
+            if (resp.ok) directSent = true;
+          } catch (e) {
+            console.error("Direct WhatsApp send failed, falling back to queue:", e);
+          }
+        }
+      }
+
+      if (!directSent) {
+        // Fallback: enqueue for whatsapp-sender to process
+        await supabase.from("whatsapp_queue").insert({
+          organization_id: organizationId,
+          phone: client.phone,
+          message,
+          status: "queued",
+        });
+      }
 
       await supabase.from("bips").update({ whatsapp_sent: true }).eq("id", bip.id);
     }
