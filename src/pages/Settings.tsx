@@ -478,3 +478,197 @@ function BarcodeConfigSection({ organizationId }: { organizationId: string | nul
     </Card>
   );
 }
+
+function ExtensionDownloadSection({ organizationId, orgName }: { organizationId: string | null; orgName: string }) {
+  const { toast } = useToast();
+  const [generating, setGenerating] = useState(false);
+
+  const { data: apiKeyData } = useQuery({
+    queryKey: ["org-api-key-ext", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return null;
+      const { data } = await supabase
+        .from("org_api_keys" as any)
+        .select("*")
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+      return data as any;
+    },
+    enabled: !!organizationId,
+  });
+
+  const endpointUrl = `https://jxhgssqzyhrlfpvlqliv.supabase.co/functions/v1/bip-receiver`;
+
+  const downloadExtension = async () => {
+    if (!apiKeyData?.api_key) {
+      toast({ title: "Gere uma API Key primeiro", description: "Vá à seção 'API de Integração' acima.", variant: "destructive" });
+      return;
+    }
+    setGenerating(true);
+    try {
+      const zip = new JSZip();
+
+      // manifest.json
+      zip.file("manifest.json", JSON.stringify({
+        manifest_version: 3,
+        name: `FuneCob - ${orgName || "Extensão"}`,
+        version: "1.0.0",
+        description: `Extensão de captura de bips para ${orgName || "sua empresa"}`,
+        permissions: ["activeTab", "storage", "tabs"],
+        action: { default_popup: "popup.html", default_icon: "icon.png" },
+        background: { service_worker: "background.js" },
+        content_scripts: [{ matches: ["<all_urls>"], js: ["content.js"], run_at: "document_idle" }],
+        icons: { "48": "icon.png", "128": "icon.png" },
+      }, null, 2));
+
+      // content.js — injected with API_KEY and ENDPOINT
+      zip.file("content.js", `
+// FuneCob Extension - Auto-configured
+const FUNECOB_API_KEY = "${apiKeyData.api_key}";
+const FUNECOB_ENDPOINT = "${endpointUrl}";
+const FUNECOB_ORG_NAME = "${(orgName || "").replace(/"/g, '\\"')}";
+
+let barcodeBuffer = "";
+let barcodeTimeout = null;
+
+document.addEventListener("keypress", (e) => {
+  if (e.target.tagName === "TEXTAREA" || (e.target.tagName === "INPUT" && e.target.type !== "hidden")) return;
+  if (e.key === "Enter" && barcodeBuffer.length >= 8) {
+    const barcode = barcodeBuffer.trim();
+    barcodeBuffer = "";
+    clearTimeout(barcodeTimeout);
+    sendBip(barcode);
+    return;
+  }
+  barcodeBuffer += e.key;
+  clearTimeout(barcodeTimeout);
+  barcodeTimeout = setTimeout(() => { barcodeBuffer = ""; }, 300);
+});
+
+async function sendBip(barcode) {
+  try {
+    const res = await fetch(FUNECOB_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": FUNECOB_API_KEY },
+      body: JSON.stringify({ barcode, action: "baixa" }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast("✅ Bip processado: " + (data.client?.name || barcode));
+    } else {
+      showToast("⚠️ " + (data.error || "Erro ao processar bip"), true);
+    }
+  } catch (err) {
+    showToast("❌ Falha de conexão com FuneCob", true);
+  }
+}
+
+function showToast(msg, isError) {
+  const el = document.createElement("div");
+  el.textContent = msg;
+  el.style.cssText = "position:fixed;top:16px;right:16px;z-index:999999;padding:12px 20px;border-radius:8px;font-family:sans-serif;font-size:14px;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:opacity 0.3s;" +
+    (isError ? "background:#ef4444;" : "background:#22c55e;");
+  document.body.appendChild(el);
+  setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 300); }, 4000);
+}
+`);
+
+      // background.js
+      zip.file("background.js", `
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === "install") {
+    chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
+  }
+});
+`);
+
+      // welcome.html
+      zip.file("welcome.html", `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FuneCob Conectado!</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;background:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}.card{background:#fff;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,0.08);padding:48px;text-align:center;max-width:480px;width:100%}.icon{font-size:64px;margin-bottom:16px}.title{font-size:24px;font-weight:700;color:#1e293b;margin-bottom:8px}.subtitle{color:#64748b;font-size:15px;line-height:1.6;margin-bottom:24px}.badge{display:inline-block;background:#22c55e;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600}</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">🎉</div>
+  <h1 class="title">FuneCob Conectado com Sucesso!</h1>
+  <p class="subtitle">A extensão foi configurada automaticamente para a empresa:<br><strong>${(orgName || "Sua Empresa").replace(/</g, "&lt;")}</strong></p>
+  <p class="subtitle">Agora basta bipar os códigos de barras em qualquer aba do navegador. Os pagamentos serão processados automaticamente.</p>
+  <span class="badge">✅ Pronto para uso</span>
+</div>
+</body>
+</html>`);
+
+      // popup.html
+      zip.file("popup.html", `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><style>*{margin:0;padding:0;box-sizing:border-box}body{width:300px;font-family:system-ui,sans-serif;padding:16px;background:#fff}.header{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #e2e8f0}.logo{font-size:24px}.title{font-weight:700;color:#1e293b;font-size:15px}.status{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:8px}.connected{background:#f0fdf4;color:#16a34a}.info{background:#f1f5f9;color:#64748b;font-size:12px;padding:8px 12px;border-radius:8px;line-height:1.5}</style></head>
+<body>
+<div class="header"><span class="logo">📡</span><span class="title">FuneCob</span></div>
+<div class="status connected">🟢 Conectado a: ${(orgName || "Empresa").replace(/</g, "&lt;")}</div>
+<div class="info">Bipe códigos de barras em qualquer aba. Os pagamentos serão registrados automaticamente no FuneCob.</div>
+</body>
+</html>`);
+
+      // Simple icon (SVG as PNG placeholder - 1x1 green square encoded)
+      zip.file("icon.png", await fetch("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAEpJREFUWEft0EERAAAEBLDR/n8NJ4CABOfe2d0zu3tf54IAAgggEBCwgiGBSBUEEEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBD4IXABu5oBIBjh5HMAAAAASUVORK5CYII=").then(r => r.blob()), { binary: true });
+
+      const blob = await zip.generateAsync({ type: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `funecob-extension-${(orgName || "org").toLowerCase().replace(/\s+/g, "-")}.zip`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+
+      toast({ title: "Extensão gerada!", description: "Descompacte e instale no Chrome via 'Carregar sem compactação'." });
+    } catch (err) {
+      toast({ title: "Erro ao gerar extensão", description: String(err), variant: "destructive" });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Plug className="h-4 w-4 text-primary" /> Integração — Extensão do Chrome
+        </CardTitle>
+        <CardDescription>Baixe a extensão pré-configurada com os dados da sua organização</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-lg bg-primary/5 border border-primary/10 p-4 space-y-3">
+          <p className="text-sm text-foreground font-medium">📦 Extensão FuneCob para Chrome</p>
+          <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+            <li>API Key e Endpoint já embutidos — sem configuração manual</li>
+            <li>Captura códigos de barras em qualquer aba do navegador</li>
+            <li>Notificações visuais de sucesso/erro em tempo real</li>
+            <li>Página de boas-vindas automática na instalação</li>
+          </ul>
+        </div>
+
+        <Button
+          onClick={downloadExtension}
+          disabled={generating || !apiKeyData?.api_key}
+          className="w-full gradient-primary text-primary-foreground"
+        >
+          <Download className="h-4 w-4 mr-2" />
+          {generating ? "Gerando extensão..." : "Baixar Extensão FuneCob (.zip)"}
+        </Button>
+
+        {!apiKeyData?.api_key && (
+          <p className="text-xs text-destructive text-center">⚠️ Gere uma API Key na seção acima antes de baixar a extensão.</p>
+        )}
+
+        <div className="rounded-lg bg-muted/50 border border-border p-3 text-xs text-muted-foreground space-y-1">
+          <p className="font-medium text-foreground text-sm">Como instalar:</p>
+          <p>1. Descompacte o arquivo .zip baixado</p>
+          <p>2. Abra <code className="bg-muted px-1 rounded">chrome://extensions</code> no Chrome</p>
+          <p>3. Ative o <strong>Modo do desenvolvedor</strong> (canto superior direito)</p>
+          <p>4. Clique em <strong>Carregar sem compactação</strong> e selecione a pasta</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
