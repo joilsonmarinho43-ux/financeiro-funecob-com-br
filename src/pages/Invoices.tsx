@@ -52,9 +52,11 @@ export default function Invoices() {
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ["invoices", organizationId],
     queryFn: async () => {
+      if (!organizationId) return [];
       const { data, error } = await supabase
         .from("invoices")
         .select("*, clients(name)")
+        .eq("organization_id", organizationId)
         .order("due_date", { ascending: true });
       if (error) throw error;
       return data as Invoice[];

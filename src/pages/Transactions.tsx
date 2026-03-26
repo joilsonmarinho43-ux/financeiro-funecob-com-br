@@ -64,9 +64,11 @@ export default function Transactions() {
   const { data: transactions = [], isLoading } = useQuery({
     queryKey: ["transactions", organizationId],
     queryFn: async () => {
+      if (!organizationId) return [];
       const { data, error } = await supabase
         .from("transactions")
         .select("*")
+        .eq("organization_id", organizationId)
         .order("transaction_date", { ascending: false });
       if (error) throw error;
       return data;

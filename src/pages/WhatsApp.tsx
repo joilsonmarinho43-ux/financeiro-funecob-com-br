@@ -183,10 +183,12 @@ function QueueTab({ organizationId }: { organizationId: string }) {
       const { data, error } = await supabase
         .from("whatsapp_queue")
         .select("*")
+        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
+    enabled: !!organizationId,
   });
 
   const stats = {
