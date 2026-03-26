@@ -68,10 +68,12 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
       const { data, error } = await supabase
         .from("whatsapp_messages")
         .select("*, clients(name)")
+        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
+    enabled: !!organizationId,
   });
 
   const sendMutation = useMutation({
@@ -181,10 +183,12 @@ function QueueTab({ organizationId }: { organizationId: string }) {
       const { data, error } = await supabase
         .from("whatsapp_queue")
         .select("*")
+        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
+    enabled: !!organizationId,
   });
 
   const stats = {
@@ -262,10 +266,11 @@ function BulkTab({ organizationId }: { organizationId: string }) {
   const { data: clients = [] } = useQuery({
     queryKey: ["whatsapp-clients", organizationId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("clients").select("id, name, phone").not("phone", "is", null);
+      const { data, error } = await supabase.from("clients").select("id, name, phone").eq("organization_id", organizationId).not("phone", "is", null);
       if (error) throw error;
       return data;
     },
+    enabled: !!organizationId,
   });
 
   const sendBulk = useMutation({

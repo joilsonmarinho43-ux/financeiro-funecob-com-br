@@ -65,15 +65,18 @@ export default function Clients() {
   const [form, setForm] = useState(emptyForm);
 
   const { data: clients = [], isLoading } = useQuery({
-    queryKey: ["clients"],
+    queryKey: ["clients", organizationId],
     queryFn: async () => {
+      if (!organizationId) return [];
       const { data, error } = await supabase
         .from("clients")
         .select("*")
+        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as Client[];
     },
+    enabled: !!organizationId,
   });
 
   const { data: plans = [] } = useQuery({
@@ -566,7 +569,7 @@ function PortalLinkButton({ clientId, organizationId }: { clientId: string; orga
     try {
       // Check if token already exists
       const { data: existing } = await supabase
-        .from("client_portal_tokens" as any)
+        .from("client_portal_tokens")
         .select("token")
         .eq("client_id", clientId)
         .maybeSingle();
@@ -575,7 +578,7 @@ function PortalLinkButton({ clientId, organizationId }: { clientId: string; orga
 
       if (!token) {
         const { data: created, error } = await supabase
-          .from("client_portal_tokens" as any)
+          .from("client_portal_tokens")
           .insert({ client_id: clientId, organization_id: organizationId } as any)
           .select("token")
           .single();

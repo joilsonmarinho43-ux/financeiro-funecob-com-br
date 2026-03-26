@@ -63,7 +63,7 @@ export default function Settlement() {
     queryKey: ["barcode-config", organizationId],
     queryFn: async () => {
       const { data } = await supabase
-        .from("barcode_configs" as any)
+        .from("barcode_configs")
         .select("*")
         .eq("organization_id", organizationId)
         .maybeSingle();
@@ -76,9 +76,11 @@ export default function Settlement() {
   const { data: recentBips = [] } = useQuery({
     queryKey: ["recent-bips", organizationId],
     queryFn: async () => {
+      if (!organizationId) return [];
       const { data } = await supabase
-        .from("bips" as any)
+        .from("bips")
         .select("*, clients(name, phone)")
+        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
         .limit(20);
       return (data as any[]) || [];
@@ -116,6 +118,7 @@ export default function Settlement() {
       const { data: client } = await supabase
         .from("clients")
         .select("*")
+        .eq("organization_id", organizationId)
         .eq("client_code", parsed.clientCode)
         .maybeSingle();
 
@@ -165,7 +168,7 @@ export default function Settlement() {
       // Create transaction
       await supabase.from("transactions").insert({
         organization_id: organizationId,
-        type: "receita",
+        type: "entrada",
         amount: invoice.amount,
         description: `Baixa - ${foundClient?.name} - ${invoice.description || "Fatura"}`,
         invoice_id: invoice.id,
@@ -173,7 +176,7 @@ export default function Settlement() {
       });
 
       // Record bip
-      await supabase.from("bips" as any).insert({
+      await supabase.from("bips").insert({
         organization_id: organizationId,
         client_id: foundClient?.id,
         collector_id: user.id,
@@ -209,7 +212,7 @@ export default function Settlement() {
 
       await supabase.from("invoices").update({ due_date: newDate }).eq("id", invoice.id);
 
-      await supabase.from("bips" as any).insert({
+      await supabase.from("bips").insert({
         organization_id: organizationId,
         client_id: foundClient?.id,
         collector_id: user.id,
@@ -243,7 +246,7 @@ export default function Settlement() {
     mutationFn: async () => {
       if (!organizationId || !user || !foundClient) throw new Error("Erro de contexto");
 
-      await supabase.from("bips" as any).insert({
+      await supabase.from("bips").insert({
         organization_id: organizationId,
         client_id: foundClient.id,
         collector_id: user.id,
