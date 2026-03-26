@@ -224,8 +224,8 @@ export default function Dashboard() {
         const dayTx = data.filter((t) => t.transaction_date === day.date);
         return {
           name: day.label,
-          entradas: dayTx.filter((t) => t.type === "entrada").reduce((s, t) => s + Number(t.amount), 0),
-          saidas: dayTx.filter((t) => t.type === "saida").reduce((s, t) => s + Number(t.amount), 0),
+          entradas: dayTx.filter((t) => t.type === "entrada" || t.type === "receita").reduce((s, t) => s + Number(t.amount), 0),
+          saidas: dayTx.filter((t) => t.type === "saida" || t.type === "despesa").reduce((s, t) => s + Number(t.amount), 0),
         };
       });
     },

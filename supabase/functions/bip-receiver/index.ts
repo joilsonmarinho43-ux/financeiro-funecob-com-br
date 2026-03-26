@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
 
       await supabase.from("transactions").insert({
         organization_id: organizationId,
-        type: "receita",
+        type: "entrada",
         amount: invoice.amount,
         description: `Baixa via API - ${client.name}`,
         invoice_id: invoice.id,

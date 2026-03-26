@@ -165,7 +165,7 @@ export default function Settlement() {
       // Create transaction
       await supabase.from("transactions").insert({
         organization_id: organizationId,
-        type: "receita",
+        type: "entrada",
         amount: invoice.amount,
         description: `Baixa - ${foundClient?.name} - ${invoice.description || "Fatura"}`,
         invoice_id: invoice.id,
