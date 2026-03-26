@@ -266,10 +266,11 @@ function BulkTab({ organizationId }: { organizationId: string }) {
   const { data: clients = [] } = useQuery({
     queryKey: ["whatsapp-clients", organizationId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("clients").select("id, name, phone").not("phone", "is", null);
+      const { data, error } = await supabase.from("clients").select("id, name, phone").eq("organization_id", organizationId).not("phone", "is", null);
       if (error) throw error;
       return data;
     },
+    enabled: !!organizationId,
   });
 
   const sendBulk = useMutation({

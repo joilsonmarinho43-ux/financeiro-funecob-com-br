@@ -118,6 +118,7 @@ export default function Settlement() {
       const { data: client } = await supabase
         .from("clients")
         .select("*")
+        .eq("organization_id", organizationId)
         .eq("client_code", parsed.clientCode)
         .maybeSingle();
 
