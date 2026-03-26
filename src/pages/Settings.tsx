@@ -294,7 +294,7 @@ function ApiKeySection({ organizationId }: { organizationId: string | null }) {
     queryFn: async () => {
       if (!organizationId) return null;
       const { data } = await supabase
-        .from("org_api_keys" as any)
+        .from("org_api_keys")
         .select("*")
         .eq("organization_id", organizationId)
         .maybeSingle();
@@ -309,12 +309,12 @@ function ApiKeySection({ organizationId }: { organizationId: string | null }) {
       if (apiKeyData) {
         // Regenerate
         await supabase
-          .from("org_api_keys" as any)
+          .from("org_api_keys")
           .delete()
           .eq("organization_id", organizationId);
       }
       const { error } = await supabase
-        .from("org_api_keys" as any)
+        .from("org_api_keys")
         .insert({ organization_id: organizationId } as any);
       if (error) throw error;
     },
@@ -401,7 +401,7 @@ function BarcodeConfigSection({ organizationId }: { organizationId: string | nul
     queryFn: async () => {
       if (!organizationId) return null;
       const { data } = await supabase
-        .from("barcode_configs" as any)
+        .from("barcode_configs")
         .select("*")
         .eq("organization_id", organizationId)
         .maybeSingle();
@@ -428,9 +428,9 @@ function BarcodeConfigSection({ organizationId }: { organizationId: string | nul
         month_length: parseInt(monthLen) || 2,
       };
       if (config) {
-        await supabase.from("barcode_configs" as any).update(payload as any).eq("id", config.id);
+        await supabase.from("barcode_configs").update(payload as any).eq("id", config.id);
       } else {
-        await supabase.from("barcode_configs" as any).insert(payload as any);
+        await supabase.from("barcode_configs").insert(payload as any);
       }
     },
     onSuccess: () => {
@@ -488,7 +488,7 @@ function ExtensionDownloadSection({ organizationId, orgName }: { organizationId:
     queryFn: async () => {
       if (!organizationId) return null;
       const { data } = await supabase
-        .from("org_api_keys" as any)
+        .from("org_api_keys")
         .select("*")
         .eq("organization_id", organizationId)
         .maybeSingle();

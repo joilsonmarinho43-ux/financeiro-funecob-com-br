@@ -569,7 +569,7 @@ function PortalLinkButton({ clientId, organizationId }: { clientId: string; orga
     try {
       // Check if token already exists
       const { data: existing } = await supabase
-        .from("client_portal_tokens" as any)
+        .from("client_portal_tokens")
         .select("token")
         .eq("client_id", clientId)
         .maybeSingle();
@@ -578,7 +578,7 @@ function PortalLinkButton({ clientId, organizationId }: { clientId: string; orga
 
       if (!token) {
         const { data: created, error } = await supabase
-          .from("client_portal_tokens" as any)
+          .from("client_portal_tokens")
           .insert({ client_id: clientId, organization_id: organizationId } as any)
           .select("token")
           .single();

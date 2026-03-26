@@ -63,7 +63,7 @@ export default function Settlement() {
     queryKey: ["barcode-config", organizationId],
     queryFn: async () => {
       const { data } = await supabase
-        .from("barcode_configs" as any)
+        .from("barcode_configs")
         .select("*")
         .eq("organization_id", organizationId)
         .maybeSingle();
@@ -176,7 +176,7 @@ export default function Settlement() {
       });
 
       // Record bip
-      await supabase.from("bips" as any).insert({
+      await supabase.from("bips").insert({
         organization_id: organizationId,
         client_id: foundClient?.id,
         collector_id: user.id,
@@ -212,7 +212,7 @@ export default function Settlement() {
 
       await supabase.from("invoices").update({ due_date: newDate }).eq("id", invoice.id);
 
-      await supabase.from("bips" as any).insert({
+      await supabase.from("bips").insert({
         organization_id: organizationId,
         client_id: foundClient?.id,
         collector_id: user.id,
@@ -246,7 +246,7 @@ export default function Settlement() {
     mutationFn: async () => {
       if (!organizationId || !user || !foundClient) throw new Error("Erro de contexto");
 
-      await supabase.from("bips" as any).insert({
+      await supabase.from("bips").insert({
         organization_id: organizationId,
         client_id: foundClient.id,
         collector_id: user.id,
