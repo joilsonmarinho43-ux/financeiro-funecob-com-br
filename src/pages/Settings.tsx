@@ -290,7 +290,7 @@ export default function Settings() {
         <BarcodeConfigSection organizationId={organizationId} />
 
         {/* Integration / Extension Download */}
-        <ExtensionDownloadSection organizationId={organizationId} orgName={name} />
+        <ExtensionDownloadSection organizationId={organizationId} orgName={name} logoUrl={logoPreview} />
 
         {/* Salvar */}
         <div className="flex justify-end pb-6">
