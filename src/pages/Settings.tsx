@@ -81,10 +81,13 @@ export default function Settings() {
         .update({
           name,
           niche,
+          cnpj: cnpj || null,
+          address: address || null,
+          support_phone: supportPhone || null,
           primary_color: primaryColor,
           secondary_color: secondaryColor,
           logo_url: logoUrl,
-        })
+        } as any)
         .eq("id", organizationId);
       if (error) throw error;
     },
