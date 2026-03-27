@@ -502,7 +502,7 @@ function BarcodeConfigSection({ organizationId }: { organizationId: string | nul
   );
 }
 
-function ExtensionDownloadSection({ organizationId, orgName }: { organizationId: string | null; orgName: string }) {
+function ExtensionDownloadSection({ organizationId, orgName, logoUrl }: { organizationId: string | null; orgName: string; logoUrl?: string | null }) {
   const { toast } = useToast();
   const [generating, setGenerating] = useState(false);
 
