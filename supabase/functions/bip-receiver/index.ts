@@ -46,6 +46,21 @@ Deno.serve(async (req) => {
     }
 
     const organizationId = apiKeyRecord.organization_id;
+
+    // Check org is active
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("active, name")
+      .eq("id", organizationId)
+      .single();
+
+    if (!org?.active) {
+      return new Response(JSON.stringify({ error: "Organization suspended" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const body = await req.json();
     const { barcode, action = "baixa", new_due_date } = body;
 
