@@ -527,6 +527,7 @@ export default function Settlement() {
           <DialogContent className="sm:max-w-sm">
             <DialogHeader>
               <DialogTitle>Remarcar Fatura</DialogTitle>
+              <DialogDescription>Selecione uma nova data de vencimento para esta fatura.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 mt-2">
               <div className="space-y-2">

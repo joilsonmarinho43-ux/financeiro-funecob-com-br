@@ -361,10 +361,11 @@ function CampaignsTab({ organizationId }: { organizationId: string }) {
   const { data: campaigns = [], isLoading } = useQuery({
     queryKey: ["whatsapp-campaigns", organizationId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("whatsapp_campaigns").select("*").order("created_at", { ascending: false });
+      const { data, error } = await supabase.from("whatsapp_campaigns").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
+    enabled: !!organizationId,
   });
 
   const createMutation = useMutation({

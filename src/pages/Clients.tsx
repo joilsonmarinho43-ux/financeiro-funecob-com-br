@@ -82,9 +82,11 @@ export default function Clients() {
   const { data: plans = [] } = useQuery({
     queryKey: ["plans", organizationId],
     queryFn: async () => {
+      if (!organizationId) return [];
       const { data, error } = await supabase
         .from("plans")
         .select("*")
+        .eq("organization_id", organizationId)
         .eq("active", true)
         .order("name");
       if (error) throw error;

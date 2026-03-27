@@ -59,9 +59,11 @@ export default function Plans() {
   const { data: plans = [], isLoading } = useQuery({
     queryKey: ["plans", organizationId],
     queryFn: async () => {
+      if (!organizationId) return [];
       const { data, error } = await supabase
         .from("plans")
         .select("*")
+        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as Plan[];
