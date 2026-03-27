@@ -614,7 +614,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 </head>
 <body>
 <div class="card">
-  <div class="icon">🎉</div>
+  ${logoUrl ? `<img src="${logoUrl}" alt="Logo" style="max-height:80px;max-width:200px;margin:0 auto 16px;display:block;border-radius:8px;">` : `<div class="icon">🎉</div>`}
   <h1 class="title">FuneCob Conectado com Sucesso!</h1>
   <p class="subtitle">A extensão foi configurada automaticamente para a empresa:<br><strong>${(orgName || "Sua Empresa").replace(/</g, "&lt;")}</strong></p>
   <p class="subtitle">Agora basta bipar os códigos de barras em qualquer aba do navegador. Os pagamentos serão processados automaticamente.</p>
