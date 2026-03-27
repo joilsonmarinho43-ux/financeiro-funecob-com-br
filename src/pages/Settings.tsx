@@ -19,6 +19,9 @@ export default function Settings() {
 
   const [name, setName] = useState("");
   const [niche, setNiche] = useState("funeraria");
+  const [cnpj, setCnpj] = useState("");
+  const [address, setAddress] = useState("");
+  const [supportPhone, setSupportPhone] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#0ea5e9");
   const [secondaryColor, setSecondaryColor] = useState("#1e293b");
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
