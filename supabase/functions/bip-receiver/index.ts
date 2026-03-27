@@ -164,6 +164,8 @@ Deno.serve(async (req) => {
 
       // Try to send directly via collector's WhatsApp instance
       let directSent = false;
+
+      // 1. Try collector's WhatsApp instance
       if (client.collector_id) {
         const { data: collectorInstance } = await supabase
           .from("whatsapp_instances")
@@ -174,19 +176,23 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (collectorInstance?.api_url && collectorInstance?.api_key) {
-          try {
-            const phone = client.phone.replace(/\D/g, "");
-            const apiUrl = collectorInstance.api_url.replace(/\/$/, "");
-            const sendUrl = `${apiUrl}/message/sendText/${collectorInstance.name}`;
-            const resp = await fetch(sendUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", apikey: collectorInstance.api_key },
-              body: JSON.stringify({ number: phone, text: message }),
-            });
-            if (resp.ok) directSent = true;
-          } catch (e) {
-            console.error("Direct WhatsApp send failed, falling back to queue:", e);
-          }
+          directSent = await trySendWhatsApp(collectorInstance, client.phone, message);
+        }
+      }
+
+      // 2. Fallback: main org instance (no collector_id or collector_id is null)
+      if (!directSent) {
+        const { data: mainInstance } = await supabase
+          .from("whatsapp_instances")
+          .select("*")
+          .eq("organization_id", organizationId)
+          .is("collector_id", null)
+          .eq("status", "connected")
+          .limit(1)
+          .maybeSingle();
+
+        if (mainInstance?.api_url && mainInstance?.api_key) {
+          directSent = await trySendWhatsApp(mainInstance, client.phone, message);
         }
       }
 
