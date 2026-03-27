@@ -32,6 +32,9 @@ export default function Settings() {
       const org = organization as any;
       setName(org.name || "");
       setNiche(org.niche || "funeraria");
+      setCnpj(org.cnpj || "");
+      setAddress(org.address || "");
+      setSupportPhone(org.support_phone || "");
       setPrimaryColor(org.primary_color || "#0ea5e9");
       setSecondaryColor(org.secondary_color || "#1e293b");
       if (org.logo_url) setLogoPreview(org.logo_url);
