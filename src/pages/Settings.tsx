@@ -19,6 +19,9 @@ export default function Settings() {
 
   const [name, setName] = useState("");
   const [niche, setNiche] = useState("funeraria");
+  const [cnpj, setCnpj] = useState("");
+  const [address, setAddress] = useState("");
+  const [supportPhone, setSupportPhone] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#0ea5e9");
   const [secondaryColor, setSecondaryColor] = useState("#1e293b");
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -29,6 +32,9 @@ export default function Settings() {
       const org = organization as any;
       setName(org.name || "");
       setNiche(org.niche || "funeraria");
+      setCnpj(org.cnpj || "");
+      setAddress(org.address || "");
+      setSupportPhone(org.support_phone || "");
       setPrimaryColor(org.primary_color || "#0ea5e9");
       setSecondaryColor(org.secondary_color || "#1e293b");
       if (org.logo_url) setLogoPreview(org.logo_url);
@@ -75,10 +81,13 @@ export default function Settings() {
         .update({
           name,
           niche,
+          cnpj: cnpj || null,
+          address: address || null,
+          support_phone: supportPhone || null,
           primary_color: primaryColor,
           secondary_color: secondaryColor,
           logo_url: logoUrl,
-        })
+        } as any)
         .eq("id", organizationId);
       if (error) throw error;
     },
@@ -118,8 +127,22 @@ export default function Settings() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="orgName">Nome da Empresa</Label>
-              <Input id="orgName" value={name} onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor="orgName">Nome Fantasia</Label>
+              <Input id="orgName" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Funerária Paz Eterna" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="cnpj">CNPJ</Label>
+                <Input id="cnpj" value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="00.000.000/0000-00" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="supportPhone">Telefone de Suporte</Label>
+                <Input id="supportPhone" value={supportPhone} onChange={(e) => setSupportPhone(e.target.value)} placeholder="(00) 00000-0000" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="address">Endereço</Label>
+              <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Rua, Nº, Bairro, Cidade - UF" />
             </div>
           </CardContent>
         </Card>
@@ -267,7 +290,7 @@ export default function Settings() {
         <BarcodeConfigSection organizationId={organizationId} />
 
         {/* Integration / Extension Download */}
-        <ExtensionDownloadSection organizationId={organizationId} orgName={name} />
+        <ExtensionDownloadSection organizationId={organizationId} orgName={name} logoUrl={logoPreview} />
 
         {/* Salvar */}
         <div className="flex justify-end pb-6">
@@ -479,7 +502,7 @@ function BarcodeConfigSection({ organizationId }: { organizationId: string | nul
   );
 }
 
-function ExtensionDownloadSection({ organizationId, orgName }: { organizationId: string | null; orgName: string }) {
+function ExtensionDownloadSection({ organizationId, orgName, logoUrl }: { organizationId: string | null; orgName: string; logoUrl?: string | null }) {
   const { toast } = useToast();
   const [generating, setGenerating] = useState(false);
 
@@ -591,7 +614,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 </head>
 <body>
 <div class="card">
-  <div class="icon">🎉</div>
+  ${logoUrl ? `<img src="${logoUrl}" alt="Logo" style="max-height:80px;max-width:200px;margin:0 auto 16px;display:block;border-radius:8px;">` : `<div class="icon">🎉</div>`}
   <h1 class="title">FuneCob Conectado com Sucesso!</h1>
   <p class="subtitle">A extensão foi configurada automaticamente para a empresa:<br><strong>${(orgName || "Sua Empresa").replace(/</g, "&lt;")}</strong></p>
   <p class="subtitle">Agora basta bipar os códigos de barras em qualquer aba do navegador. Os pagamentos serão processados automaticamente.</p>

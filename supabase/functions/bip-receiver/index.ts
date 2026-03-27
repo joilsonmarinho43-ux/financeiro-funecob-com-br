@@ -6,6 +6,23 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-api-key",
 };
 
+async function trySendWhatsApp(instance: any, phone: string, message: string): Promise<boolean> {
+  try {
+    const cleanPhone = phone.replace(/\D/g, "");
+    const apiUrl = instance.api_url.replace(/\/$/, "");
+    const sendUrl = `${apiUrl}/message/sendText/${instance.name}`;
+    const resp = await fetch(sendUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: instance.api_key },
+      body: JSON.stringify({ number: cleanPhone, text: message }),
+    });
+    return resp.ok;
+  } catch (e) {
+    console.error("WhatsApp send failed:", e);
+    return false;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -46,6 +63,21 @@ Deno.serve(async (req) => {
     }
 
     const organizationId = apiKeyRecord.organization_id;
+
+    // Check org is active
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("active, name")
+      .eq("id", organizationId)
+      .single();
+
+    if (!org?.active) {
+      return new Response(JSON.stringify({ error: "Organization suspended" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const body = await req.json();
     const { barcode, action = "baixa", new_due_date } = body;
 
@@ -149,6 +181,8 @@ Deno.serve(async (req) => {
 
       // Try to send directly via collector's WhatsApp instance
       let directSent = false;
+
+      // 1. Try collector's WhatsApp instance
       if (client.collector_id) {
         const { data: collectorInstance } = await supabase
           .from("whatsapp_instances")
@@ -159,19 +193,23 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (collectorInstance?.api_url && collectorInstance?.api_key) {
-          try {
-            const phone = client.phone.replace(/\D/g, "");
-            const apiUrl = collectorInstance.api_url.replace(/\/$/, "");
-            const sendUrl = `${apiUrl}/message/sendText/${collectorInstance.name}`;
-            const resp = await fetch(sendUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", apikey: collectorInstance.api_key },
-              body: JSON.stringify({ number: phone, text: message }),
-            });
-            if (resp.ok) directSent = true;
-          } catch (e) {
-            console.error("Direct WhatsApp send failed, falling back to queue:", e);
-          }
+          directSent = await trySendWhatsApp(collectorInstance, client.phone, message);
+        }
+      }
+
+      // 2. Fallback: main org instance (no collector_id or collector_id is null)
+      if (!directSent) {
+        const { data: mainInstance } = await supabase
+          .from("whatsapp_instances")
+          .select("*")
+          .eq("organization_id", organizationId)
+          .is("collector_id", null)
+          .eq("status", "connected")
+          .limit(1)
+          .maybeSingle();
+
+        if (mainInstance?.api_url && mainInstance?.api_key) {
+          directSent = await trySendWhatsApp(mainInstance, client.phone, message);
         }
       }
 
