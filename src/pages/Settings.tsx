@@ -127,8 +127,22 @@ export default function Settings() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="orgName">Nome da Empresa</Label>
-              <Input id="orgName" value={name} onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor="orgName">Nome Fantasia</Label>
+              <Input id="orgName" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Funerária Paz Eterna" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="cnpj">CNPJ</Label>
+                <Input id="cnpj" value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="00.000.000/0000-00" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="supportPhone">Telefone de Suporte</Label>
+                <Input id="supportPhone" value={supportPhone} onChange={(e) => setSupportPhone(e.target.value)} placeholder="(00) 00000-0000" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="address">Endereço</Label>
+              <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Rua, Nº, Bairro, Cidade - UF" />
             </div>
           </CardContent>
         </Card>
