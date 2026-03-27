@@ -42,6 +42,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // Check if org is active (suspended by super admin)
+      const { data: orgData } = await supabase
+        .from("organizations")
+        .select("active")
+        .eq("id", membership.organization_id)
+        .single();
+
+      if (orgData && !orgData.active) {
+        setLicenseExpired(true);
+        return;
+      }
+
       // Check subscription
       const { data: sub } = await supabase
         .from("subscriptions")
