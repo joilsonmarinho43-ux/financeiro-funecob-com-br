@@ -6,6 +6,23 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-api-key",
 };
 
+async function trySendWhatsApp(instance: any, phone: string, message: string): Promise<boolean> {
+  try {
+    const cleanPhone = phone.replace(/\D/g, "");
+    const apiUrl = instance.api_url.replace(/\/$/, "");
+    const sendUrl = `${apiUrl}/message/sendText/${instance.name}`;
+    const resp = await fetch(sendUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: instance.api_key },
+      body: JSON.stringify({ number: cleanPhone, text: message }),
+    });
+    return resp.ok;
+  } catch (e) {
+    console.error("WhatsApp send failed:", e);
+    return false;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
