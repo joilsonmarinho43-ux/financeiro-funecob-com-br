@@ -121,8 +121,8 @@ export default function Reports() {
       });
       const recebido = mInv.filter((i) => i.status === "pago").reduce((s, i) => s + Number(i.amount), 0);
       const aberto = mInv.filter((i) => i.status === "aberto").reduce((s, i) => s + Number(i.amount), 0);
-      const entradas = mTx.filter((t) => t.type === "entrada").reduce((s, t) => s + Number(t.amount), 0);
-      const saidas = mTx.filter((t) => t.type === "saida").reduce((s, t) => s + Number(t.amount), 0);
+      const entradas = mTx.filter((t) => t.type === "entrada" || t.type === "receita").reduce((s, t) => s + Number(t.amount), 0);
+      const saidas = mTx.filter((t) => t.type === "saida" || t.type === "despesa").reduce((s, t) => s + Number(t.amount), 0);
       return {
         label: m.label,
         recebido,

@@ -129,11 +129,12 @@ export default function Settlement() {
 
       setFoundClient(client);
 
-      // Find invoices for this client (open ones first)
+      // Find invoices for this client (scoped to org)
       const { data: invoices } = await supabase
         .from("invoices")
         .select("*")
         .eq("client_id", client.id)
+        .eq("organization_id", organizationId)
         .order("due_date", { ascending: true });
 
       setClientInvoices(invoices || []);
