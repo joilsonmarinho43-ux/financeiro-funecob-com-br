@@ -24,7 +24,7 @@ export default function GlobalSettings() {
         .select("key, value")
         .in("key", [...SETTINGS_KEYS]);
       if (error) throw error;
-      return data as { key: string; value: string }[];
+      return (data as unknown as { key: string; value: string }[]) || [];
     },
   });
 
