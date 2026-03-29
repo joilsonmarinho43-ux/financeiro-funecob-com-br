@@ -73,9 +73,11 @@ export default function BillingSettings() {
   const { data: reminders = [], isLoading: remindersLoading } = useQuery({
     queryKey: ["billing-reminders", organizationId],
     queryFn: async () => {
+      if (!organizationId) return [];
       const { data, error } = await supabase
         .from("billing_reminders")
         .select("*, invoices(*, clients(name))")
+        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
         .limit(50);
       if (error) throw error;
