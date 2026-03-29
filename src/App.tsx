@@ -24,6 +24,7 @@ import SystemLogs from "./pages/SystemLogs";
 import AdminPanel from "./pages/AdminPanel";
 import ClientPortal from "./pages/ClientPortal";
 import Settlement from "./pages/Settlement";
+import GlobalSettings from "./pages/GlobalSettings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -118,6 +119,7 @@ const App = () => (
             <Route path="/sms" element={<ProtectedRoute><SMS /></ProtectedRoute>} />
             <Route path="/logs" element={<ProtectedRoute><SystemLogs /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
+            <Route path="/admin/global-settings" element={<ProtectedRoute adminOnly><GlobalSettings /></ProtectedRoute>} />
             <Route path="/portal/:token" element={<ClientPortal />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

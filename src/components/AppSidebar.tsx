@@ -16,6 +16,7 @@ import {
   ScrollText,
   Shield,
   ScanBarcode,
+  Globe,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -154,7 +155,10 @@ export function AppSidebar() {
         <MenuGroup label="Comunicação" items={communicationItems} />
         <MenuGroup label="Sistema" items={[
           ...systemItems,
-          ...(isAdmin ? [{ title: "Admin", icon: Shield, url: "/admin", badge: "" }] : []),
+          ...(isAdmin ? [
+            { title: "Admin", icon: Shield, url: "/admin", badge: "" },
+            { title: "Config Global", icon: Globe, url: "/admin/global-settings", badge: "" },
+          ] : []),
         ]} />
       </SidebarContent>
 

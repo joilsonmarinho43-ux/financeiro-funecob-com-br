@@ -533,12 +533,28 @@ function PairTab({ organizationId }: { organizationId: string }) {
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      // Fetch global settings to auto-fill api_url and api_key if not provided
+      let apiUrl = form.api_url || null;
+      let apiKey = form.api_key || null;
+      if (!apiUrl || !apiKey) {
+        const { data: globalSettings } = await supabase
+          .from("global_settings" as any)
+          .select("key, value")
+          .in("key", ["api_host", "global_api_key"]);
+        const gs = globalSettings as unknown as { key: string; value: string }[] | null;
+        if (gs) {
+          const map: Record<string, string> = {};
+          gs.forEach((s) => { map[s.key] = s.value; });
+          if (!apiUrl && map.api_host) apiUrl = map.api_host;
+          if (!apiKey && map.global_api_key) apiKey = map.global_api_key;
+        }
+      }
       const { error } = await supabase.from("whatsapp_instances").insert({
         organization_id: organizationId,
         name: form.name,
         phone: form.phone || null,
-        api_url: form.api_url || null,
-        api_key: form.api_key || null,
+        api_url: apiUrl,
+        api_key: apiKey,
         status: "disconnected",
       });
       if (error) throw error;
