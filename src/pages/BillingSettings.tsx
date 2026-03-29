@@ -141,9 +141,11 @@ export default function BillingSettings() {
   const { data: whatsappInstance } = useQuery({
     queryKey: ["robot-whatsapp-instance", organizationId],
     queryFn: async () => {
+      if (!organizationId) return null;
       const { data, error } = await supabase
         .from("whatsapp_instances")
         .select("name, status, api_url, api_key")
+        .eq("organization_id", organizationId)
         .eq("status", "connected")
         .limit(1)
         .maybeSingle();
