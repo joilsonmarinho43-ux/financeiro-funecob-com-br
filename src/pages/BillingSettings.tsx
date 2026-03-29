@@ -90,9 +90,11 @@ export default function BillingSettings() {
   const { data: queueStats } = useQuery({
     queryKey: ["robot-queue-stats", organizationId],
     queryFn: async () => {
+      if (!organizationId) return { queued: 0, sending: 0, sent: 0, failed: 0, total: 0 };
       const { data, error } = await supabase
         .from("whatsapp_queue")
-        .select("status");
+        .select("status")
+        .eq("organization_id", organizationId);
       if (error) throw error;
       const stats = { queued: 0, sending: 0, sent: 0, failed: 0, total: data?.length || 0 };
       data?.forEach((q: any) => {
