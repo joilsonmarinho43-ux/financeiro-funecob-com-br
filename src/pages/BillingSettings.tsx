@@ -73,9 +73,11 @@ export default function BillingSettings() {
   const { data: reminders = [], isLoading: remindersLoading } = useQuery({
     queryKey: ["billing-reminders", organizationId],
     queryFn: async () => {
+      if (!organizationId) return [];
       const { data, error } = await supabase
         .from("billing_reminders")
         .select("*, invoices(*, clients(name))")
+        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
         .limit(50);
       if (error) throw error;
@@ -88,9 +90,11 @@ export default function BillingSettings() {
   const { data: queueStats } = useQuery({
     queryKey: ["robot-queue-stats", organizationId],
     queryFn: async () => {
+      if (!organizationId) return { queued: 0, sending: 0, sent: 0, failed: 0, total: 0 };
       const { data, error } = await supabase
         .from("whatsapp_queue")
-        .select("status");
+        .select("status")
+        .eq("organization_id", organizationId);
       if (error) throw error;
       const stats = { queued: 0, sending: 0, sent: 0, failed: 0, total: data?.length || 0 };
       data?.forEach((q: any) => {
@@ -105,9 +109,11 @@ export default function BillingSettings() {
   const { data: reminderStats } = useQuery({
     queryKey: ["robot-reminder-stats", organizationId],
     queryFn: async () => {
+      if (!organizationId) return null;
       const { data, error } = await supabase
         .from("billing_reminders")
-        .select("status, reminder_type, created_at");
+        .select("status, reminder_type, created_at")
+        .eq("organization_id", organizationId);
       if (error) throw error;
       const today = new Date().toISOString().split("T")[0];
       const stats = {
@@ -135,9 +141,11 @@ export default function BillingSettings() {
   const { data: whatsappInstance } = useQuery({
     queryKey: ["robot-whatsapp-instance", organizationId],
     queryFn: async () => {
+      if (!organizationId) return null;
       const { data, error } = await supabase
         .from("whatsapp_instances")
         .select("name, status, api_url, api_key")
+        .eq("organization_id", organizationId)
         .eq("status", "connected")
         .limit(1)
         .maybeSingle();
