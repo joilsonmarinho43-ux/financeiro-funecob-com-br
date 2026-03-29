@@ -109,9 +109,11 @@ export default function BillingSettings() {
   const { data: reminderStats } = useQuery({
     queryKey: ["robot-reminder-stats", organizationId],
     queryFn: async () => {
+      if (!organizationId) return null;
       const { data, error } = await supabase
         .from("billing_reminders")
-        .select("status, reminder_type, created_at");
+        .select("status, reminder_type, created_at")
+        .eq("organization_id", organizationId);
       if (error) throw error;
       const today = new Date().toISOString().split("T")[0];
       const stats = {
