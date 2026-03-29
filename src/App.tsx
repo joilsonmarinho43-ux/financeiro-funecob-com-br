@@ -24,6 +24,7 @@ import SystemLogs from "./pages/SystemLogs";
 import AdminPanel from "./pages/AdminPanel";
 import ClientPortal from "./pages/ClientPortal";
 import Settlement from "./pages/Settlement";
+import GlobalSettings from "./pages/GlobalSettings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
