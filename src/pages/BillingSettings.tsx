@@ -178,6 +178,9 @@ export default function BillingSettings() {
       setTemplateReminder(settings.template_reminder);
       setTemplateDueDate(settings.template_due_date);
       setTemplateOverdue(settings.template_overdue);
+      if ((settings as any).template_baixa) setTemplateBaixa((settings as any).template_baixa);
+      if ((settings as any).template_retorno) setTemplateRetorno((settings as any).template_retorno);
+      if ((settings as any).template_remarcar) setTemplateRemarcar((settings as any).template_remarcar);
     }
   }, [settings]);
 
