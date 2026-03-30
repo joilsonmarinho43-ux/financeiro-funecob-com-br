@@ -113,9 +113,12 @@ export type Database = {
           pix_key_type: string | null
           reminder_days_before: number
           reminder_enabled: boolean
+          template_baixa: string
           template_due_date: string
           template_overdue: string
+          template_remarcar: string
           template_reminder: string
+          template_retorno: string
           updated_at: string
         }
         Insert: {
@@ -130,9 +133,12 @@ export type Database = {
           pix_key_type?: string | null
           reminder_days_before?: number
           reminder_enabled?: boolean
+          template_baixa?: string
           template_due_date?: string
           template_overdue?: string
+          template_remarcar?: string
           template_reminder?: string
+          template_retorno?: string
           updated_at?: string
         }
         Update: {
@@ -147,9 +153,12 @@ export type Database = {
           pix_key_type?: string | null
           reminder_days_before?: number
           reminder_enabled?: boolean
+          template_baixa?: string
           template_due_date?: string
           template_overdue?: string
+          template_remarcar?: string
           template_reminder?: string
+          template_retorno?: string
           updated_at?: string
         }
         Relationships: [
