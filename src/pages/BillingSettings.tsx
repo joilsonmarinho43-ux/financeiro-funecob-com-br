@@ -200,7 +200,10 @@ export default function BillingSettings() {
         template_reminder: templateReminder,
         template_due_date: templateDueDate,
         template_overdue: templateOverdue,
-      };
+        template_baixa: templateBaixa,
+        template_retorno: templateRetorno,
+        template_remarcar: templateRemarcar,
+      } as any;
 
       if (settings?.id) {
         const { error } = await supabase
