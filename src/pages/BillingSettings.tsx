@@ -32,6 +32,8 @@ const TEMPLATE_VARS = [
   { var: "{vencimento}", desc: "Data de vencimento" },
   { var: "{link_ou_chave_pix}", desc: "Link de pagamento ou chave Pix" },
   { var: "{link_portal}", desc: "Link do portal do cliente" },
+  { var: "{data_pagamento}", desc: "Data do pagamento" },
+  { var: "{nova_data}", desc: "Nova data (remarcação)" },
 ];
 
 export default function BillingSettings() {
@@ -54,6 +56,15 @@ export default function BillingSettings() {
   );
   const [templateOverdue, setTemplateOverdue] = useState(
     "Olá {nome}! Sua fatura no valor de {valor} com vencimento em {vencimento} está em atraso. Por favor, regularize o pagamento. {link_ou_chave_pix}"
+  );
+  const [templateBaixa, setTemplateBaixa] = useState(
+    "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏"
+  );
+  const [templateRetorno, setTemplateRetorno] = useState(
+    "Olá {nome}! 👋\n\nNosso cobrador esteve no endereço cadastrado e não encontrou ninguém.\nPor favor, entre em contato para agendar uma nova visita.\n\n{link_ou_chave_pix}"
+  );
+  const [templateRemarcar, setTemplateRemarcar] = useState(
+    "Olá {nome}! 📅\n\nSua fatura no valor de R$ {valor} foi remarcada.\nNova data de vencimento: {nova_data}\n\nQualquer dúvida, estamos à disposição!"
   );
 
   const { data: settings, isLoading } = useQuery({
@@ -167,6 +178,9 @@ export default function BillingSettings() {
       setTemplateReminder(settings.template_reminder);
       setTemplateDueDate(settings.template_due_date);
       setTemplateOverdue(settings.template_overdue);
+      if ((settings as any).template_baixa) setTemplateBaixa((settings as any).template_baixa);
+      if ((settings as any).template_retorno) setTemplateRetorno((settings as any).template_retorno);
+      if ((settings as any).template_remarcar) setTemplateRemarcar((settings as any).template_remarcar);
     }
   }, [settings]);
 
@@ -186,7 +200,10 @@ export default function BillingSettings() {
         template_reminder: templateReminder,
         template_due_date: templateDueDate,
         template_overdue: templateOverdue,
-      };
+        template_baixa: templateBaixa,
+        template_retorno: templateRetorno,
+        template_remarcar: templateRemarcar,
+      } as any;
 
       if (settings?.id) {
         const { error } = await supabase
@@ -817,6 +834,30 @@ export default function BillingSettings() {
                 setter: setTemplateOverdue,
                 desc: "Enviado quando a fatura está vencida",
                 cls: "text-destructive",
+              },
+              {
+                label: "Baixa (pagamento confirmado)",
+                icon: CheckCircle2,
+                value: templateBaixa,
+                setter: setTemplateBaixa,
+                desc: "Enviado automaticamente ao registrar o pagamento",
+                cls: "text-success",
+              },
+              {
+                label: "Retorno (pós-atendimento)",
+                icon: RefreshCw,
+                value: templateRetorno,
+                setter: setTemplateRetorno,
+                desc: "Enviado após visita do cobrador sem encontrar o cliente",
+                cls: "text-muted-foreground",
+              },
+              {
+                label: "Remarcação (nova data)",
+                icon: Clock,
+                value: templateRemarcar,
+                setter: setTemplateRemarcar,
+                desc: "Enviado quando a fatura é remarcada para nova data",
+                cls: "text-primary",
               },
             ].map((t) => (
               <Card key={t.label} className="border-0 shadow-sm">
