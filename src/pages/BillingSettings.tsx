@@ -57,6 +57,15 @@ export default function BillingSettings() {
   const [templateOverdue, setTemplateOverdue] = useState(
     "Olá {nome}! Sua fatura no valor de {valor} com vencimento em {vencimento} está em atraso. Por favor, regularize o pagamento. {link_ou_chave_pix}"
   );
+  const [templateBaixa, setTemplateBaixa] = useState(
+    "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏"
+  );
+  const [templateRetorno, setTemplateRetorno] = useState(
+    "Olá {nome}! 👋\n\nNosso cobrador esteve no endereço cadastrado e não encontrou ninguém.\nPor favor, entre em contato para agendar uma nova visita.\n\n{link_ou_chave_pix}"
+  );
+  const [templateRemarcar, setTemplateRemarcar] = useState(
+    "Olá {nome}! 📅\n\nSua fatura no valor de R$ {valor} foi remarcada.\nNova data de vencimento: {nova_data}\n\nQualquer dúvida, estamos à disposição!"
+  );
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ["billing-settings", organizationId],
