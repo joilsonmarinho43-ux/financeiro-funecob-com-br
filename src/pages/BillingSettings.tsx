@@ -835,7 +835,30 @@ export default function BillingSettings() {
                 desc: "Enviado quando a fatura está vencida",
                 cls: "text-destructive",
               },
-            ].map((t) => (
+              {
+                label: "Baixa (pagamento confirmado)",
+                icon: CheckCircle2,
+                value: templateBaixa,
+                setter: setTemplateBaixa,
+                desc: "Enviado automaticamente ao registrar o pagamento",
+                cls: "text-success",
+              },
+              {
+                label: "Retorno (pós-atendimento)",
+                icon: RefreshCw,
+                value: templateRetorno,
+                setter: setTemplateRetorno,
+                desc: "Enviado após visita do cobrador sem encontrar o cliente",
+                cls: "text-muted-foreground",
+              },
+              {
+                label: "Remarcação (nova data)",
+                icon: Clock,
+                value: templateRemarcar,
+                setter: setTemplateRemarcar,
+                desc: "Enviado quando a fatura é remarcada para nova data",
+                cls: "text-primary",
+              },
               <Card key={t.label} className="border-0 shadow-sm">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
