@@ -170,13 +170,30 @@ Deno.serve(async (req) => {
 
     // Send WhatsApp via collector's instance if client has phone
     if (client.phone) {
+      // Load message templates from billing_settings
+      const { data: billingSettings } = await supabase
+        .from("billing_settings")
+        .select("template_baixa, template_retorno, template_remarcar")
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+
       let message = "";
+      const paidDate = new Date().toISOString().split("T")[0];
       if (action === "baixa") {
-        message = `✅ Pagamento confirmado!\n\nCliente: ${client.name}\nValor: R$ ${Number(invoice?.amount || 0).toFixed(2)}\n\nObrigado!`;
+        const tpl = billingSettings?.template_baixa || "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏";
+        message = tpl
+          .replace("{nome}", client.name)
+          .replace("{valor}", Number(invoice?.amount || 0).toFixed(2))
+          .replace("{data_pagamento}", paidDate);
       } else if (action === "remarcacao") {
-        message = `📅 Fatura remarcada!\n\nCliente: ${client.name}\nNova data: ${new_due_date}`;
+        const tpl = billingSettings?.template_remarcar || "Olá {nome}! 📅\n\nSua fatura no valor de R$ {valor} foi remarcada.\nNova data de vencimento: {nova_data}\n\nQualquer dúvida, estamos à disposição!";
+        message = tpl
+          .replace("{nome}", client.name)
+          .replace("{valor}", Number(invoice?.amount || 0).toFixed(2))
+          .replace("{nova_data}", new_due_date || "");
       } else {
-        message = `🔔 Retorno registrado!\n\nCliente: ${client.name}\nNosso cobrador esteve no endereço.`;
+        const tpl = billingSettings?.template_retorno || "Olá {nome}! 👋\n\nNosso cobrador esteve no endereço cadastrado e não encontrou ninguém.\nPor favor, entre em contato para agendar uma nova visita.";
+        message = tpl.replace("{nome}", client.name);
       }
 
       // Try to send directly via collector's WhatsApp instance
