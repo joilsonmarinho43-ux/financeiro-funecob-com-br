@@ -364,8 +364,8 @@ export default function Clients() {
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
-                            <SelectContent>
-                              {[1, 5, 10, 15, 20, 25].map((d) => (
+                            <SelectContent className="max-h-60">
+                              {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
                                 <SelectItem key={d} value={String(d)}>
                                   Dia {d}
                                 </SelectItem>
