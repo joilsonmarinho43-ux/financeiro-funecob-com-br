@@ -743,7 +743,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Nova Instância WhatsApp</DialogTitle>
-            <DialogDescription>O sistema criará automaticamente a instância na Evolution API e exibirá o QR Code para pareamento.</DialogDescription>
+            <DialogDescription>O sistema criará automaticamente a instância e exibirá o QR Code para pareamento.</DialogDescription>
           </DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(); }} className="space-y-4 mt-2">
             <div className="space-y-2">
