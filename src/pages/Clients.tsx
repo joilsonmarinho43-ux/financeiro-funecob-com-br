@@ -143,21 +143,23 @@ export default function Clients() {
         const invoices: TablesInsert<"invoices">[] = [];
 
         if (form.billing_type === "recorrencia") {
-          // Generate 12 months of recurring invoices
-          for (let i = 0; i < 12; i++) {
-            const dueDate = new Date(now.getFullYear(), now.getMonth() + i, dueDay);
-            invoices.push({
-              client_id: clientId,
-              organization_id: organizationId,
-              plan_id: form.plan_id || null,
-              amount: invoiceAmount,
-              due_date: format(dueDate, "yyyy-MM-dd"),
-              description: selectedPlan
-                ? `${selectedPlan.name} - Parcela ${i + 1}/12`
-                : `Mensalidade - Parcela ${i + 1}/12`,
-              status: "aberto",
-            });
+          // Generate only the first invoice for recurring billing
+          const dueDate = new Date(now.getFullYear(), now.getMonth(), dueDay);
+          // If due day already passed this month, start next month
+          if (dueDate <= now) {
+            dueDate.setMonth(dueDate.getMonth() + 1);
           }
+          invoices.push({
+            client_id: clientId,
+            organization_id: organizationId,
+            plan_id: form.plan_id || null,
+            amount: invoiceAmount,
+            due_date: format(dueDate, "yyyy-MM-dd"),
+            description: selectedPlan
+              ? `${selectedPlan.name} - Mensalidade`
+              : `Mensalidade`,
+            status: "aberto",
+          });
         } else {
           // Carnê with custom number of installments
           const totalInstallments = parseInt(form.carne_installments) || 12;
