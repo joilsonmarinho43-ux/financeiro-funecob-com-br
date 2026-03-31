@@ -802,7 +802,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
         </DialogContent>
       </Dialog>
 
-      {/* QR Code Dialog - Real Evolution API QR */}
+      {/* QR Code Dialog */}
       <Dialog open={qrDialogOpen} onOpenChange={(open) => { setQrDialogOpen(open); if (!open) { setSelectedInstance(null); setQrBase64(null); } }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
