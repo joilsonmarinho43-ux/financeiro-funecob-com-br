@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Tables } from "@/integrations/supabase/types";
 import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,7 +29,7 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import {
   Search, CalendarIcon, CheckCircle2, Receipt, DollarSign,
-  AlertTriangle, Clock, Download, FileSpreadsheet, FileText,
+  AlertTriangle, Clock, Download, FileSpreadsheet, FileText, Send,
 } from "lucide-react";
 import { exportToExcel, exportToPDF } from "@/lib/exportInvoices";
 
@@ -39,6 +40,7 @@ const formatCurrency = (v: number) =>
 
 export default function Invoices() {
   const { organizationId } = useOrganization();
+  const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -108,6 +110,46 @@ export default function Invoices() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       toast({ title: "Fatura reaberta!" });
+    },
+  });
+
+  const notifyMutation = useMutation({
+    mutationFn: async (inv: Invoice) => {
+      if (!organizationId) throw new Error("Organização não encontrada");
+      const { data: client } = await supabase
+        .from("clients")
+        .select("name, phone")
+        .eq("id", inv.client_id)
+        .single();
+      if (!client?.phone) throw new Error("Cliente sem telefone cadastrado");
+
+      const { data: settings } = await supabase
+        .from("billing_settings")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+
+      const amount = Number(inv.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      const dueFormatted = inv.due_date.split("-").reverse().join("/");
+      const template = settings?.template_reminder || "Olá {nome}! Sua fatura de {valor} vence em {vencimento}.";
+      const message = template
+        .replace(/{nome}/g, client.name || "Cliente")
+        .replace(/{valor}/g, amount)
+        .replace(/{vencimento}/g, dueFormatted);
+
+      const { error } = await supabase.from("whatsapp_queue").insert({
+        organization_id: organizationId,
+        phone: client.phone,
+        message,
+        status: "queued",
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Notificação enviada para a fila de WhatsApp!" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao notificar", description: err.message, variant: "destructive" });
     },
   });
 
@@ -308,6 +350,16 @@ export default function Invoices() {
                           <div className="flex justify-end gap-1">
                             {inv.status === "aberto" && (
                               <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 text-primary border-primary/30 hover:bg-primary/10"
+                                  disabled={notifyMutation.isPending}
+                                  onClick={() => notifyMutation.mutate(inv)}
+                                  title="Enviar notificação manual via WhatsApp"
+                                >
+                                  <Send className="h-3.5 w-3.5 mr-1" /> Notificar
+                                </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"
