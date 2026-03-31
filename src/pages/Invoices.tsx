@@ -113,6 +113,46 @@ export default function Invoices() {
     },
   });
 
+  const notifyMutation = useMutation({
+    mutationFn: async (inv: Invoice) => {
+      if (!organizationId) throw new Error("Organização não encontrada");
+      const { data: client } = await supabase
+        .from("clients")
+        .select("name, phone")
+        .eq("id", inv.client_id)
+        .single();
+      if (!client?.phone) throw new Error("Cliente sem telefone cadastrado");
+
+      const { data: settings } = await supabase
+        .from("billing_settings")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+
+      const amount = Number(inv.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      const dueFormatted = inv.due_date.split("-").reverse().join("/");
+      const template = settings?.template_reminder || "Olá {nome}! Sua fatura de {valor} vence em {vencimento}.";
+      const message = template
+        .replace(/{nome}/g, client.name || "Cliente")
+        .replace(/{valor}/g, amount)
+        .replace(/{vencimento}/g, dueFormatted);
+
+      const { error } = await supabase.from("whatsapp_queue").insert({
+        organization_id: organizationId,
+        phone: client.phone,
+        message,
+        status: "queued",
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Notificação enviada para a fila de WhatsApp!" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao notificar", description: err.message, variant: "destructive" });
+    },
+  });
+
   // Filtering
   const today = startOfDay(new Date());
   const filtered = invoices.filter((inv) => {
