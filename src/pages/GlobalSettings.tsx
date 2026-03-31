@@ -81,7 +81,7 @@ export default function GlobalSettings() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Globe className="h-5 w-5" /> Evolution API</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Globe className="h-5 w-5" /> API de WhatsApp — Funecob</CardTitle>
             <CardDescription>Esses dados serão usados automaticamente ao criar novas instâncias de WhatsApp para qualquer organização.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
