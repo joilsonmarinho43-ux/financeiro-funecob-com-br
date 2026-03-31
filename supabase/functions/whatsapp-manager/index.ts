@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
 
     if (!apiHost || !globalApiKey) {
       return new Response(JSON.stringify({ 
-        error: "Evolution API não configurada. Vá em Configurações Globais e preencha o API Host e a Global API Key." 
+        error: "API de WhatsApp não configurada. Vá em Configurações Globais e preencha o API Host e a Global API Key." 
       }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
