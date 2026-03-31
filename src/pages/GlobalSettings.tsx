@@ -99,7 +99,7 @@ export default function GlobalSettings() {
                     value={form.api_host}
                     onChange={(e) => setForm({ ...form, api_host: e.target.value })}
                   />
-                  <p className="text-xs text-muted-foreground">Endereço do servidor da Evolution API.</p>
+                  <p className="text-xs text-muted-foreground">Endereço do servidor da API de WhatsApp.</p>
                 </div>
 
                 <div className="space-y-2">
