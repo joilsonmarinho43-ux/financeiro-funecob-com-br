@@ -395,7 +395,7 @@ export default function Clients() {
                               <Repeat className="h-3.5 w-3.5 text-primary" /> Recorrência
                             </p>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              Gera 12 faturas mensais automáticas
+                              Cobrança mensal contínua
                             </p>
                           </div>
                         </label>
