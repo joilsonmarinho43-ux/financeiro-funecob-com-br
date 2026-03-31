@@ -40,6 +40,7 @@ const formatCurrency = (v: number) =>
 
 export default function Invoices() {
   const { organizationId } = useOrganization();
+  const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
