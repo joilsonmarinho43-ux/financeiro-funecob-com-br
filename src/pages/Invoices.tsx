@@ -353,6 +353,16 @@ export default function Invoices() {
                                 <Button
                                   size="sm"
                                   variant="outline"
+                                  className="h-8 text-primary border-primary/30 hover:bg-primary/10"
+                                  disabled={notifyMutation.isPending}
+                                  onClick={() => notifyMutation.mutate(inv)}
+                                  title="Enviar notificação manual via WhatsApp"
+                                >
+                                  <Send className="h-3.5 w-3.5 mr-1" /> Notificar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
                                   className="h-8 text-success border-success/30 hover:bg-success/10"
                                   onClick={() => { setPayDialog(inv); setPaidDate(new Date()); }}
                                 >
