@@ -263,7 +263,7 @@ Deno.serve(async (req) => {
       const statusData = await statusResp.json();
       const state = statusData?.instance?.state || statusData?.state || "disconnected";
 
-      // Map Evolution API states to our states
+      // Map API states to our states
       let mappedStatus = "disconnected";
       if (state === "open" || state === "connected") {
         mappedStatus = "connected";

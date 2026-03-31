@@ -842,7 +842,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
             ) : (
               <div className="h-52 w-52 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-muted-foreground/20 text-center p-4">
                 <AlertTriangle className="h-8 w-8 text-warning mb-2" />
-                <p className="text-xs text-muted-foreground">Não foi possível obter o QR Code. Verifique as Configurações Globais da Evolution API.</p>
+                <p className="text-xs text-muted-foreground">Não foi possível obter o QR Code. Verifique as Configurações Globais.</p>
               </div>
             )}
             <p className="text-xs text-muted-foreground text-center">

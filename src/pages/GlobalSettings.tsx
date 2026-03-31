@@ -111,7 +111,7 @@ export default function GlobalSettings() {
                     onChange={(e) => setForm({ ...form, global_api_key: e.target.value })}
                     type="password"
                   />
-                  <p className="text-xs text-muted-foreground">Chave de autenticação da Evolution API.</p>
+                  <p className="text-xs text-muted-foreground">Chave de autenticação da API de WhatsApp.</p>
                 </div>
 
                 <div className="space-y-2">

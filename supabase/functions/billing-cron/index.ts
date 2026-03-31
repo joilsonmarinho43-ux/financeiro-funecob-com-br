@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
             .maybeSingle();
 
           if (existingToken?.token) {
-            portalLink = `https://funeraria-flow.lovable.app/portal/${existingToken.token}`;
+            portalLink = `https://funecob.com.br/portal/${existingToken.token}`;
           } else {
             const { data: newToken } = await supabase
               .from("client_portal_tokens")
@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
               .select("token")
               .single();
             if (newToken?.token) {
-              portalLink = `https://funeraria-flow.lovable.app/portal/${newToken.token}`;
+              portalLink = `https://funecob.com.br/portal/${newToken.token}`;
             }
           }
         } catch (e) {

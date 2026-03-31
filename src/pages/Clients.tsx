@@ -436,16 +436,18 @@ export default function Clients() {
                       {invoiceAmount > 0 && (
                         <div className="rounded-lg bg-muted/50 border border-border p-3 text-sm space-y-1">
                           <p className="font-medium text-foreground">Resumo da cobrança:</p>
-                          <p className="text-muted-foreground">
+                        <p className="text-muted-foreground">
                             {form.billing_type === "recorrencia"
-                              ? `12× de ${formatCurrency(invoiceAmount)} (mensal)`
+                              ? `${formatCurrency(invoiceAmount)}/mês (primeira fatura gerada automaticamente)`
                               : `${form.carne_installments}× de ${formatCurrency(invoiceAmount)}`}
                           </p>
-                          <p className="text-muted-foreground">
-                            Total: {formatCurrency(
-                              invoiceAmount * (form.billing_type === "recorrencia" ? 12 : parseInt(form.carne_installments) || 12)
-                            )}
-                          </p>
+                          {form.billing_type === "carne" && (
+                            <p className="text-muted-foreground">
+                              Total: {formatCurrency(
+                                invoiceAmount * (parseInt(form.carne_installments) || 12)
+                              )}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
