@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
         createData = await createResp.json();
       } catch {}
 
-      // Save instance in DB with Evolution API credentials
+      // Save instance in DB
       const { data: dbInstance, error: dbErr } = await supabase
         .from("whatsapp_instances")
         .insert({
