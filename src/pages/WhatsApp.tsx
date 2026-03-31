@@ -756,7 +756,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
               <Input placeholder="5511999999999" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </div>
             <div className="rounded-lg bg-primary/5 border border-primary/10 p-3 text-sm text-muted-foreground">
-              <p><strong className="text-foreground">⚡ Automático:</strong> A URL e chave da API serão preenchidas automaticamente usando as Configurações Globais da Evolution API.</p>
+              <p><strong className="text-foreground">⚡ Automático:</strong> A URL e chave da API serão preenchidas automaticamente usando as Configurações Globais do Funecob.</p>
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
