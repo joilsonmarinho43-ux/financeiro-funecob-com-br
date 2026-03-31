@@ -76,7 +76,7 @@ export default function GlobalSettings() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Configurações Globais</h1>
-          <p className="text-muted-foreground text-sm">Configurações da Evolution API para todas as instâncias WhatsApp.</p>
+          <p className="text-muted-foreground text-sm">Configurações da API de WhatsApp para todas as instâncias.</p>
         </div>
 
         <Card>
