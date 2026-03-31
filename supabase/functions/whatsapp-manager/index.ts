@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Create instance on Evolution API
+      // Create instance on API
       const createResp = await fetch(`${baseUrl}/instance/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: globalApiKey },
