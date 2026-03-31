@@ -743,7 +743,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Nova Instância WhatsApp</DialogTitle>
-            <DialogDescription>O sistema criará automaticamente a instância na Evolution API e exibirá o QR Code para pareamento.</DialogDescription>
+            <DialogDescription>O sistema criará automaticamente a instância e exibirá o QR Code para pareamento.</DialogDescription>
           </DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(); }} className="space-y-4 mt-2">
             <div className="space-y-2">
@@ -756,7 +756,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
               <Input placeholder="5511999999999" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </div>
             <div className="rounded-lg bg-primary/5 border border-primary/10 p-3 text-sm text-muted-foreground">
-              <p><strong className="text-foreground">⚡ Automático:</strong> A URL e chave da API serão preenchidas automaticamente usando as Configurações Globais da Evolution API.</p>
+              <p><strong className="text-foreground">⚡ Automático:</strong> A URL e chave da API serão preenchidas automaticamente usando as Configurações Globais do Funecob.</p>
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
@@ -802,7 +802,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
         </DialogContent>
       </Dialog>
 
-      {/* QR Code Dialog - Real Evolution API QR */}
+      {/* QR Code Dialog */}
       <Dialog open={qrDialogOpen} onOpenChange={(open) => { setQrDialogOpen(open); if (!open) { setSelectedInstance(null); setQrBase64(null); } }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
@@ -842,7 +842,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
             ) : (
               <div className="h-52 w-52 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-muted-foreground/20 text-center p-4">
                 <AlertTriangle className="h-8 w-8 text-warning mb-2" />
-                <p className="text-xs text-muted-foreground">Não foi possível obter o QR Code. Verifique as Configurações Globais da Evolution API.</p>
+                <p className="text-xs text-muted-foreground">Não foi possível obter o QR Code. Verifique as Configurações Globais.</p>
               </div>
             )}
             <p className="text-xs text-muted-foreground text-center">

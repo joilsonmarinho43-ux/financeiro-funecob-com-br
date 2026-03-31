@@ -76,12 +76,12 @@ export default function GlobalSettings() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Configurações Globais</h1>
-          <p className="text-muted-foreground text-sm">Configurações da Evolution API para todas as instâncias WhatsApp.</p>
+          <p className="text-muted-foreground text-sm">Configurações da API de WhatsApp para todas as instâncias.</p>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Globe className="h-5 w-5" /> Evolution API</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Globe className="h-5 w-5" /> API de WhatsApp — Funecob</CardTitle>
             <CardDescription>Esses dados serão usados automaticamente ao criar novas instâncias de WhatsApp para qualquer organização.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -99,19 +99,19 @@ export default function GlobalSettings() {
                     value={form.api_host}
                     onChange={(e) => setForm({ ...form, api_host: e.target.value })}
                   />
-                  <p className="text-xs text-muted-foreground">Endereço do servidor da Evolution API.</p>
+                  <p className="text-xs text-muted-foreground">Endereço do servidor da API de WhatsApp.</p>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="global_api_key" className="flex items-center gap-2"><Key className="h-4 w-4" /> Global API Key</Label>
                   <Input
                     id="global_api_key"
-                    placeholder="Chave de segurança da Evolution"
+                    placeholder="Chave de segurança da API"
                     value={form.global_api_key}
                     onChange={(e) => setForm({ ...form, global_api_key: e.target.value })}
                     type="password"
                   />
-                  <p className="text-xs text-muted-foreground">Chave de autenticação da Evolution API.</p>
+                  <p className="text-xs text-muted-foreground">Chave de autenticação da API de WhatsApp.</p>
                 </div>
 
                 <div className="space-y-2">

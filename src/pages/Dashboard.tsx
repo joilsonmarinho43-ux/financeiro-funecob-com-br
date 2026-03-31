@@ -1,4 +1,4 @@
-import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, X } from "lucide-react";
+import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, X, Bell } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -242,6 +242,32 @@ export default function Dashboard() {
         .select("id, amount, due_date, status, clients(name, phone), plans(name)")
         .eq("organization_id", organizationId)
         .eq("status", "vencido")
+        .order("due_date", { ascending: true })
+        .limit(20);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!organizationId,
+  });
+
+  // Active reminders (clients notified 10 days before due date)
+  const { data: activeReminders } = useQuery({
+    queryKey: ["dashboard-active-reminders", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      const now = new Date();
+      const tenDaysFromNow = new Date(now);
+      tenDaysFromNow.setDate(tenDaysFromNow.getDate() + 10);
+      const todayStr = now.toISOString().split("T")[0];
+      const futureStr = tenDaysFromNow.toISOString().split("T")[0];
+
+      const { data, error } = await supabase
+        .from("invoices")
+        .select("id, amount, due_date, clients(name, phone), plans(name)")
+        .eq("organization_id", organizationId)
+        .eq("status", "aberto")
+        .gt("due_date", todayStr)
+        .lte("due_date", futureStr)
         .order("due_date", { ascending: true })
         .limit(20);
       if (error) throw error;
@@ -607,6 +633,59 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       )}
+
+      {/* Lembretes Ativos — clientes com vencimento nos próximos 10 dias */}
+      <Card className="border-0 shadow-sm overflow-hidden">
+        <div className="bg-warning px-4 py-3 flex items-center gap-2">
+          <Bell className="h-4 w-4 text-warning-foreground" />
+          <div>
+            <h3 className="font-semibold text-sm text-warning-foreground">Lembretes Ativos</h3>
+            <p className="text-xs text-warning-foreground/80">Clientes com vencimento nos próximos 10 dias</p>
+          </div>
+        </div>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Cliente</TableHead>
+                  <TableHead className="text-xs">Vencimento</TableHead>
+                  <TableHead className="text-xs">Valor</TableHead>
+                  <TableHead className="text-xs">Plano</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(!activeReminders || activeReminders.length === 0) ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-6">
+                      Nenhum vencimento nos próximos 10 dias
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  activeReminders.map((inv) => (
+                    <TableRow key={inv.id}>
+                      <TableCell className="text-xs font-medium text-foreground">
+                        {(inv.clients as any)?.name ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px] border-warning/50 text-warning">
+                          {new Date(inv.due_date).toLocaleDateString("pt-BR")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs font-medium">
+                        {Number(inv.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </TableCell>
+                      <TableCell className="text-[10px] text-muted-foreground">
+                        {(inv.plans as any)?.name ?? "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Clientes com Plano Vencido */}
       <Card className="border-0 shadow-sm overflow-hidden">

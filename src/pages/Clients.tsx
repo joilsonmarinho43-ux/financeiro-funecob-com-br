@@ -143,21 +143,23 @@ export default function Clients() {
         const invoices: TablesInsert<"invoices">[] = [];
 
         if (form.billing_type === "recorrencia") {
-          // Generate 12 months of recurring invoices
-          for (let i = 0; i < 12; i++) {
-            const dueDate = new Date(now.getFullYear(), now.getMonth() + i, dueDay);
-            invoices.push({
-              client_id: clientId,
-              organization_id: organizationId,
-              plan_id: form.plan_id || null,
-              amount: invoiceAmount,
-              due_date: format(dueDate, "yyyy-MM-dd"),
-              description: selectedPlan
-                ? `${selectedPlan.name} - Parcela ${i + 1}/12`
-                : `Mensalidade - Parcela ${i + 1}/12`,
-              status: "aberto",
-            });
+          // Generate only the first invoice for recurring billing
+          const dueDate = new Date(now.getFullYear(), now.getMonth(), dueDay);
+          // If due day already passed this month, start next month
+          if (dueDate <= now) {
+            dueDate.setMonth(dueDate.getMonth() + 1);
           }
+          invoices.push({
+            client_id: clientId,
+            organization_id: organizationId,
+            plan_id: form.plan_id || null,
+            amount: invoiceAmount,
+            due_date: format(dueDate, "yyyy-MM-dd"),
+            description: selectedPlan
+              ? `${selectedPlan.name} - Mensalidade`
+              : `Mensalidade`,
+            status: "aberto",
+          });
         } else {
           // Carnê with custom number of installments
           const totalInstallments = parseInt(form.carne_installments) || 12;
@@ -364,8 +366,8 @@ export default function Clients() {
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
-                            <SelectContent>
-                              {[1, 5, 10, 15, 20, 25].map((d) => (
+                            <SelectContent className="max-h-60">
+                              {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
                                 <SelectItem key={d} value={String(d)}>
                                   Dia {d}
                                 </SelectItem>
@@ -395,7 +397,7 @@ export default function Clients() {
                               <Repeat className="h-3.5 w-3.5 text-primary" /> Recorrência
                             </p>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              Gera 12 faturas mensais automáticas
+                              Cobrança mensal contínua
                             </p>
                           </div>
                         </label>
@@ -434,16 +436,18 @@ export default function Clients() {
                       {invoiceAmount > 0 && (
                         <div className="rounded-lg bg-muted/50 border border-border p-3 text-sm space-y-1">
                           <p className="font-medium text-foreground">Resumo da cobrança:</p>
-                          <p className="text-muted-foreground">
+                        <p className="text-muted-foreground">
                             {form.billing_type === "recorrencia"
-                              ? `12× de ${formatCurrency(invoiceAmount)} (mensal)`
+                              ? `${formatCurrency(invoiceAmount)}/mês (primeira fatura gerada automaticamente)`
                               : `${form.carne_installments}× de ${formatCurrency(invoiceAmount)}`}
                           </p>
-                          <p className="text-muted-foreground">
-                            Total: {formatCurrency(
-                              invoiceAmount * (form.billing_type === "recorrencia" ? 12 : parseInt(form.carne_installments) || 12)
-                            )}
-                          </p>
+                          {form.billing_type === "carne" && (
+                            <p className="text-muted-foreground">
+                              Total: {formatCurrency(
+                                invoiceAmount * (parseInt(form.carne_installments) || 12)
+                              )}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>

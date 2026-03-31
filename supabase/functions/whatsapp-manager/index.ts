@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get global Evolution API settings
+    // Get global API settings
     const { data: globalSettings } = await supabase
       .from("global_settings")
       .select("key, value")
@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
 
     if (!apiHost || !globalApiKey) {
       return new Response(JSON.stringify({ 
-        error: "Evolution API não configurada. Vá em Configurações Globais e preencha o API Host e a Global API Key." 
+        error: "API de WhatsApp não configurada. Vá em Configurações Globais e preencha o API Host e a Global API Key." 
       }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Create instance on Evolution API
+      // Create instance on API
       const createResp = await fetch(`${baseUrl}/instance/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: globalApiKey },
@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
 
       if (!createResp.ok) {
         const errText = await createResp.text();
-        console.error("Evolution create error:", errText);
+        console.error("API create error:", errText);
         // If instance already exists, proceed to connect
         if (errText.includes("already") || errText.includes("exists")) {
           // Instance exists, just connect
@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
         createData = await createResp.json();
       } catch {}
 
-      // Save instance in DB with Evolution API credentials
+      // Save instance in DB
       const { data: dbInstance, error: dbErr } = await supabase
         .from("whatsapp_instances")
         .insert({
@@ -263,7 +263,7 @@ Deno.serve(async (req) => {
       const statusData = await statusResp.json();
       const state = statusData?.instance?.state || statusData?.state || "disconnected";
 
-      // Map Evolution API states to our states
+      // Map API states to our states
       let mappedStatus = "disconnected";
       if (state === "open" || state === "connected") {
         mappedStatus = "connected";
