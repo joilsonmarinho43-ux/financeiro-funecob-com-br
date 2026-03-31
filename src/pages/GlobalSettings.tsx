@@ -106,7 +106,7 @@ export default function GlobalSettings() {
                   <Label htmlFor="global_api_key" className="flex items-center gap-2"><Key className="h-4 w-4" /> Global API Key</Label>
                   <Input
                     id="global_api_key"
-                    placeholder="Chave de segurança da Evolution"
+                    placeholder="Chave de segurança da API"
                     value={form.global_api_key}
                     onChange={(e) => setForm({ ...form, global_api_key: e.target.value })}
                     type="password"
