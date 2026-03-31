@@ -28,7 +28,7 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import {
   Search, CalendarIcon, CheckCircle2, Receipt, DollarSign,
-  AlertTriangle, Clock, Download, FileSpreadsheet, FileText,
+  AlertTriangle, Clock, Download, FileSpreadsheet, FileText, Send,
 } from "lucide-react";
 import { exportToExcel, exportToPDF } from "@/lib/exportInvoices";
 

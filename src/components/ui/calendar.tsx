@@ -1,9 +1,67 @@
 import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { DayPicker } from "react-day-picker";
+import { DayPicker, CaptionProps, useNavigation } from "react-day-picker";
+import { format, setMonth, setYear } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+function CustomCaption(props: CaptionProps) {
+  const { goToMonth } = useNavigation();
+  const currentMonth = props.displayMonth;
+
+  const months = Array.from({ length: 12 }, (_, i) => ({
+    value: String(i),
+    label: format(new Date(2024, i, 1), "LLLL", { locale: ptBR }),
+  }));
+
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 21 }, (_, i) => currentYear - 5 + i);
+
+  return (
+    <div className="flex items-center justify-between px-1 pt-1 gap-1">
+      <Select
+        value={String(currentMonth.getMonth())}
+        onValueChange={(v) => goToMonth(setMonth(currentMonth, parseInt(v)))}
+      >
+        <SelectTrigger className="h-7 text-xs flex-1 min-w-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="max-h-60">
+          {months.map((m) => (
+            <SelectItem key={m.value} value={m.value} className="text-xs capitalize">
+              {m.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={String(currentMonth.getFullYear())}
+        onValueChange={(v) => goToMonth(setYear(currentMonth, parseInt(v)))}
+      >
+        <SelectTrigger className="h-7 text-xs w-[72px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="max-h-60">
+          {years.map((y) => (
+            <SelectItem key={y} value={String(y)} className="text-xs">
+              {y}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
@@ -16,7 +74,7 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: C
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
         month: "space-y-4",
         caption: "flex justify-center pt-1 relative items-center",
-        caption_label: "text-sm font-medium",
+        caption_label: "text-sm font-medium hidden",
         nav: "space-x-1 flex items-center",
         nav_button: cn(
           buttonVariants({ variant: "outline" }),
@@ -42,6 +100,7 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: C
         ...classNames,
       }}
       components={{
+        Caption: CustomCaption,
         IconLeft: ({ ..._props }) => <ChevronLeft className="h-4 w-4" />,
         IconRight: ({ ..._props }) => <ChevronRight className="h-4 w-4" />,
       }}

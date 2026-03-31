@@ -355,7 +355,7 @@ function ApiKeySection({ organizationId }: { organizationId: string | null }) {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const endpointUrl = `${window.location.origin.replace("localhost:8080", "jxhgssqzyhrlfpvlqliv.supabase.co")}/functions/v1/bip-receiver`;
+  const endpointUrl = `https://jxhgssqzyhrlfpvlqliv.supabase.co/functions/v1/bip-receiver`;
 
   return (
     <Card className="border-0 shadow-sm">
