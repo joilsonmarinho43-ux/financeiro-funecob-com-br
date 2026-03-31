@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get global Evolution API settings
+    // Get global API settings
     const { data: globalSettings } = await supabase
       .from("global_settings")
       .select("key, value")
