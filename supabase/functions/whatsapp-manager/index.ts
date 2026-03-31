@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
 
       if (!createResp.ok) {
         const errText = await createResp.text();
-        console.error("Evolution create error:", errText);
+        console.error("API create error:", errText);
         // If instance already exists, proceed to connect
         if (errText.includes("already") || errText.includes("exists")) {
           // Instance exists, just connect
