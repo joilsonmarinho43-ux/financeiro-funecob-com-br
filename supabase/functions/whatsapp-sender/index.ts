@@ -91,7 +91,6 @@ Deno.serve(async (req) => {
             textMessage: { text: item.message },
           }),
         });
-        });
 
         if (!response.ok) {
           const errorBody = await response.text();
