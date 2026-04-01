@@ -138,31 +138,73 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">Nenhuma mensagem encontrada.</div>
       ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Telefone</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Mensagem</TableHead>
-                <TableHead>Direção</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Data</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((m: any) => (
-                <TableRow key={m.id}>
-                  <TableCell className="font-mono text-sm">{m.phone}</TableCell>
-                  <TableCell>{m.clients?.name || "—"}</TableCell>
-                  <TableCell className="max-w-[200px] truncate">{m.message}</TableCell>
-                  <TableCell>{m.direction === "outgoing" ? "Saída" : "Entrada"}</TableCell>
-                  <TableCell>{statusBadge(m.status)}</TableCell>
-                  <TableCell className="text-sm">{format(parseISO(m.created_at), "dd/MM/yy HH:mm")}</TableCell>
+        <div className="space-y-4">
+          {/* Queue status panel */}
+          {queueItems.length > 0 && (
+            <Card className="border-warning/30 bg-warning/5">
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Clock className="h-4 w-4" /> Fila de Processamento ({queueItems.filter((q: any) => q.status === "queued" || q.status === "sending").length} pendentes)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Telefone</TableHead>
+                        <TableHead>Mensagem</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Erro VPS</TableHead>
+                        <TableHead>Data</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {queueItems.slice(0, 20).map((q: any) => (
+                        <TableRow key={q.id}>
+                          <TableCell className="font-mono text-sm">{q.phone}</TableCell>
+                          <TableCell className="max-w-[200px] truncate">{q.message}</TableCell>
+                          <TableCell>{statusBadge(q.status)}</TableCell>
+                          <TableCell className="max-w-[250px] text-xs text-destructive">
+                            {q.error_message || "—"}
+                          </TableCell>
+                          <TableCell className="text-sm">{format(parseISO(q.created_at), "dd/MM/yy HH:mm")}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Sent messages history */}
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Telefone</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Mensagem</TableHead>
+                  <TableHead>Direção</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Data</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((m: any) => (
+                  <TableRow key={m.id}>
+                    <TableCell className="font-mono text-sm">{m.phone}</TableCell>
+                    <TableCell>{m.clients?.name || "—"}</TableCell>
+                    <TableCell className="max-w-[200px] truncate">{m.message}</TableCell>
+                    <TableCell>{m.direction === "outgoing" ? "Saída" : "Entrada"}</TableCell>
+                    <TableCell>{statusBadge(m.status)}</TableCell>
+                    <TableCell className="text-sm">{format(parseISO(m.created_at), "dd/MM/yy HH:mm")}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 
