@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { LogIn, UserPlus } from "lucide-react";
+import logoFunecob from "@/assets/logo-funecob.png";
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
