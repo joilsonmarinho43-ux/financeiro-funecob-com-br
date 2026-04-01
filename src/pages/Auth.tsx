@@ -46,7 +46,6 @@ export default function Auth() {
           <h1 className="text-2xl font-bold text-foreground">FuneCob</h1>
           <p className="text-sm text-muted-foreground">Sistema de Cobrança</p>
         </CardHeader>
-        </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
