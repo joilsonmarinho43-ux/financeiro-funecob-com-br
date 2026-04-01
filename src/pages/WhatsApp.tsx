@@ -78,18 +78,20 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
 
   const sendMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("whatsapp_messages").insert({
+      // Insert directly into whatsapp_queue so the sender picks it up immediately
+      const phone = form.phone.replace(/\D/g, "");
+      const { error } = await supabase.from("whatsapp_queue").insert({
         organization_id: organizationId,
-        phone: form.phone,
+        phone,
         message: form.message,
-        direction: "outgoing",
-        status: "pending",
+        status: "queued",
       });
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp-messages"] });
-      toast({ title: "Mensagem adicionada à fila!" });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-queue"] });
+      toast({ title: "Mensagem enviada para a fila de processamento!" });
       setDialogOpen(false);
       setForm({ phone: "", message: "" });
     },
