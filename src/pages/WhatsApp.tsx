@@ -62,6 +62,23 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ phone: "", message: "" });
 
+  // Show queue items (with error details) merged with sent messages
+  const { data: queueItems = [] } = useQuery({
+    queryKey: ["whatsapp-queue", organizationId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_queue")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!organizationId,
+    refetchInterval: 10000,
+  });
+
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["whatsapp-messages", organizationId],
     queryFn: async () => {
