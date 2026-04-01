@@ -34,6 +34,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Get global API settings for fallback
+    const { data: globalSettings } = await supabase
+      .from("global_settings")
+      .select("key, value")
+      .in("key", ["api_host", "global_api_key"]);
+
+    const gs: Record<string, string> = {};
+    (globalSettings || []).forEach((s: any) => { gs[s.key] = s.value; });
+
     let sent = 0;
     let failed = 0;
 
@@ -54,22 +63,28 @@ Deno.serve(async (req) => {
           .limit(1)
           .maybeSingle();
 
-        if (!instance || !instance.api_url || !instance.api_key) {
+        // Resolve API URL and key: instance > global settings
+        const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
+        const apiKey = instance?.api_key || gs.global_api_key || "";
+        const instanceName = instance?.name || "";
+
+        if (!apiUrl || !apiKey || !instanceName) {
           throw new Error("Nenhuma instância WhatsApp conectada com API configurada");
         }
 
-        // Format phone: ensure it starts with country code, remove non-digits
+        // Format phone: ensure only digits, must start with country code
         const phone = item.phone.replace(/\D/g, "");
 
-        // Send via WhatsApp API (Evolution API / WPPConnect compatible)
-        const apiUrl = instance.api_url.replace(/\/$/, "");
-        const sendUrl = `${apiUrl}/message/sendText/${instance.name}`;
+        // Send via Evolution API endpoint
+        const sendUrl = `${apiUrl}/message/sendText/${instanceName}`;
+
+        console.log(`[whatsapp-sender] Sending to ${phone} via ${sendUrl}`);
 
         const response = await fetch(sendUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            apikey: instance.api_key,
+            apikey: apiKey,
           },
           body: JSON.stringify({
             number: phone,
@@ -79,8 +94,11 @@ Deno.serve(async (req) => {
 
         if (!response.ok) {
           const errorBody = await response.text();
-          throw new Error(`API error ${response.status}: ${errorBody}`);
+          throw new Error(`API ${response.status}: ${errorBody}`);
         }
+
+        const responseData = await response.text();
+        console.log(`[whatsapp-sender] Success for ${phone}:`, responseData);
 
         // Mark as sent
         await supabase
@@ -99,13 +117,12 @@ Deno.serve(async (req) => {
           message: item.message,
           direction: "outgoing",
           status: "sent",
-          instance_id: instance.id,
+          instance_id: instance?.id || null,
           sent_at: new Date().toISOString(),
         });
 
         // Update billing_reminder status if this came from billing
         if (item.campaign_id === null) {
-          // Try to find and update the matching pending reminder
           const { data: reminder } = await supabase
             .from("billing_reminders")
             .select("id")
@@ -126,7 +143,7 @@ Deno.serve(async (req) => {
         sent++;
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Unknown error";
-        console.error(`Failed to send to ${item.phone}:`, errorMsg);
+        console.error(`[whatsapp-sender] Failed ${item.phone}:`, errorMsg);
 
         await supabase
           .from("whatsapp_queue")
@@ -148,7 +165,7 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("WhatsApp sender error:", error);
+    console.error("[whatsapp-sender] Fatal error:", error);
     return new Response(
       JSON.stringify({
         error: error instanceof Error ? error.message : "Unknown error",
