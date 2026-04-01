@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { LogIn, UserPlus } from "lucide-react";
+import logoFunecob from "@/assets/logo-funecob.png";
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -41,9 +42,7 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md border-0 shadow-lg">
         <CardHeader className="text-center pb-2">
-          <div className="mx-auto h-14 w-14 rounded-2xl gradient-primary flex items-center justify-center mb-4">
-            <span className="text-primary-foreground font-bold text-xl">FC</span>
-          </div>
+          <img src={logoFunecob} alt="FuneCob" className="mx-auto h-24 w-auto mb-2" />
           <h1 className="text-2xl font-bold text-foreground">FuneCob</h1>
           <p className="text-sm text-muted-foreground">Sistema de Cobrança</p>
         </CardHeader>
