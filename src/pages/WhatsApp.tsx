@@ -46,7 +46,7 @@ const statusBadge = (status: string) => {
     running: { cls: "bg-primary/10 text-primary border-0", label: "Enviando" },
     completed: { cls: "bg-success/10 text-success border-0", label: "Concluída" },
     cancelled: { cls: "bg-destructive/10 text-destructive border-0", label: "Cancelada" },
-    queued: { cls: "bg-muted text-muted-foreground border-0", label: "Na fila" },
+    retry: { cls: "bg-warning/10 text-warning border-0", label: "Retry" },
     sending: { cls: "bg-warning/10 text-warning border-0", label: "Enviando" },
   };
   const s = map[status] || { cls: "bg-muted text-muted-foreground border-0", label: status };
