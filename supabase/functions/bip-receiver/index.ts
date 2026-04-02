@@ -146,14 +146,22 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Find matching invoice
-    const targetDate = `${year}-${month}`;
+    // Find matching invoice — use date range for the target month
+    const monthStart = `${year}-${month}-01`;
+    const monthNum = parseInt(month);
+    const yearNum = parseInt(year);
+    const nextMonth = monthNum === 12 ? 1 : monthNum + 1;
+    const nextYear = monthNum === 12 ? yearNum + 1 : yearNum;
+    const monthEnd = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
+
     const { data: invoices } = await supabase
       .from("invoices")
       .select("*")
       .eq("client_id", client.id)
       .eq("status", "aberto")
-      .like("due_date", `${targetDate}%`)
+      .gte("due_date", monthStart)
+      .lt("due_date", monthEnd)
+      .order("due_date", { ascending: true })
       .limit(1);
 
     const invoice = invoices?.[0];
