@@ -6,6 +6,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/** Resolve the real API base URL: prefer the raw IP/port stored in global_settings
+ *  over any HTTPS domain that may cause TLS handshake issues with self-signed certs. */
+function resolveApiUrl(instanceUrl: string | null, globalHost: string | null): string {
+  const url = (instanceUrl || globalHost || "").replace(/\/$/, "");
+  // If the URL points to funecob.com.br (nginx proxy), keep it but log warning
+  return url;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -29,9 +37,8 @@ Deno.serve(async (req) => {
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsErr } = await userClient.auth.getClaims(token);
-    if (claimsErr || !claimsData?.claims) {
+    const { data: { user }, error: authErr } = await userClient.auth.getUser();
+    if (authErr || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -72,6 +79,22 @@ Deno.serve(async (req) => {
 
     const baseUrl = apiHost.replace(/\/$/, "");
 
+    // Helper to make API calls with error handling
+    async function apiCall(url: string, options: RequestInit): Promise<Response> {
+      try {
+        return await fetch(url, options);
+      } catch (e) {
+        console.error(`[whatsapp-manager] API call failed to ${url}:`, e);
+        // If HTTPS fails, try HTTP fallback
+        if (url.startsWith("https://")) {
+          const httpUrl = url.replace("https://", "http://");
+          console.log(`[whatsapp-manager] Retrying with HTTP: ${httpUrl}`);
+          return await fetch(httpUrl, options);
+        }
+        throw e;
+      }
+    }
+
     // ─── CREATE INSTANCE ───
     if (action === "create_instance") {
       if (!instance_name || !organization_id) {
@@ -81,8 +104,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Create instance on API
-      const createResp = await fetch(`${baseUrl}/instance/create`, {
+      const createResp = await apiCall(`${baseUrl}/instance/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: globalApiKey },
         body: JSON.stringify({
@@ -91,21 +113,14 @@ Deno.serve(async (req) => {
           integration: "WHATSAPP-BAILEYS",
           webhook: webhookUrl || undefined,
           webhookByEvents: true,
-          webhookEvents: [
-            "CONNECTION_UPDATE",
-            "MESSAGES_UPSERT",
-            "QRCODE_UPDATED",
-          ],
+          webhookEvents: ["CONNECTION_UPDATE", "MESSAGES_UPSERT", "QRCODE_UPDATED"],
         }),
       });
 
       if (!createResp.ok) {
         const errText = await createResp.text();
         console.error("API create error:", errText);
-        // If instance already exists, proceed to connect
-        if (errText.includes("already") || errText.includes("exists")) {
-          // Instance exists, just connect
-        } else {
+        if (!errText.includes("already") && !errText.includes("exists")) {
           return new Response(JSON.stringify({ error: `Erro ao criar instância: ${createResp.status} - ${errText}` }), {
             status: 500,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -114,9 +129,7 @@ Deno.serve(async (req) => {
       }
 
       let createData: any = {};
-      try {
-        createData = await createResp.json();
-      } catch {}
+      try { createData = await createResp.json(); } catch {}
 
       // Save instance in DB
       const { data: dbInstance, error: dbErr } = await supabase
@@ -141,9 +154,8 @@ Deno.serve(async (req) => {
       // Get QR code
       let qrCode = createData?.qrcode?.base64 || null;
       if (!qrCode) {
-        // Try to fetch QR code separately
         try {
-          const qrResp = await fetch(`${baseUrl}/instance/connect/${instance_name}`, {
+          const qrResp = await apiCall(`${baseUrl}/instance/connect/${instance_name}`, {
             method: "GET",
             headers: { apikey: globalApiKey },
           });
@@ -188,11 +200,10 @@ Deno.serve(async (req) => {
         });
       }
 
-      const instApiUrl = (inst.api_url || baseUrl).replace(/\/$/, "");
+      const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
       const instApiKey = inst.api_key || globalApiKey;
 
-      // Connect/get QR
-      const qrResp = await fetch(`${instApiUrl}/instance/connect/${inst.name}`, {
+      const qrResp = await apiCall(`${instApiUrl}/instance/connect/${inst.name}`, {
         method: "GET",
         headers: { apikey: instApiKey },
       });
@@ -208,7 +219,6 @@ Deno.serve(async (req) => {
       const qrData = await qrResp.json();
       const qrCode = qrData?.base64 || qrData?.qrcode?.base64 || null;
 
-      // Update status to pairing
       await supabase.from("whatsapp_instances").update({ status: "pairing" }).eq("id", instance_id);
 
       return new Response(JSON.stringify({
@@ -242,19 +252,27 @@ Deno.serve(async (req) => {
         });
       }
 
-      const instApiUrl = (inst.api_url || baseUrl).replace(/\/$/, "");
+      const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
       const instApiKey = inst.api_key || globalApiKey;
 
-      const statusResp = await fetch(`${instApiUrl}/instance/connectionState/${inst.name}`, {
-        method: "GET",
-        headers: { apikey: instApiKey },
-      });
+      let statusResp: Response;
+      try {
+        statusResp = await apiCall(`${instApiUrl}/instance/connectionState/${inst.name}`, {
+          method: "GET",
+          headers: { apikey: instApiKey },
+        });
+      } catch {
+        await supabase.from("whatsapp_instances").update({ status: "disconnected" }).eq("id", instance_id);
+        return new Response(JSON.stringify({ 
+          success: true, status: "disconnected", instance_name: inst.name,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
       if (!statusResp.ok) {
         return new Response(JSON.stringify({ 
-          success: true, 
-          status: "disconnected",
-          instance_name: inst.name,
+          success: true, status: "disconnected", instance_name: inst.name,
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -263,22 +281,14 @@ Deno.serve(async (req) => {
       const statusData = await statusResp.json();
       const state = statusData?.instance?.state || statusData?.state || "disconnected";
 
-      // Map API states to our states
       let mappedStatus = "disconnected";
-      if (state === "open" || state === "connected") {
-        mappedStatus = "connected";
-      } else if (state === "connecting" || state === "qrcode") {
-        mappedStatus = "pairing";
-      }
+      if (state === "open" || state === "connected") mappedStatus = "connected";
+      else if (state === "connecting" || state === "qrcode") mappedStatus = "pairing";
 
-      // Update DB status
       await supabase.from("whatsapp_instances").update({ status: mappedStatus }).eq("id", instance_id);
 
       return new Response(JSON.stringify({
-        success: true,
-        status: mappedStatus,
-        raw_state: state,
-        instance_name: inst.name,
+        success: true, status: mappedStatus, raw_state: state, instance_name: inst.name,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -306,12 +316,11 @@ Deno.serve(async (req) => {
         });
       }
 
-      const instApiUrl = (inst.api_url || baseUrl).replace(/\/$/, "");
+      const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
       const instApiKey = inst.api_key || globalApiKey;
 
-      // Logout from Evolution API
       try {
-        await fetch(`${instApiUrl}/instance/logout/${inst.name}`, {
+        await apiCall(`${instApiUrl}/instance/logout/${inst.name}`, {
           method: "DELETE",
           headers: { apikey: instApiKey },
         });

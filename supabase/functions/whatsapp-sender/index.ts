@@ -6,6 +6,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const MAX_RETRIES = 3;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -16,12 +18,12 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Get queued messages ready to send (scheduled_for <= now or null)
+    // Get queued + failed (retry) messages
     const now = new Date().toISOString();
     const { data: queueItems, error: queueErr } = await supabase
       .from("whatsapp_queue")
       .select("*")
-      .eq("status", "queued")
+      .or("status.eq.queued,status.eq.retry")
       .or(`scheduled_for.is.null,scheduled_for.lte.${now}`)
       .order("created_at", { ascending: true })
       .limit(20);
@@ -48,6 +50,19 @@ Deno.serve(async (req) => {
 
     for (const item of queueItems) {
       try {
+        // Parse retry count from error_message
+        const retryCount = (item.error_message?.match(/\[retry:(\d+)\]/)?.[1] || "0");
+        const currentRetry = parseInt(retryCount);
+
+        if (currentRetry >= MAX_RETRIES) {
+          await supabase
+            .from("whatsapp_queue")
+            .update({ status: "failed", error_message: `Máximo de ${MAX_RETRIES} tentativas excedido. ${item.error_message || ""}` })
+            .eq("id", item.id);
+          failed++;
+          continue;
+        }
+
         // Mark as sending
         await supabase
           .from("whatsapp_queue")
@@ -72,13 +87,10 @@ Deno.serve(async (req) => {
           throw new Error("Nenhuma instância WhatsApp conectada com API configurada");
         }
 
-        // Format phone: ensure only digits, must start with country code
         const phone = item.phone.replace(/\D/g, "");
-
-        // Send via Evolution API endpoint
         const sendUrl = `${apiUrl}/message/sendText/${instanceName}`;
 
-        console.log(`[whatsapp-sender] Sending to ${phone} via ${sendUrl}`);
+        console.log(`[whatsapp-sender] Sending to ${phone} via ${sendUrl} (attempt ${currentRetry + 1})`);
 
         const response = await fetch(sendUrl, {
           method: "POST",
@@ -98,7 +110,7 @@ Deno.serve(async (req) => {
         }
 
         const responseData = await response.text();
-        console.log(`[whatsapp-sender] Success for ${phone}:`, responseData);
+        console.log(`[whatsapp-sender] Success for ${phone}`);
 
         // Mark as sent
         await supabase
@@ -110,7 +122,7 @@ Deno.serve(async (req) => {
           })
           .eq("id", item.id);
 
-        // Also log in whatsapp_messages
+        // Log in whatsapp_messages
         await supabase.from("whatsapp_messages").insert({
           organization_id: item.organization_id,
           phone: item.phone,
@@ -121,42 +133,40 @@ Deno.serve(async (req) => {
           sent_at: new Date().toISOString(),
         });
 
-        // Update billing_reminder status if this came from billing
-        if (item.campaign_id === null) {
-          const { data: reminder } = await supabase
-            .from("billing_reminders")
-            .select("id")
-            .eq("organization_id", item.organization_id)
-            .eq("status", "pending")
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (reminder) {
-            await supabase
-              .from("billing_reminders")
-              .update({ status: "sent", sent_at: new Date().toISOString() })
-              .eq("id", reminder.id);
-          }
-        }
-
         sent++;
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Unknown error";
-        console.error(`[whatsapp-sender] Failed ${item.phone}:`, errorMsg);
+        const retryCount = parseInt(item.error_message?.match(/\[retry:(\d+)\]/)?.[1] || "0");
+        const nextRetry = retryCount + 1;
 
-        await supabase
-          .from("whatsapp_queue")
-          .update({
-            status: "failed",
-            error_message: errorMsg,
-          })
-          .eq("id", item.id);
+        console.error(`[whatsapp-sender] Failed ${item.phone} (attempt ${nextRetry}):`, errorMsg);
+
+        if (nextRetry < MAX_RETRIES) {
+          // Schedule retry with exponential backoff (30s, 60s, 120s)
+          const backoffMs = 30000 * Math.pow(2, retryCount);
+          const retryAt = new Date(Date.now() + backoffMs).toISOString();
+          await supabase
+            .from("whatsapp_queue")
+            .update({
+              status: "retry",
+              scheduled_for: retryAt,
+              error_message: `[retry:${nextRetry}] ${errorMsg}`,
+            })
+            .eq("id", item.id);
+        } else {
+          await supabase
+            .from("whatsapp_queue")
+            .update({
+              status: "failed",
+              error_message: `[retry:${nextRetry}] ${errorMsg}`,
+            })
+            .eq("id", item.id);
+        }
 
         failed++;
       }
 
-      // Small delay between messages (anti-ban)
+      // Anti-ban delay
       await new Promise((r) => setTimeout(r, 2000));
     }
 
