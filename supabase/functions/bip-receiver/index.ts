@@ -125,6 +125,27 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Idempotency: check if this barcode was already processed
+    const { data: existingBip } = await supabase
+      .from("bips")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .eq("barcode_raw", barcode)
+      .eq("action", action)
+      .eq("status", "processed")
+      .maybeSingle();
+
+    if (existingBip) {
+      return new Response(JSON.stringify({
+        success: true,
+        duplicate: true,
+        bip_id: existingBip.id,
+        message: "Bip já processado anteriormente",
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Find matching invoice
     const targetDate = `${year}-${month}`;
     const { data: invoices } = await supabase
