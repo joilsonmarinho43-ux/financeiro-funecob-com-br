@@ -973,6 +973,175 @@ function PairTab({ organizationId }: { organizationId: string }) {
   );
 }
 
+// ─── Tab: Configurações Anti-Ban ────────────────────────
+function AntiBanTab({ organizationId }: { organizationId: string }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [config, setConfig] = useState({
+    send_window_start: "08:00",
+    send_window_end: "18:00",
+    max_per_minute: 3,
+    max_per_hour: 60,
+    max_per_day: 500,
+    min_delay: 30,
+    max_delay: 60,
+    randomness_level: "medium",
+    auto_pause_enabled: true,
+    shuffle_order: true,
+  });
+
+  const { data: existing } = useQuery({
+    queryKey: ["whatsapp-send-config", organizationId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_send_config")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!organizationId,
+  });
+
+  useState(() => {
+    if (existing) {
+      setConfig({
+        send_window_start: (existing as any).send_window_start || "08:00",
+        send_window_end: (existing as any).send_window_end || "18:00",
+        max_per_minute: (existing as any).max_per_minute || 3,
+        max_per_hour: (existing as any).max_per_hour || 60,
+        max_per_day: (existing as any).max_per_day || 500,
+        min_delay: (existing as any).min_delay || 30,
+        max_delay: (existing as any).max_delay || 60,
+        randomness_level: (existing as any).randomness_level || "medium",
+        auto_pause_enabled: (existing as any).auto_pause_enabled ?? true,
+        shuffle_order: (existing as any).shuffle_order ?? true,
+      });
+    }
+  });
+
+  // Sync existing data
+  if (existing && config.send_window_start === "08:00" && (existing as any).send_window_start !== "08:00:00") {
+    // will update on next effect
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const payload = { organization_id: organizationId, ...config } as any;
+      if (existing) {
+        const { error } = await supabase.from("whatsapp_send_config").update(payload).eq("id", (existing as any).id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("whatsapp_send_config").insert(payload);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-send-config"] });
+      toast({ title: "Configurações anti-ban salvas!" });
+    },
+    onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <Card className="border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-warning" /> Proteção Anti-Ban
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Send Window */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Horário início</Label>
+              <Input type="time" value={config.send_window_start} onChange={(e) => setConfig({ ...config, send_window_start: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>Horário fim</Label>
+              <Input type="time" value={config.send_window_end} onChange={(e) => setConfig({ ...config, send_window_end: e.target.value })} />
+            </div>
+          </div>
+
+          {/* Rate Limits */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Máx/minuto</Label>
+              <Input type="number" min="1" max="10" value={config.max_per_minute} onChange={(e) => setConfig({ ...config, max_per_minute: parseInt(e.target.value) || 3 })} />
+            </div>
+            <div className="space-y-2">
+              <Label>Máx/hora</Label>
+              <Input type="number" min="1" max="200" value={config.max_per_hour} onChange={(e) => setConfig({ ...config, max_per_hour: parseInt(e.target.value) || 60 })} />
+            </div>
+            <div className="space-y-2">
+              <Label>Máx/dia</Label>
+              <Input type="number" min="1" max="2000" value={config.max_per_day} onChange={(e) => setConfig({ ...config, max_per_day: parseInt(e.target.value) || 500 })} />
+            </div>
+          </div>
+
+          {/* Delay */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Delay mínimo (seg)</Label>
+              <Input type="number" min="5" max="120" value={config.min_delay} onChange={(e) => setConfig({ ...config, min_delay: parseInt(e.target.value) || 30 })} />
+            </div>
+            <div className="space-y-2">
+              <Label>Delay máximo (seg)</Label>
+              <Input type="number" min="10" max="300" value={config.max_delay} onChange={(e) => setConfig({ ...config, max_delay: parseInt(e.target.value) || 60 })} />
+            </div>
+          </div>
+
+          {/* Randomness */}
+          <div className="space-y-2">
+            <Label>Nível de Aleatoriedade</Label>
+            <Select value={config.randomness_level} onValueChange={(v) => setConfig({ ...config, randomness_level: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Baixo (mensagens iguais)</SelectItem>
+                <SelectItem value="medium">Médio (variação sutil)</SelectItem>
+                <SelectItem value="high">Alto (variação completa + emojis)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Toggles */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-foreground">Pausa automática</p>
+                <p className="text-xs text-muted-foreground">Pausar envios se detectar risco de ban</p>
+              </div>
+              <input type="checkbox" checked={config.auto_pause_enabled} onChange={(e) => setConfig({ ...config, auto_pause_enabled: e.target.checked })}
+                className="h-4 w-4 rounded border-input accent-primary" />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-foreground">Embaralhar ordem</p>
+                <p className="text-xs text-muted-foreground">Ordem aleatória de envio (anti-padrão)</p>
+              </div>
+              <input type="checkbox" checked={config.shuffle_order} onChange={(e) => setConfig({ ...config, shuffle_order: e.target.checked })}
+                className="h-4 w-4 rounded border-input accent-primary" />
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-warning/10 border border-warning/20 p-3 text-sm flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+            <p className="text-muted-foreground">
+              Quanto maior o delay e menor o limite, menor o risco de bloqueio do chip. Recomendamos delay mínimo de 30s e máximo de 3 msgs/minuto.
+            </p>
+          </div>
+
+          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="gradient-primary text-primary-foreground w-full">
+            {saveMutation.isPending ? "Salvando..." : "Salvar Configurações"}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ─── Main Page ──────────────────────────────────────────
 export default function WhatsApp() {
   const { organizationId } = useOrganization();
@@ -987,9 +1156,9 @@ export default function WhatsApp() {
         </div>
 
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="mensagens" className="gap-1.5">
-              <MessageSquare className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Mensagens</span>
+              <MessageSquare className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Msgs</span>
             </TabsTrigger>
             <TabsTrigger value="fila" className="gap-1.5">
               <Send className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Fila</span>
@@ -998,10 +1167,13 @@ export default function WhatsApp() {
               <Radio className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Massa</span>
             </TabsTrigger>
             <TabsTrigger value="campanhas" className="gap-1.5">
-              <Megaphone className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Campanhas</span>
+              <Megaphone className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Camp.</span>
             </TabsTrigger>
             <TabsTrigger value="parear" className="gap-1.5">
               <Smartphone className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Parear</span>
+            </TabsTrigger>
+            <TabsTrigger value="antiban" className="gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Anti-Ban</span>
             </TabsTrigger>
           </TabsList>
 
@@ -1012,6 +1184,7 @@ export default function WhatsApp() {
               <TabsContent value="massa"><BulkTab organizationId={organizationId} /></TabsContent>
               <TabsContent value="campanhas"><CampaignsTab organizationId={organizationId} /></TabsContent>
               <TabsContent value="parear"><PairTab organizationId={organizationId} /></TabsContent>
+              <TabsContent value="antiban"><AntiBanTab organizationId={organizationId} /></TabsContent>
             </>
           )}
         </Tabs>
