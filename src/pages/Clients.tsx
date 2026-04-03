@@ -7,34 +7,22 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
-import { Plus, Search, Pencil, Trash2, Users, CalendarDays, Repeat, BookOpen, Link2, Copy, Check } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Users, CalendarDays, Repeat, BookOpen, Link2, Copy, Check, Send, MessageSquare, CreditCard, Eye } from "lucide-react";
 import { format } from "date-fns";
 
 type Client = Tables<"clients">;
@@ -52,6 +40,8 @@ const emptyForm = {
   due_day: "5",
   billing_type: "recorrencia" as "recorrencia" | "carne",
   carne_installments: "12",
+  status: "ativo",
+  observations: "",
 };
 
 export default function Clients() {
@@ -61,8 +51,11 @@ export default function Clients() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [detailDialog, setDetailDialog] = useState<Client | null>(null);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [msgDialog, setMsgDialog] = useState<{ phone: string; name: string } | null>(null);
+  const [manualMsg, setManualMsg] = useState("");
 
   const { data: clients = [], isLoading } = useQuery({
     queryKey: ["clients", organizationId],
@@ -95,6 +88,23 @@ export default function Clients() {
     enabled: !!organizationId,
   });
 
+  // Client invoices for detail view
+  const { data: clientInvoices = [] } = useQuery({
+    queryKey: ["client-invoices", detailDialog?.id],
+    queryFn: async () => {
+      if (!detailDialog) return [];
+      const { data, error } = await supabase
+        .from("invoices")
+        .select("*")
+        .eq("client_id", detailDialog.id)
+        .order("due_date", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!detailDialog,
+  });
+
   const selectedPlan = plans.find((p) => p.id === form.plan_id);
   const invoiceAmount = form.custom_value
     ? parseFloat(form.custom_value)
@@ -113,6 +123,7 @@ export default function Clients() {
         document: form.document || null,
         address: form.address || null,
         client_code: form.client_code || null,
+        status: form.status || "ativo",
         created_by: user.id,
         organization_id: organizationId,
         collector_id: user.id,
@@ -143,25 +154,18 @@ export default function Clients() {
         const invoices: TablesInsert<"invoices">[] = [];
 
         if (form.billing_type === "recorrencia") {
-          // Generate only the first invoice for recurring billing
           const dueDate = new Date(now.getFullYear(), now.getMonth(), dueDay);
-          // If due day already passed this month, start next month
-          if (dueDate <= now) {
-            dueDate.setMonth(dueDate.getMonth() + 1);
-          }
+          if (dueDate <= now) dueDate.setMonth(dueDate.getMonth() + 1);
           invoices.push({
             client_id: clientId,
             organization_id: organizationId,
             plan_id: form.plan_id || null,
             amount: invoiceAmount,
             due_date: format(dueDate, "yyyy-MM-dd"),
-            description: selectedPlan
-              ? `${selectedPlan.name} - Mensalidade`
-              : `Mensalidade`,
+            description: selectedPlan ? `${selectedPlan.name} - Mensalidade` : `Mensalidade`,
             status: "aberto",
           });
         } else {
-          // Carnê with custom number of installments
           const totalInstallments = parseInt(form.carne_installments) || 12;
           for (let i = 0; i < totalInstallments; i++) {
             const dueDate = new Date(now.getFullYear(), now.getMonth() + i, dueDay);
@@ -189,9 +193,7 @@ export default function Clients() {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-clients"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-financial"] });
-      toast({
-        title: editingClient ? "Cliente atualizado!" : "Cliente cadastrado com faturas geradas!",
-      });
+      toast({ title: editingClient ? "Cliente atualizado!" : "Cliente cadastrado com faturas geradas!" });
       closeDialog();
     },
     onError: (err: Error) => {
@@ -213,6 +215,26 @@ export default function Clients() {
     },
   });
 
+  const sendManualMsgMutation = useMutation({
+    mutationFn: async () => {
+      if (!msgDialog || !organizationId) throw new Error("Dados inválidos");
+      const phone = msgDialog.phone.replace(/\D/g, "");
+      const { error } = await supabase.from("whatsapp_queue").insert({
+        organization_id: organizationId,
+        phone,
+        message: manualMsg,
+        status: "queued",
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Mensagem adicionada à fila!" });
+      setMsgDialog(null);
+      setManualMsg("");
+    },
+    onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+  });
+
   const closeDialog = () => {
     setDialogOpen(false);
     setEditingClient(null);
@@ -229,6 +251,7 @@ export default function Clients() {
       document: client.document || "",
       address: client.address || "",
       client_code: (client as any).client_code || "",
+      status: client.status || "ativo",
     });
     setDialogOpen(true);
   };
@@ -251,12 +274,9 @@ export default function Clients() {
 
   const statusColor = (status: string) => {
     switch (status) {
-      case "ativo":
-        return "bg-success/10 text-success border-0";
-      case "inativo":
-        return "bg-destructive/10 text-destructive border-0";
-      default:
-        return "bg-muted text-muted-foreground border-0";
+      case "ativo": return "bg-success/10 text-success border-0";
+      case "inativo": return "bg-destructive/10 text-destructive border-0";
+      default: return "bg-muted text-muted-foreground border-0";
     }
   };
 
@@ -269,15 +289,12 @@ export default function Clients() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Clientes</h1>
-            <p className="text-sm text-muted-foreground">
-              Gerencie seus clientes cadastrados
-            </p>
+            <p className="text-sm text-muted-foreground">Gerencie seus clientes cadastrados</p>
           </div>
           <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); else setDialogOpen(true); }}>
             <DialogTrigger asChild>
               <Button className="gradient-primary text-primary-foreground">
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Cliente
+                <Plus className="h-4 w-4 mr-2" /> Novo Cliente
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -298,7 +315,6 @@ export default function Clients() {
                     <div className="space-y-2">
                       <Label htmlFor="client_code">Código do Cliente</Label>
                       <Input id="client_code" value={form.client_code} onChange={(e) => setForm({ ...form, client_code: e.target.value })} placeholder="Ex: 0022008" className="font-mono" />
-                      <p className="text-xs text-muted-foreground">Código usado no leitor de barras</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="phone">Telefone</Label>
@@ -319,6 +335,28 @@ export default function Clients() {
                     <Label htmlFor="address">Endereço</Label>
                     <Input id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
                   </div>
+                  {/* Status - visible when editing */}
+                  {editingClient && (
+                    <div className="space-y-2">
+                      <Label>Status</Label>
+                      <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ativo">Ativo</SelectItem>
+                          <SelectItem value="inativo">Inativo</SelectItem>
+                          <SelectItem value="inadimplente">Inadimplente</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {/* Show dates when editing */}
+                  {editingClient && (
+                    <div className="rounded-lg bg-muted/50 border border-border p-3 text-sm space-y-1">
+                      <p className="font-medium text-foreground">Informações</p>
+                      <p className="text-muted-foreground">Cadastrado em: {format(new Date(editingClient.created_at), "dd/MM/yyyy HH:mm")}</p>
+                      <p className="text-muted-foreground">Última atualização: {format(new Date(editingClient.updated_at), "dd/MM/yyyy HH:mm")}</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Plano e Cobrança - somente para novos */}
@@ -328,14 +366,11 @@ export default function Clients() {
                       <p className="text-sm font-semibold text-foreground flex items-center gap-2">
                         <CalendarDays className="h-4 w-4 text-primary" /> Plano e Cobrança
                       </p>
-
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>Plano</Label>
                           <Select value={form.plan_id} onValueChange={(v) => setForm({ ...form, plan_id: v, custom_value: "" })}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione um plano" />
-                            </SelectTrigger>
+                            <SelectTrigger><SelectValue placeholder="Selecione um plano" /></SelectTrigger>
                             <SelectContent>
                               {plans.map((p) => (
                                 <SelectItem key={p.id} value={p.id}>
@@ -347,30 +382,19 @@ export default function Clients() {
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="custom_value">Valor Personalizado (R$)</Label>
-                          <Input
-                            id="custom_value"
-                            type="number"
-                            step="0.01"
-                            min="0"
+                          <Input id="custom_value" type="number" step="0.01" min="0"
                             placeholder={selectedPlan ? formatCurrency(Number(selectedPlan.price)) : "0,00"}
-                            value={form.custom_value}
-                            onChange={(e) => setForm({ ...form, custom_value: e.target.value })}
-                          />
+                            value={form.custom_value} onChange={(e) => setForm({ ...form, custom_value: e.target.value })} />
                         </div>
                       </div>
-
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="due_day">Dia de Vencimento</Label>
+                          <Label>Dia de Vencimento</Label>
                           <Select value={form.due_day} onValueChange={(v) => setForm({ ...form, due_day: v })}>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent className="max-h-60">
                               {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                                <SelectItem key={d} value={String(d)}>
-                                  Dia {d}
-                                </SelectItem>
+                                <SelectItem key={d} value={String(d)}>Dia {d}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
@@ -381,39 +405,19 @@ export default function Clients() {
                     {/* Tipo de Cobrança */}
                     <div className="border-t border-border pt-4 space-y-3">
                       <p className="text-sm font-semibold text-foreground">Tipo de Cobrança</p>
-                      <RadioGroup
-                        value={form.billing_type}
-                        onValueChange={(v: "recorrencia" | "carne") => setForm({ ...form, billing_type: v })}
-                        className="grid grid-cols-2 gap-4"
-                      >
-                        <label
-                          className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${
-                            form.billing_type === "recorrencia" ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"
-                          }`}
-                        >
+                      <RadioGroup value={form.billing_type} onValueChange={(v: "recorrencia" | "carne") => setForm({ ...form, billing_type: v })} className="grid grid-cols-2 gap-4">
+                        <label className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${form.billing_type === "recorrencia" ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"}`}>
                           <RadioGroupItem value="recorrencia" className="mt-0.5" />
                           <div>
-                            <p className="font-medium text-sm text-foreground flex items-center gap-1.5">
-                              <Repeat className="h-3.5 w-3.5 text-primary" /> Recorrência
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Cobrança mensal contínua
-                            </p>
+                            <p className="font-medium text-sm text-foreground flex items-center gap-1.5"><Repeat className="h-3.5 w-3.5 text-primary" /> Recorrência</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Cobrança mensal contínua</p>
                           </div>
                         </label>
-                        <label
-                          className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${
-                            form.billing_type === "carne" ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"
-                          }`}
-                        >
+                        <label className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${form.billing_type === "carne" ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"}`}>
                           <RadioGroupItem value="carne" className="mt-0.5" />
                           <div>
-                            <p className="font-medium text-sm text-foreground flex items-center gap-1.5">
-                              <BookOpen className="h-3.5 w-3.5 text-primary" /> Carnê
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Defina o número de parcelas
-                            </p>
+                            <p className="font-medium text-sm text-foreground flex items-center gap-1.5"><BookOpen className="h-3.5 w-3.5 text-primary" /> Carnê</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Defina o número de parcelas</p>
                           </div>
                         </label>
                       </RadioGroup>
@@ -421,32 +425,20 @@ export default function Clients() {
                       {form.billing_type === "carne" && (
                         <div className="space-y-2 max-w-[200px]">
                           <Label htmlFor="installments">Nº de Parcelas</Label>
-                          <Input
-                            id="installments"
-                            type="number"
-                            min="1"
-                            max="120"
-                            value={form.carne_installments}
-                            onChange={(e) => setForm({ ...form, carne_installments: e.target.value })}
-                          />
+                          <Input id="installments" type="number" min="1" max="120" value={form.carne_installments} onChange={(e) => setForm({ ...form, carne_installments: e.target.value })} />
                         </div>
                       )}
 
-                      {/* Summary */}
                       {invoiceAmount > 0 && (
                         <div className="rounded-lg bg-muted/50 border border-border p-3 text-sm space-y-1">
                           <p className="font-medium text-foreground">Resumo da cobrança:</p>
-                        <p className="text-muted-foreground">
+                          <p className="text-muted-foreground">
                             {form.billing_type === "recorrencia"
                               ? `${formatCurrency(invoiceAmount)}/mês (primeira fatura gerada automaticamente)`
                               : `${form.carne_installments}× de ${formatCurrency(invoiceAmount)}`}
                           </p>
                           {form.billing_type === "carne" && (
-                            <p className="text-muted-foreground">
-                              Total: {formatCurrency(
-                                invoiceAmount * (parseInt(form.carne_installments) || 12)
-                              )}
-                            </p>
+                            <p className="text-muted-foreground">Total: {formatCurrency(invoiceAmount * (parseInt(form.carne_installments) || 12))}</p>
                           )}
                         </div>
                       )}
@@ -491,12 +483,7 @@ export default function Clients() {
           <CardHeader className="pb-3">
             <div className="relative max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por nome, e-mail ou documento..."
-                className="pl-9"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+              <Input placeholder="Buscar por nome, e-mail ou documento..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -514,7 +501,6 @@ export default function Clients() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nome</TableHead>
-                      <TableHead>E-mail</TableHead>
                       <TableHead>Telefone</TableHead>
                       <TableHead>CPF/CNPJ</TableHead>
                       <TableHead>Status</TableHead>
@@ -525,7 +511,6 @@ export default function Clients() {
                     {filtered.map((client) => (
                       <TableRow key={client.id}>
                         <TableCell className="font-medium">{client.name}</TableCell>
-                        <TableCell>{client.email || "—"}</TableCell>
                         <TableCell>{client.phone || "—"}</TableCell>
                         <TableCell>{client.document || "—"}</TableCell>
                         <TableCell>
@@ -533,20 +518,34 @@ export default function Clients() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
+                            {/* Detail view */}
+                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Ver detalhes" onClick={() => setDetailDialog(client)}>
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            {/* Send manual message */}
+                            {client.phone && (
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Enviar mensagem" onClick={() => { setMsgDialog({ phone: client.phone!, name: client.name }); setManualMsg(""); }}>
+                                <Send className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {/* Open WhatsApp directly */}
+                            {client.phone && (
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Abrir WhatsApp" asChild>
+                                <a href={`https://wa.me/${client.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer">
+                                  <MessageSquare className="h-4 w-4" />
+                                </a>
+                              </Button>
+                            )}
                             <PortalLinkButton clientId={client.id} organizationId={organizationId} />
                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(client)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive"
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive"
                               onClick={() => {
                                 if (window.confirm(`Tem certeza que deseja remover "${client.name}"? Esta ação não pode ser desfeita.`)) {
                                   deleteMutation.mutate(client.id);
                                 }
-                              }}
-                            >
+                              }}>
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
@@ -560,6 +559,107 @@ export default function Clients() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Manual Message Dialog */}
+      <Dialog open={!!msgDialog} onOpenChange={(open) => { if (!open) setMsgDialog(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Enviar Mensagem Manual</DialogTitle>
+            <DialogDescription>Para: {msgDialog?.name} ({msgDialog?.phone})</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => { e.preventDefault(); sendManualMsgMutation.mutate(); }} className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label>Mensagem *</Label>
+              <Textarea placeholder="Digite a mensagem..." value={manualMsg} onChange={(e) => setManualMsg(e.target.value)} rows={4} required />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setMsgDialog(null)}>Cancelar</Button>
+              <Button type="submit" className="gradient-primary text-primary-foreground" disabled={sendManualMsgMutation.isPending}>
+                {sendManualMsgMutation.isPending ? "Enviando..." : "Enviar para Fila"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Client Detail Dialog */}
+      <Dialog open={!!detailDialog} onOpenChange={(open) => { if (!open) setDetailDialog(null); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Detalhes: {detailDialog?.name}</DialogTitle>
+          </DialogHeader>
+          {detailDialog && (
+            <div className="space-y-4 mt-2">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-muted-foreground">Telefone:</span> <span className="font-medium">{detailDialog.phone || "—"}</span></div>
+                <div><span className="text-muted-foreground">E-mail:</span> <span className="font-medium">{detailDialog.email || "—"}</span></div>
+                <div><span className="text-muted-foreground">CPF/CNPJ:</span> <span className="font-medium">{detailDialog.document || "—"}</span></div>
+                <div><span className="text-muted-foreground">Status:</span> <Badge className={statusColor(detailDialog.status)}>{detailDialog.status}</Badge></div>
+                <div><span className="text-muted-foreground">Endereço:</span> <span className="font-medium">{detailDialog.address || "—"}</span></div>
+                <div><span className="text-muted-foreground">Código:</span> <span className="font-mono font-medium">{(detailDialog as any).client_code || "—"}</span></div>
+                <div><span className="text-muted-foreground">Cadastro:</span> <span className="font-medium">{format(new Date(detailDialog.created_at), "dd/MM/yyyy")}</span></div>
+                <div><span className="text-muted-foreground">Atualização:</span> <span className="font-medium">{format(new Date(detailDialog.updated_at), "dd/MM/yyyy")}</span></div>
+              </div>
+
+              {/* Financial History */}
+              <div className="border-t border-border pt-4">
+                <p className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-primary" /> Histórico Financeiro
+                </p>
+                {clientInvoices.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nenhuma fatura encontrada.</p>
+                ) : (
+                  <div className="overflow-x-auto max-h-64">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Vencimento</TableHead>
+                          <TableHead>Valor</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Pagamento</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {clientInvoices.map((inv: any) => (
+                          <TableRow key={inv.id}>
+                            <TableCell className="text-sm">{format(new Date(inv.due_date), "dd/MM/yyyy")}</TableCell>
+                            <TableCell className="font-medium">{formatCurrency(Number(inv.amount))}</TableCell>
+                            <TableCell>
+                              <Badge className={inv.status === "pago" ? "bg-success/10 text-success border-0" : inv.status === "aberto" ? "bg-warning/10 text-warning border-0" : "bg-destructive/10 text-destructive border-0"}>
+                                {inv.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm">{inv.paid_date ? format(new Date(inv.paid_date), "dd/MM/yyyy") : "—"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Actions */}
+              <div className="border-t border-border pt-4 flex flex-wrap gap-2">
+                {detailDialog.phone && (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => { setDetailDialog(null); setMsgDialog({ phone: detailDialog.phone!, name: detailDialog.name }); setManualMsg(""); }}>
+                      <Send className="h-3.5 w-3.5 mr-1.5" /> Enviar Mensagem
+                    </Button>
+                    <Button size="sm" variant="outline" asChild>
+                      <a href={`https://wa.me/${detailDialog.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer">
+                        <MessageSquare className="h-3.5 w-3.5 mr-1.5" /> Abrir WhatsApp
+                      </a>
+                    </Button>
+                  </>
+                )}
+                <Button size="sm" variant="outline" onClick={() => { setDetailDialog(null); openEdit(detailDialog); }}>
+                  <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
@@ -573,7 +673,6 @@ function PortalLinkButton({ clientId, organizationId }: { clientId: string; orga
     if (!organizationId) return;
     setLoading(true);
     try {
-      // Check if token already exists
       const { data: existing } = await supabase
         .from("client_portal_tokens")
         .select("token")
@@ -595,7 +694,7 @@ function PortalLinkButton({ clientId, organizationId }: { clientId: string; orga
       const link = `${window.location.origin}/portal/${token}`;
       await navigator.clipboard.writeText(link);
       setCopied(true);
-      toast({ title: "Link copiado!", description: "O link do portal do cliente foi copiado." });
+      toast({ title: "Link copiado!" });
       setTimeout(() => setCopied(false), 2000);
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
@@ -605,14 +704,7 @@ function PortalLinkButton({ clientId, organizationId }: { clientId: string; orga
   };
 
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="h-8 w-8"
-      onClick={generateAndCopy}
-      disabled={loading}
-      title="Copiar link do portal"
-    >
+    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={generateAndCopy} disabled={loading} title="Copiar link do portal">
       {copied ? <Check className="h-4 w-4 text-green-500" /> : <Link2 className="h-4 w-4" />}
     </Button>
   );
