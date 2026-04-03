@@ -285,6 +285,8 @@ export type Database = {
           address: string | null
           client_code: string | null
           collector_id: string | null
+          consent_date: string | null
+          consent_given: boolean
           created_at: string
           created_by: string | null
           document: string | null
@@ -300,6 +302,8 @@ export type Database = {
           address?: string | null
           client_code?: string | null
           collector_id?: string | null
+          consent_date?: string | null
+          consent_given?: boolean
           created_at?: string
           created_by?: string | null
           document?: string | null
@@ -315,6 +319,8 @@ export type Database = {
           address?: string | null
           client_code?: string | null
           collector_id?: string | null
+          consent_date?: string | null
+          consent_given?: boolean
           created_at?: string
           created_by?: string | null
           document?: string | null
@@ -998,6 +1004,8 @@ export type Database = {
         Row: {
           client_id: string | null
           created_at: string
+          deleted_at: string | null
+          deleted_by: string | null
           direction: string
           id: string
           instance_id: string | null
@@ -1010,6 +1018,8 @@ export type Database = {
         Insert: {
           client_id?: string | null
           created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           direction?: string
           id?: string
           instance_id?: string | null
@@ -1022,6 +1032,8 @@ export type Database = {
         Update: {
           client_id?: string | null
           created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           direction?: string
           id?: string
           instance_id?: string | null
@@ -1104,6 +1116,65 @@ export type Database = {
             foreignKeyName: "whatsapp_queue_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_send_config: {
+        Row: {
+          auto_pause_enabled: boolean
+          created_at: string
+          id: string
+          max_delay: number
+          max_per_day: number
+          max_per_hour: number
+          max_per_minute: number
+          min_delay: number
+          organization_id: string
+          randomness_level: string
+          send_window_end: string
+          send_window_start: string
+          shuffle_order: boolean
+          updated_at: string
+        }
+        Insert: {
+          auto_pause_enabled?: boolean
+          created_at?: string
+          id?: string
+          max_delay?: number
+          max_per_day?: number
+          max_per_hour?: number
+          max_per_minute?: number
+          min_delay?: number
+          organization_id: string
+          randomness_level?: string
+          send_window_end?: string
+          send_window_start?: string
+          shuffle_order?: boolean
+          updated_at?: string
+        }
+        Update: {
+          auto_pause_enabled?: boolean
+          created_at?: string
+          id?: string
+          max_delay?: number
+          max_per_day?: number
+          max_per_hour?: number
+          max_per_minute?: number
+          min_delay?: number
+          organization_id?: string
+          randomness_level?: string
+          send_window_end?: string
+          send_window_start?: string
+          shuffle_order?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_send_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
