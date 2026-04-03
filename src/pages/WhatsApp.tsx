@@ -62,7 +62,6 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ phone: "", message: "" });
 
-  // Show queue items (with error details) merged with sent messages
   const { data: queueItems = [] } = useQuery({
     queryKey: ["whatsapp-queue", organizationId],
     queryFn: async () => {
@@ -86,6 +85,7 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
         .from("whatsapp_messages")
         .select("*, clients(name)")
         .eq("organization_id", organizationId)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -95,7 +95,6 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
 
   const sendMutation = useMutation({
     mutationFn: async () => {
-      // Insert directly into whatsapp_queue so the sender picks it up immediately
       const phone = form.phone.replace(/\D/g, "");
       const { error } = await supabase.from("whatsapp_queue").insert({
         organization_id: organizationId,
@@ -115,6 +114,40 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
     onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
   });
 
+  // Delete history by client
+  const deleteByClientMutation = useMutation({
+    mutationFn: async (clientPhone: string) => {
+      const { error } = await supabase
+        .from("whatsapp_messages")
+        .update({ deleted_at: new Date().toISOString(), deleted_by: user?.id } as any)
+        .eq("organization_id", organizationId)
+        .eq("phone", clientPhone);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-messages"] });
+      toast({ title: "Histórico do cliente apagado!" });
+    },
+    onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+  });
+
+  // Delete ALL history
+  const deleteAllMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("whatsapp_messages")
+        .update({ deleted_at: new Date().toISOString(), deleted_by: user?.id } as any)
+        .eq("organization_id", organizationId)
+        .is("deleted_at", null);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-messages"] });
+      toast({ title: "Todo o histórico foi apagado!" });
+    },
+    onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+  });
+
   const filtered = messages.filter((m: any) => {
     if (!search) return true;
     const s = search.toLowerCase();
@@ -128,9 +161,23 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Buscar por telefone ou mensagem..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <Button className="gradient-primary text-primary-foreground" onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" /> Nova Mensagem
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="destructive" size="sm"
+            onClick={() => {
+              if (window.confirm("Tem certeza? Esta ação apagará TODO o histórico de mensagens.")) {
+                if (window.confirm("CONFIRMAÇÃO FINAL: Esta ação é IRREVERSÍVEL. Deseja continuar?")) {
+                  deleteAllMutation.mutate();
+                }
+              }
+            }}
+            disabled={deleteAllMutation.isPending}
+          >
+            <Trash2 className="h-4 w-4 mr-1" /> Apagar Histórico
+          </Button>
+          <Button className="gradient-primary text-primary-foreground" onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" /> Nova Mensagem
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -139,7 +186,6 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
         <div className="text-center py-12 text-muted-foreground">Nenhuma mensagem encontrada.</div>
       ) : (
         <div className="space-y-4">
-          {/* Queue status panel */}
           {queueItems.length > 0 && (
             <Card className="border-warning/30 bg-warning/5">
               <CardHeader className="py-3 px-4">
@@ -165,9 +211,7 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
                           <TableCell className="font-mono text-sm">{q.phone}</TableCell>
                           <TableCell className="max-w-[200px] truncate">{q.message}</TableCell>
                           <TableCell>{statusBadge(q.status)}</TableCell>
-                          <TableCell className="max-w-[250px] text-xs text-destructive">
-                            {q.error_message || "—"}
-                          </TableCell>
+                          <TableCell className="max-w-[250px] text-xs text-destructive">{q.error_message || "—"}</TableCell>
                           <TableCell className="text-sm">{format(parseISO(q.created_at), "dd/MM/yy HH:mm")}</TableCell>
                         </TableRow>
                       ))}
@@ -178,7 +222,6 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
             </Card>
           )}
 
-          {/* Sent messages history */}
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -189,6 +232,7 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
                   <TableHead>Direção</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Data</TableHead>
+                  <TableHead>Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -200,6 +244,16 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
                     <TableCell>{m.direction === "outgoing" ? "Saída" : "Entrada"}</TableCell>
                     <TableCell>{statusBadge(m.status)}</TableCell>
                     <TableCell className="text-sm">{format(parseISO(m.created_at), "dd/MM/yy HH:mm")}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Apagar histórico deste número"
+                        onClick={() => {
+                          if (window.confirm(`Apagar todo o histórico de ${m.phone}?`)) {
+                            deleteByClientMutation.mutate(m.phone);
+                          }
+                        }}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
