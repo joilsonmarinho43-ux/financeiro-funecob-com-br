@@ -26,8 +26,27 @@ function CustomCaption(props: CaptionProps) {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 21 }, (_, i) => currentYear - 5 + i);
 
+  const goToPrev = () => {
+    const prev = new Date(currentMonth);
+    prev.setMonth(prev.getMonth() - 1);
+    goToMonth(prev);
+  };
+  const goToNext = () => {
+    const next = new Date(currentMonth);
+    next.setMonth(next.getMonth() + 1);
+    goToMonth(next);
+  };
+
   return (
     <div className="flex items-center justify-between px-1 pt-1 gap-1">
+      <button
+        type="button"
+        onClick={goToPrev}
+        className={cn(buttonVariants({ variant: "outline" }), "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100")}
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+
       <Select
         value={String(currentMonth.getMonth())}
         onValueChange={(v) => goToMonth(setMonth(currentMonth, parseInt(v)))}
@@ -59,6 +78,14 @@ function CustomCaption(props: CaptionProps) {
           ))}
         </SelectContent>
       </Select>
+
+      <button
+        type="button"
+        onClick={goToNext}
+        className={cn(buttonVariants({ variant: "outline" }), "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100")}
+      >
+        <ChevronRight className="h-4 w-4" />
+      </button>
     </div>
   );
 }
