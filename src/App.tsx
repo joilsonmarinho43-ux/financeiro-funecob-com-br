@@ -27,7 +27,16 @@ import Settlement from "./pages/Settlement";
 import GlobalSettings from "./pages/GlobalSettings";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 2 * 60 * 1000, // 2 min
+      gcTime: 10 * 60 * 1000, // 10 min
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
   const { user, loading, licenseExpired } = useAuth();
