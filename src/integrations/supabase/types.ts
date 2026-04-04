@@ -296,6 +296,7 @@ export type Database = {
           organization_id: string | null
           phone: string | null
           status: string
+          temperature: string
           updated_at: string
         }
         Insert: {
@@ -313,6 +314,7 @@ export type Database = {
           organization_id?: string | null
           phone?: string | null
           status?: string
+          temperature?: string
           updated_at?: string
         }
         Update: {
@@ -330,6 +332,7 @@ export type Database = {
           organization_id?: string | null
           phone?: string | null
           status?: string
+          temperature?: string
           updated_at?: string
         }
         Relationships: [
