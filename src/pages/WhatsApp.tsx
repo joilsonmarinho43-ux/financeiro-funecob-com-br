@@ -86,7 +86,8 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
         .select("*, clients(name)")
         .eq("organization_id", organizationId)
         .is("deleted_at", null)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(200);
       if (error) throw error;
       return data;
     },
