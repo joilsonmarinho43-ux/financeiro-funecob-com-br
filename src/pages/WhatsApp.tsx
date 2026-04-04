@@ -398,13 +398,15 @@ function BulkTab({ organizationId }: { organizationId: string }) {
         .filter(Boolean);
       if (phones.length === 0) throw new Error("Informe ao menos um telefone");
 
+      const minD = parseInt(form.minDelay) || 5;
+      const maxD = parseInt(form.maxDelay) || 15;
       const items = phones.map((phone, i) => ({
         organization_id: organizationId,
-        phone,
+        phone: phone.replace(/\D/g, ""),
         message: form.message,
         status: "queued" as const,
         campaign_id: null,
-        scheduled_for: new Date(Date.now() + i * (Math.random() * (parseInt(form.maxDelay) - parseInt(form.minDelay)) + parseInt(form.minDelay)) * 1000).toISOString(),
+        scheduled_for: new Date(Date.now() + i * ((Math.random() * (maxD - minD) + minD) * 1000)).toISOString(),
       }));
 
       const { error } = await supabase.from("whatsapp_queue").insert(items);
