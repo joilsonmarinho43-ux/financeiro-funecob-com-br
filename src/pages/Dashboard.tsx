@@ -143,18 +143,20 @@ export default function Dashboard() {
     queryFn: async () => {
       if (!organizationId) return { monthBalance: 0, yearBalance: 0 };
       const now = new Date();
-      const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
       const startOfYear = `${now.getFullYear()}-01-01`;
       const { data: invoices, error } = await supabase
         .from("invoices")
-        .select("amount, status, paid_date")
-        .eq("organization_id", organizationId);
+        .select("amount, paid_date")
+        .eq("organization_id", organizationId)
+        .eq("status", "pago")
+        .gte("paid_date", startOfYear);
       if (error) throw error;
       let monthBalance = 0;
       let yearBalance = 0;
+      const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
       for (const inv of invoices) {
-        if (inv.status === "pago" && inv.paid_date) {
-          if (inv.paid_date >= startOfYear) yearBalance += Number(inv.amount);
+        if (inv.paid_date) {
+          yearBalance += Number(inv.amount);
           if (inv.paid_date >= startOfMonth) monthBalance += Number(inv.amount);
         }
       }

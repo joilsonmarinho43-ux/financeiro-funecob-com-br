@@ -86,7 +86,8 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
         .select("*, clients(name)")
         .eq("organization_id", organizationId)
         .is("deleted_at", null)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(200);
       if (error) throw error;
       return data;
     },
@@ -299,7 +300,8 @@ function QueueTab({ organizationId }: { organizationId: string }) {
         .from("whatsapp_queue")
         .select("*")
         .eq("organization_id", organizationId)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(500);
       if (error) throw error;
       return data;
     },
@@ -396,13 +398,15 @@ function BulkTab({ organizationId }: { organizationId: string }) {
         .filter(Boolean);
       if (phones.length === 0) throw new Error("Informe ao menos um telefone");
 
+      const minD = parseInt(form.minDelay) || 5;
+      const maxD = parseInt(form.maxDelay) || 15;
       const items = phones.map((phone, i) => ({
         organization_id: organizationId,
-        phone,
+        phone: phone.replace(/\D/g, ""),
         message: form.message,
         status: "queued" as const,
         campaign_id: null,
-        scheduled_for: new Date(Date.now() + i * (Math.random() * (parseInt(form.maxDelay) - parseInt(form.minDelay)) + parseInt(form.minDelay)) * 1000).toISOString(),
+        scheduled_for: new Date(Date.now() + i * ((Math.random() * (maxD - minD) + minD) * 1000)).toISOString(),
       }));
 
       const { error } = await supabase.from("whatsapp_queue").insert(items);
@@ -1004,27 +1008,23 @@ function AntiBanTab({ organizationId }: { organizationId: string }) {
     enabled: !!organizationId,
   });
 
-  useState(() => {
+  useEffect(() => {
     if (existing) {
+      const e = existing as any;
       setConfig({
-        send_window_start: (existing as any).send_window_start || "08:00",
-        send_window_end: (existing as any).send_window_end || "18:00",
-        max_per_minute: (existing as any).max_per_minute || 3,
-        max_per_hour: (existing as any).max_per_hour || 60,
-        max_per_day: (existing as any).max_per_day || 500,
-        min_delay: (existing as any).min_delay || 30,
-        max_delay: (existing as any).max_delay || 60,
-        randomness_level: (existing as any).randomness_level || "medium",
-        auto_pause_enabled: (existing as any).auto_pause_enabled ?? true,
-        shuffle_order: (existing as any).shuffle_order ?? true,
+        send_window_start: (e.send_window_start || "08:00:00").substring(0, 5),
+        send_window_end: (e.send_window_end || "18:00:00").substring(0, 5),
+        max_per_minute: e.max_per_minute || 3,
+        max_per_hour: e.max_per_hour || 60,
+        max_per_day: e.max_per_day || 500,
+        min_delay: e.min_delay || 30,
+        max_delay: e.max_delay || 60,
+        randomness_level: e.randomness_level || "medium",
+        auto_pause_enabled: e.auto_pause_enabled ?? true,
+        shuffle_order: e.shuffle_order ?? true,
       });
     }
-  });
-
-  // Sync existing data
-  if (existing && config.send_window_start === "08:00" && (existing as any).send_window_start !== "08:00:00") {
-    // will update on next effect
-  }
+  }, [existing]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
