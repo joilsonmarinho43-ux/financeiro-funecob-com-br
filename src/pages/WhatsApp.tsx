@@ -27,8 +27,11 @@ import {
   MessageSquare, Send, Radio, Megaphone, Smartphone,
   Plus, Trash2, Search, Wifi, WifiOff, Clock, CheckCircle2,
   XCircle, Loader2, AlertTriangle, QrCode, RefreshCw,
+  BarChart3, ChevronLeft, ChevronRight, Activity,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+
+const PAGE_SIZE = 30;
 
 // ─── Helpers ────────────────────────────────────────────
 const statusBadge = (status: string) => {
@@ -37,6 +40,8 @@ const statusBadge = (status: string) => {
     disconnected: { cls: "bg-destructive/10 text-destructive border-0", label: "Desconectado" },
     pairing: { cls: "bg-warning/10 text-warning border-0", label: "Pareando" },
     pending: { cls: "bg-warning/10 text-warning border-0", label: "Pendente" },
+    queued: { cls: "bg-warning/10 text-warning border-0", label: "Na Fila" },
+    processing: { cls: "bg-primary/10 text-primary border-0", label: "Processando" },
     sent: { cls: "bg-success/10 text-success border-0", label: "Enviado" },
     delivered: { cls: "bg-primary/10 text-primary border-0", label: "Entregue" },
     read: { cls: "bg-primary/10 text-primary border-0", label: "Lido" },
@@ -48,10 +53,28 @@ const statusBadge = (status: string) => {
     cancelled: { cls: "bg-destructive/10 text-destructive border-0", label: "Cancelada" },
     retry: { cls: "bg-warning/10 text-warning border-0", label: "Retry" },
     sending: { cls: "bg-warning/10 text-warning border-0", label: "Enviando" },
+    paused: { cls: "bg-muted text-muted-foreground border-0", label: "Pausado" },
   };
   const s = map[status] || { cls: "bg-muted text-muted-foreground border-0", label: status };
   return <Badge className={s.cls}>{s.label}</Badge>;
 };
+
+function PaginationControls({ page, setPage, totalCount }: { page: number; setPage: (p: number) => void; totalCount: number }) {
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  return (
+    <div className="flex items-center justify-between pt-3">
+      <p className="text-xs text-muted-foreground">{totalCount} registro(s) — Página {page} de {totalPages}</p>
+      <div className="flex gap-1">
+        <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 // ─── Tab: Mensagens ─────────────────────────────────────
 function MessagesTab({ organizationId }: { organizationId: string }) {
@@ -61,33 +84,43 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ phone: "", message: "" });
+  const [page, setPage] = useState(1);
 
-  const { data: queueItems = [] } = useQuery({
-    queryKey: ["whatsapp-queue", organizationId],
+  const { data: totalCount = 0 } = useQuery({
+    queryKey: ["whatsapp-messages-count", organizationId, search],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("whatsapp_queue")
-        .select("*")
+      let q = supabase
+        .from("whatsapp_messages")
+        .select("*", { count: "exact", head: true })
         .eq("organization_id", organizationId)
-        .order("created_at", { ascending: false })
-        .limit(100);
+        .is("deleted_at", null);
+      if (search) {
+        q = q.or(`phone.ilike.%${search}%,message.ilike.%${search}%`);
+      }
+      const { count, error } = await q;
       if (error) throw error;
-      return data;
+      return count || 0;
     },
     enabled: !!organizationId,
-    refetchInterval: 10000,
+    staleTime: 30000,
   });
 
   const { data: messages = [], isLoading } = useQuery({
-    queryKey: ["whatsapp-messages", organizationId],
+    queryKey: ["whatsapp-messages", organizationId, page, search],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const from = (page - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      let q = supabase
         .from("whatsapp_messages")
         .select("*, clients(name)")
         .eq("organization_id", organizationId)
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
-        .limit(200);
+        .range(from, to);
+      if (search) {
+        q = q.or(`phone.ilike.%${search}%,message.ilike.%${search}%`);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return data;
     },
@@ -115,7 +148,6 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
     onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
   });
 
-  // Delete history by client
   const deleteByClientMutation = useMutation({
     mutationFn: async (clientPhone: string) => {
       const { error } = await supabase
@@ -132,7 +164,6 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
     onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
   });
 
-  // Delete ALL history
   const deleteAllMutation = useMutation({
     mutationFn: async () => {
       const { error } = await supabase
@@ -149,11 +180,7 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
     onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
   });
 
-  const filtered = messages.filter((m: any) => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return m.phone.includes(s) || m.message.toLowerCase().includes(s) || (m.clients?.name || "").toLowerCase().includes(s);
-  });
+  useEffect(() => { setPage(1); }, [search]);
 
   return (
     <div className="space-y-4">
@@ -183,46 +210,10 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
 
       {isLoading ? (
         <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-      ) : filtered.length === 0 ? (
+      ) : messages.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">Nenhuma mensagem encontrada.</div>
       ) : (
-        <div className="space-y-4">
-          {queueItems.length > 0 && (
-            <Card className="border-warning/30 bg-warning/5">
-              <CardHeader className="py-3 px-4">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Clock className="h-4 w-4" /> Fila de Processamento ({queueItems.filter((q: any) => q.status === "queued" || q.status === "sending").length} pendentes)
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-4 pb-3">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Telefone</TableHead>
-                        <TableHead>Mensagem</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Erro VPS</TableHead>
-                        <TableHead>Data</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {queueItems.slice(0, 20).map((q: any) => (
-                        <TableRow key={q.id}>
-                          <TableCell className="font-mono text-sm">{q.phone}</TableCell>
-                          <TableCell className="max-w-[200px] truncate">{q.message}</TableCell>
-                          <TableCell>{statusBadge(q.status)}</TableCell>
-                          <TableCell className="max-w-[250px] text-xs text-destructive">{q.error_message || "—"}</TableCell>
-                          <TableCell className="text-sm">{format(parseISO(q.created_at), "dd/MM/yy HH:mm")}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
+        <div className="space-y-2">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -237,7 +228,7 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((m: any) => (
+                {messages.map((m: any) => (
                   <TableRow key={m.id}>
                     <TableCell className="font-mono text-sm">{m.phone}</TableCell>
                     <TableCell>{m.clients?.name || "—"}</TableCell>
@@ -260,6 +251,7 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
               </TableBody>
             </Table>
           </div>
+          <PaginationControls page={page} setPage={setPage} totalCount={totalCount} />
         </div>
       )}
 
@@ -293,36 +285,75 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
 
 // ─── Tab: Fila ──────────────────────────────────────────
 function QueueTab({ organizationId }: { organizationId: string }) {
-  const { data: queue = [], isLoading } = useQuery({
-    queryKey: ["whatsapp-queue", organizationId],
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const { data: totalCount = 0 } = useQuery({
+    queryKey: ["whatsapp-queue-count", organizationId, statusFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
+        .from("whatsapp_queue")
+        .select("*", { count: "exact", head: true })
+        .eq("organization_id", organizationId);
+      if (statusFilter !== "all") q = q.eq("status", statusFilter);
+      const { count, error } = await q;
+      if (error) throw error;
+      return count || 0;
+    },
+    enabled: !!organizationId,
+    staleTime: 10000,
+  });
+
+  const { data: queue = [], isLoading } = useQuery({
+    queryKey: ["whatsapp-queue", organizationId, page, statusFilter],
+    queryFn: async () => {
+      const from = (page - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      let q = supabase
         .from("whatsapp_queue")
         .select("*")
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
-        .limit(500);
+        .range(from, to);
+      if (statusFilter !== "all") q = q.eq("status", statusFilter);
+      const { data, error } = await q;
       if (error) throw error;
       return data;
     },
     enabled: !!organizationId,
+    refetchInterval: 15000,
   });
 
-  const stats = {
-    queued: queue.filter((q: any) => q.status === "queued").length,
-    sending: queue.filter((q: any) => q.status === "sending").length,
-    sent: queue.filter((q: any) => q.status === "sent").length,
-    failed: queue.filter((q: any) => q.status === "failed").length,
-  };
+  // Stats (lightweight count query)
+  const { data: stats = { queued: 0, sending: 0, sent: 0, failed: 0, retry: 0 } } = useQuery({
+    queryKey: ["whatsapp-queue-stats", organizationId],
+    queryFn: async () => {
+      const counts: Record<string, number> = { queued: 0, sending: 0, sent: 0, failed: 0, retry: 0 };
+      for (const status of Object.keys(counts)) {
+        const { count } = await supabase
+          .from("whatsapp_queue")
+          .select("*", { count: "exact", head: true })
+          .eq("organization_id", organizationId)
+          .eq("status", status);
+        counts[status] = count || 0;
+      }
+      return counts;
+    },
+    enabled: !!organizationId,
+    staleTime: 15000,
+  });
+
+  useEffect(() => { setPage(1); }, [statusFilter]);
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
           { label: "Na Fila", value: stats.queued, icon: Clock, cls: "gradient-primary" },
           { label: "Enviando", value: stats.sending, icon: Loader2, cls: "gradient-warning" },
           { label: "Enviados", value: stats.sent, icon: CheckCircle2, cls: "gradient-success" },
           { label: "Falhas", value: stats.failed, icon: XCircle, cls: "gradient-danger" },
+          { label: "Retry", value: stats.retry, icon: RefreshCw, cls: "bg-muted" },
         ].map((s) => (
           <Card key={s.label} className="border-0 shadow-sm">
             <CardContent className="flex items-center gap-3 p-4">
@@ -338,36 +369,55 @@ function QueueTab({ organizationId }: { organizationId: string }) {
         ))}
       </div>
 
+      <div className="flex items-center gap-2">
+        <Label className="text-xs">Filtrar:</Label>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[150px] h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos</SelectItem>
+            <SelectItem value="queued">Na Fila</SelectItem>
+            <SelectItem value="sending">Enviando</SelectItem>
+            <SelectItem value="sent">Enviados</SelectItem>
+            <SelectItem value="failed">Falhas</SelectItem>
+            <SelectItem value="retry">Retry</SelectItem>
+            <SelectItem value="paused">Pausados</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       {isLoading ? (
         <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
       ) : queue.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">Fila vazia no momento.</div>
       ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Telefone</TableHead>
-                <TableHead>Mensagem</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Agendado</TableHead>
-                <TableHead>Enviado</TableHead>
-                <TableHead>Erro</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {queue.map((q: any) => (
-                <TableRow key={q.id}>
-                  <TableCell className="font-mono text-sm">{q.phone}</TableCell>
-                  <TableCell className="max-w-[200px] truncate">{q.message}</TableCell>
-                  <TableCell>{statusBadge(q.status)}</TableCell>
-                  <TableCell className="text-sm">{q.scheduled_for ? format(parseISO(q.scheduled_for), "dd/MM HH:mm") : "—"}</TableCell>
-                  <TableCell className="text-sm">{q.sent_at ? format(parseISO(q.sent_at), "dd/MM HH:mm") : "—"}</TableCell>
-                  <TableCell className="text-xs text-destructive max-w-[150px] truncate">{q.error_message || "—"}</TableCell>
+        <div className="space-y-2">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Telefone</TableHead>
+                  <TableHead>Mensagem</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Agendado</TableHead>
+                  <TableHead>Enviado</TableHead>
+                  <TableHead>Erro</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {queue.map((q: any) => (
+                  <TableRow key={q.id}>
+                    <TableCell className="font-mono text-sm">{q.phone}</TableCell>
+                    <TableCell className="max-w-[200px] truncate">{q.message}</TableCell>
+                    <TableCell>{statusBadge(q.status)}</TableCell>
+                    <TableCell className="text-sm">{q.scheduled_for ? format(parseISO(q.scheduled_for), "dd/MM HH:mm") : "—"}</TableCell>
+                    <TableCell className="text-sm">{q.sent_at ? format(parseISO(q.sent_at), "dd/MM HH:mm") : "—"}</TableCell>
+                    <TableCell className="text-xs text-destructive max-w-[150px] truncate">{q.error_message || "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <PaginationControls page={page} setPage={setPage} totalCount={totalCount} />
         </div>
       )}
     </div>
@@ -388,6 +438,7 @@ function BulkTab({ organizationId }: { organizationId: string }) {
       return data;
     },
     enabled: !!organizationId,
+    staleTime: 60000,
   });
 
   const sendBulk = useMutation({
@@ -485,6 +536,7 @@ function CampaignsTab({ organizationId }: { organizationId: string }) {
       return data;
     },
     enabled: !!organizationId,
+    staleTime: 30000,
   });
 
   const createMutation = useMutation({
@@ -514,8 +566,9 @@ function CampaignsTab({ organizationId }: { organizationId: string }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp-campaigns"] });
-      toast({ title: "Campanha removida!" });
+      toast({ title: "Campanha excluída!" });
     },
+    onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
   });
 
   return (
@@ -538,11 +591,9 @@ function CampaignsTab({ organizationId }: { organizationId: string }) {
                 <TableHead>Nome</TableHead>
                 <TableHead>Mensagem</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Contatos</TableHead>
                 <TableHead>Enviados</TableHead>
                 <TableHead>Falhas</TableHead>
-                <TableHead>Delay</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
+                <TableHead>Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -551,13 +602,13 @@ function CampaignsTab({ organizationId }: { organizationId: string }) {
                   <TableCell className="font-medium">{c.name}</TableCell>
                   <TableCell className="max-w-[200px] truncate">{c.message}</TableCell>
                   <TableCell>{statusBadge(c.status)}</TableCell>
-                  <TableCell>{c.total_contacts}</TableCell>
-                  <TableCell className="text-success">{c.sent_count}</TableCell>
-                  <TableCell className="text-destructive">{c.failed_count}</TableCell>
-                  <TableCell className="text-xs">{c.min_delay}-{c.max_delay}s</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteMutation.mutate(c.id)}>
-                      <Trash2 className="h-4 w-4" />
+                  <TableCell>{c.sent_count}/{c.total_contacts}</TableCell>
+                  <TableCell>{c.failed_count}</TableCell>
+                  <TableCell>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => {
+                      if (window.confirm("Excluir esta campanha?")) deleteMutation.mutate(c.id);
+                    }}>
+                      <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -580,7 +631,7 @@ function CampaignsTab({ organizationId }: { organizationId: string }) {
             </div>
             <div className="space-y-2">
               <Label>Mensagem *</Label>
-              <Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={3} required />
+              <Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={4} required />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -595,7 +646,7 @@ function CampaignsTab({ organizationId }: { organizationId: string }) {
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
               <Button type="submit" className="gradient-primary text-primary-foreground" disabled={createMutation.isPending}>
-                {createMutation.isPending ? "Criando..." : "Criar Campanha"}
+                {createMutation.isPending ? "Criando..." : "Criar"}
               </Button>
             </div>
           </form>
@@ -612,66 +663,13 @@ function PairTab({ organizationId }: { organizationId: string }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
-  const [selectedInstance, setSelectedInstance] = useState<any>(null);
-  const [qrLoading, setQrLoading] = useState(false);
-  const [qrBase64, setQrBase64] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState(30);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const statusPollRef = useRef<NodeJS.Timeout | null>(null);
   const [form, setForm] = useState({ name: "", phone: "" });
   const [editForm, setEditForm] = useState({ id: "", name: "", phone: "", api_url: "", api_key: "" });
-
-  // Auto-refresh QR every 30s
-  const fetchQr = useCallback(async (instId: string) => {
-    setQrLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("whatsapp-manager", {
-        body: { action: "get_qr", instance_id: instId },
-      });
-      if (error) throw error;
-      setQrBase64(data?.qr_code || null);
-    } catch (e: any) {
-      console.error("QR fetch error:", e);
-      toast({ title: "Erro ao obter QR Code", description: e.message, variant: "destructive" });
-    } finally {
-      setQrLoading(false);
-      setCountdown(30);
-    }
-  }, [toast]);
-
-  // Poll status every 5s while QR dialog is open
-  useEffect(() => {
-    if (!qrDialogOpen || !selectedInstance) return;
-    statusPollRef.current = setInterval(async () => {
-      try {
-        const { data } = await supabase.functions.invoke("whatsapp-manager", {
-          body: { action: "check_status", instance_id: selectedInstance.id },
-        });
-        if (data?.status === "connected") {
-          queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
-          toast({ title: "WhatsApp conectado com sucesso! ✅" });
-          setQrDialogOpen(false);
-          setSelectedInstance(null);
-        }
-      } catch {}
-    }, 5000);
-    return () => { if (statusPollRef.current) clearInterval(statusPollRef.current); };
-  }, [qrDialogOpen, selectedInstance, queryClient, toast]);
-
-  // Countdown timer
-  useEffect(() => {
-    if (!qrDialogOpen || qrLoading) return;
-    timerRef.current = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          if (selectedInstance) fetchQr(selectedInstance.id);
-          return 30;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [qrDialogOpen, qrLoading, selectedInstance, fetchQr]);
+  const [selectedInstance, setSelectedInstance] = useState<any>(null);
+  const [qrBase64, setQrBase64] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [countdown, setCountdown] = useState(30);
+  const intervalRef = useRef<any>(null);
 
   const { data: instances = [], isLoading } = useQuery({
     queryKey: ["whatsapp-instances", organizationId],
@@ -681,32 +679,145 @@ function PairTab({ organizationId }: { organizationId: string }) {
       return data;
     },
     enabled: !!organizationId,
+    staleTime: 30000,
   });
+
+  const fetchQr = useCallback(async (instanceId: string) => {
+    setQrLoading(true);
+    setQrBase64(null);
+    try {
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const url = `https://${projectId}.supabase.co/functions/v1/whatsapp-manager`;
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token || ""}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ action: "connect", instanceId }),
+      });
+      const result = await res.json();
+      if (result.qrcode?.base64) {
+        setQrBase64(result.qrcode.base64);
+      } else if (result.status === "connected") {
+        toast({ title: "Instância já está conectada!" });
+        queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+        setQrDialogOpen(false);
+      }
+    } catch (err) {
+      toast({ title: "Erro ao obter QR Code", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setQrLoading(false);
+    }
+  }, [queryClient, toast]);
+
+  useEffect(() => {
+    if (!qrDialogOpen || !selectedInstance) return;
+    setCountdown(30);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          fetchQr(selectedInstance.id);
+          return 30;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [qrDialogOpen, selectedInstance, fetchQr]);
+
+  const handleConnect = (inst: any) => {
+    setSelectedInstance(inst);
+    setQrDialogOpen(true);
+    fetchQr(inst.id);
+  };
+
+  const handleEdit = (inst: any) => {
+    setEditForm({ id: inst.id, name: inst.name, phone: inst.phone || "", api_url: inst.api_url || "", api_key: inst.api_key || "" });
+    setEditDialogOpen(true);
+  };
+
+  const handleCheckStatus = async (inst: any) => {
+    try {
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const url = `https://${projectId}.supabase.co/functions/v1/whatsapp-manager`;
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token || ""}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ action: "status", instanceId: inst.id }),
+      });
+      const result = await res.json();
+      const newStatus = result.instance?.state === "open" ? "connected" : "disconnected";
+      await supabase.from("whatsapp_instances").update({ status: newStatus }).eq("id", inst.id);
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+      toast({ title: `Status: ${newStatus === "connected" ? "Conectado" : "Desconectado"}` });
+    } catch (err) {
+      toast({ title: "Erro ao verificar status", variant: "destructive" });
+    }
+  };
+
+  const handleDisconnect = async (inst: any) => {
+    try {
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const url = `https://${projectId}.supabase.co/functions/v1/whatsapp-manager`;
+      const { data: { session } } = await supabase.auth.getSession();
+      await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token || ""}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ action: "disconnect", instanceId: inst.id }),
+      });
+      await supabase.from("whatsapp_instances").update({ status: "disconnected" }).eq("id", inst.id);
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+      toast({ title: "Instância desconectada" });
+    } catch (err) {
+      toast({ title: "Erro ao desconectar", variant: "destructive" });
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("whatsapp-manager", {
-        body: {
-          action: "create_instance",
-          instance_name: form.name.replace(/\s+/g, "_").toLowerCase(),
-          organization_id: organizationId,
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const url = `https://${projectId}.supabase.co/functions/v1/whatsapp-manager`;
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token || ""}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         },
+        body: JSON.stringify({
+          action: "create",
+          name: form.name.replace(/\s+/g, "_"),
+          phone: form.phone,
+          organizationId,
+        }),
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      return data;
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Erro ao criar instância");
+      return result;
     },
-    onSuccess: (data) => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
-      toast({ title: "Instância criada! Escaneie o QR Code para conectar." });
+      toast({ title: "Instância criada com sucesso!" });
       setDialogOpen(false);
       setForm({ name: "", phone: "" });
-      // Open QR dialog immediately
-      if (data?.instance_id) {
-        setSelectedInstance({ id: data.instance_id, name: data.instance_name });
-        setQrBase64(data.qr_code || null);
+      if (result.qrcode?.base64) {
+        setQrBase64(result.qrcode.base64);
+        setSelectedInstance(result.instance || { id: result.instanceId, name: form.name });
         setQrDialogOpen(true);
-        setCountdown(30);
       }
     },
     onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
@@ -737,53 +848,10 @@ function PairTab({ organizationId }: { organizationId: string }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
-      toast({ title: "Instância removida!" });
+      toast({ title: "Instância excluída!" });
     },
+    onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
   });
-
-  const handleEdit = (inst: any) => {
-    setEditForm({
-      id: inst.id,
-      name: inst.name,
-      phone: inst.phone || "",
-      api_url: inst.api_url || "",
-      api_key: inst.api_key || "",
-    });
-    setEditDialogOpen(true);
-  };
-
-  const handleConnect = async (inst: any) => {
-    setSelectedInstance(inst);
-    setQrBase64(null);
-    setQrDialogOpen(true);
-    await fetchQr(inst.id);
-  };
-
-  const handleDisconnect = async (inst: any) => {
-    try {
-      await supabase.functions.invoke("whatsapp-manager", {
-        body: { action: "disconnect", instance_id: inst.id },
-      });
-      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
-      toast({ title: "WhatsApp desconectado." });
-    } catch {
-      await supabase.from("whatsapp_instances").update({ status: "disconnected" }).eq("id", inst.id);
-      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
-      toast({ title: "WhatsApp desconectado." });
-    }
-  };
-
-  const handleCheckStatus = async (inst: any) => {
-    try {
-      const { data } = await supabase.functions.invoke("whatsapp-manager", {
-        body: { action: "check_status", instance_id: inst.id },
-      });
-      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
-      toast({ title: `Status: ${data?.status === "connected" ? "Conectado ✅" : data?.status === "pairing" ? "Pareando..." : "Desconectado ❌"}` });
-    } catch (e: any) {
-      toast({ title: "Erro ao verificar", description: e.message, variant: "destructive" });
-    }
-  };
 
   return (
     <div className="space-y-4">
@@ -796,7 +864,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
       {isLoading ? (
         <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
       ) : instances.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="text-center py-12 text-muted-foreground space-y-2">
           <Smartphone className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
           <p>Nenhuma instância WhatsApp configurada.</p>
           <p className="text-xs mt-1">Adicione uma instância para começar a enviar mensagens.</p>
@@ -1053,7 +1121,6 @@ function AntiBanTab({ organizationId }: { organizationId: string }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Send Window */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Horário início</Label>
@@ -1065,7 +1132,6 @@ function AntiBanTab({ organizationId }: { organizationId: string }) {
             </div>
           </div>
 
-          {/* Rate Limits */}
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>Máx/minuto</Label>
@@ -1081,7 +1147,6 @@ function AntiBanTab({ organizationId }: { organizationId: string }) {
             </div>
           </div>
 
-          {/* Delay */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Delay mínimo (seg)</Label>
@@ -1093,7 +1158,6 @@ function AntiBanTab({ organizationId }: { organizationId: string }) {
             </div>
           </div>
 
-          {/* Randomness */}
           <div className="space-y-2">
             <Label>Nível de Aleatoriedade</Label>
             <Select value={config.randomness_level} onValueChange={(v) => setConfig({ ...config, randomness_level: v })}>
@@ -1106,7 +1170,6 @@ function AntiBanTab({ organizationId }: { organizationId: string }) {
             </Select>
           </div>
 
-          {/* Toggles */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -1142,6 +1205,114 @@ function AntiBanTab({ organizationId }: { organizationId: string }) {
   );
 }
 
+// ─── Tab: Monitoramento ─────────────────────────────────
+function MonitorTab({ organizationId }: { organizationId: string }) {
+  const { data: stats, isLoading } = useQuery({
+    queryKey: ["robot-monitor", organizationId],
+    queryFn: async () => {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+
+      const [sentToday, failedToday, queuePending, sentWeek, failedWeek, retryCount] = await Promise.all([
+        supabase.from("whatsapp_queue").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "sent").gte("sent_at", todayStart),
+        supabase.from("whatsapp_queue").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "failed").gte("created_at", todayStart),
+        supabase.from("whatsapp_queue").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).in("status", ["queued", "sending", "retry"]),
+        supabase.from("whatsapp_queue").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "sent").gte("sent_at", weekAgo),
+        supabase.from("whatsapp_queue").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "failed").gte("created_at", weekAgo),
+        supabase.from("whatsapp_queue").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "retry"),
+      ]);
+
+      const totalWeek = (sentWeek.count || 0) + (failedWeek.count || 0);
+      const successRate = totalWeek > 0 ? Math.round(((sentWeek.count || 0) / totalWeek) * 100) : 100;
+
+      return {
+        sentToday: sentToday.count || 0,
+        failedToday: failedToday.count || 0,
+        queuePending: queuePending.count || 0,
+        sentWeek: sentWeek.count || 0,
+        failedWeek: failedWeek.count || 0,
+        retryCount: retryCount.count || 0,
+        successRate,
+      };
+    },
+    enabled: !!organizationId,
+    refetchInterval: 30000,
+  });
+
+  // Robot status inference
+  const robotStatus = !stats ? "loading" : stats.queuePending > 0 ? "active" : "idle";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 mb-2">
+        <div className={`h-3 w-3 rounded-full ${robotStatus === "active" ? "bg-success animate-pulse" : robotStatus === "idle" ? "bg-muted-foreground" : "bg-warning animate-pulse"}`} />
+        <span className="text-sm font-medium text-foreground">
+          Robô: {robotStatus === "active" ? "Ativo — processando fila" : robotStatus === "idle" ? "Ocioso — fila vazia" : "Carregando..."}
+        </span>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+      ) : stats && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4 text-center">
+                <p className="text-2xl font-bold text-success">{stats.sentToday}</p>
+                <p className="text-xs text-muted-foreground">Enviadas Hoje</p>
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4 text-center">
+                <p className="text-2xl font-bold text-destructive">{stats.failedToday}</p>
+                <p className="text-xs text-muted-foreground">Falhas Hoje</p>
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4 text-center">
+                <p className="text-2xl font-bold text-warning">{stats.queuePending}</p>
+                <p className="text-xs text-muted-foreground">Na Fila</p>
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4 text-center">
+                <p className="text-2xl font-bold text-primary">{stats.successRate}%</p>
+                <p className="text-xs text-muted-foreground">Taxa Sucesso (7d)</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="border-0 shadow-sm">
+            <CardHeader><CardTitle className="text-base">Resumo Semanal</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Enviadas (7 dias)</span>
+                <span className="font-medium text-foreground">{stats.sentWeek}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Falhas (7 dias)</span>
+                <span className="font-medium text-destructive">{stats.failedWeek}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Em retry</span>
+                <span className="font-medium text-warning">{stats.retryCount}</span>
+              </div>
+              <div className="pt-2">
+                <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                  <span>Taxa de sucesso</span>
+                  <span>{stats.successRate}%</span>
+                </div>
+                <Progress value={stats.successRate} className="h-2" />
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ──────────────────────────────────────────
 export default function WhatsApp() {
   const { organizationId } = useOrganization();
@@ -1156,7 +1327,7 @@ export default function WhatsApp() {
         </div>
 
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="mensagens" className="gap-1.5">
               <MessageSquare className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Msgs</span>
             </TabsTrigger>
@@ -1175,6 +1346,9 @@ export default function WhatsApp() {
             <TabsTrigger value="antiban" className="gap-1.5">
               <AlertTriangle className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Anti-Ban</span>
             </TabsTrigger>
+            <TabsTrigger value="monitor" className="gap-1.5">
+              <Activity className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Monitor</span>
+            </TabsTrigger>
           </TabsList>
 
           {organizationId && (
@@ -1185,6 +1359,7 @@ export default function WhatsApp() {
               <TabsContent value="campanhas"><CampaignsTab organizationId={organizationId} /></TabsContent>
               <TabsContent value="parear"><PairTab organizationId={organizationId} /></TabsContent>
               <TabsContent value="antiban"><AntiBanTab organizationId={organizationId} /></TabsContent>
+              <TabsContent value="monitor"><MonitorTab organizationId={organizationId} /></TabsContent>
             </>
           )}
         </Tabs>
