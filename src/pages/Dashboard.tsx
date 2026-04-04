@@ -148,6 +148,7 @@ export default function Dashboard() {
       const { data: invoices, error } = await supabase
         .from("invoices")
         .select("amount, status, paid_date")
+        .in("status", ["pago"])
         .eq("organization_id", organizationId);
       if (error) throw error;
       let monthBalance = 0;
