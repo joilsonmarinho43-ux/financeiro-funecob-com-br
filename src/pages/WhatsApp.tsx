@@ -1005,27 +1005,23 @@ function AntiBanTab({ organizationId }: { organizationId: string }) {
     enabled: !!organizationId,
   });
 
-  useState(() => {
+  useEffect(() => {
     if (existing) {
+      const e = existing as any;
       setConfig({
-        send_window_start: (existing as any).send_window_start || "08:00",
-        send_window_end: (existing as any).send_window_end || "18:00",
-        max_per_minute: (existing as any).max_per_minute || 3,
-        max_per_hour: (existing as any).max_per_hour || 60,
-        max_per_day: (existing as any).max_per_day || 500,
-        min_delay: (existing as any).min_delay || 30,
-        max_delay: (existing as any).max_delay || 60,
-        randomness_level: (existing as any).randomness_level || "medium",
-        auto_pause_enabled: (existing as any).auto_pause_enabled ?? true,
-        shuffle_order: (existing as any).shuffle_order ?? true,
+        send_window_start: (e.send_window_start || "08:00:00").substring(0, 5),
+        send_window_end: (e.send_window_end || "18:00:00").substring(0, 5),
+        max_per_minute: e.max_per_minute || 3,
+        max_per_hour: e.max_per_hour || 60,
+        max_per_day: e.max_per_day || 500,
+        min_delay: e.min_delay || 30,
+        max_delay: e.max_delay || 60,
+        randomness_level: e.randomness_level || "medium",
+        auto_pause_enabled: e.auto_pause_enabled ?? true,
+        shuffle_order: e.shuffle_order ?? true,
       });
     }
-  });
-
-  // Sync existing data
-  if (existing && config.send_window_start === "08:00" && (existing as any).send_window_start !== "08:00:00") {
-    // will update on next effect
-  }
+  }, [existing]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
