@@ -737,19 +737,38 @@ export default function BillingSettings() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-success/10 border border-success/20">
-                    <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
-                    <div>
-                      <p className="text-xs text-muted-foreground">Régua de Cobrança</p>
-                      <p className="text-sm font-semibold text-foreground">Diário 08:00</p>
+                  <div className="p-3 rounded-lg bg-success/10 border border-success/20 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                      <p className="text-xs text-muted-foreground">Horário da Régua</p>
                     </div>
+                    <Select value={robotScheduleTime} onValueChange={setRobotScheduleTime}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {Array.from({ length: 24 }, (_, i) => {
+                          const h = String(i).padStart(2, "0") + ":00";
+                          return <SelectItem key={h} value={h}>{h}</SelectItem>;
+                        })}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-success/10 border border-success/20">
-                    <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
-                    <div>
-                      <p className="text-xs text-muted-foreground">Envio WhatsApp</p>
-                      <p className="text-sm font-semibold text-foreground">A cada 2 min</p>
+                  <div className="p-3 rounded-lg bg-success/10 border border-success/20 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                      <p className="text-xs text-muted-foreground">Intervalo de Envio</p>
                     </div>
+                    <Select value={robotSendInterval} onValueChange={setRobotSendInterval}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">A cada 1 min</SelectItem>
+                        <SelectItem value="2">A cada 2 min</SelectItem>
+                        <SelectItem value="3">A cada 3 min</SelectItem>
+                        <SelectItem value="5">A cada 5 min</SelectItem>
+                        <SelectItem value="10">A cada 10 min</SelectItem>
+                        <SelectItem value="15">A cada 15 min</SelectItem>
+                        <SelectItem value="30">A cada 30 min</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/10 border border-primary/20">
                     <Bell className="h-5 w-5 text-primary shrink-0" />
