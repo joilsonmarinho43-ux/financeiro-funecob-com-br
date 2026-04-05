@@ -111,7 +111,9 @@ export type Database = {
           organization_id: string
           pix_key: string | null
           pix_key_type: string | null
+          reminder_days_after: number
           reminder_days_before: number
+          reminder_days_before_2: number
           reminder_enabled: boolean
           template_baixa: string
           template_due_date: string
@@ -131,7 +133,9 @@ export type Database = {
           organization_id: string
           pix_key?: string | null
           pix_key_type?: string | null
+          reminder_days_after?: number
           reminder_days_before?: number
+          reminder_days_before_2?: number
           reminder_enabled?: boolean
           template_baixa?: string
           template_due_date?: string
@@ -151,7 +155,9 @@ export type Database = {
           organization_id?: string
           pix_key?: string | null
           pix_key_type?: string | null
+          reminder_days_after?: number
           reminder_days_before?: number
+          reminder_days_before_2?: number
           reminder_enabled?: boolean
           template_baixa?: string
           template_due_date?: string

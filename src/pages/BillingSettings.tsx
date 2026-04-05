@@ -48,6 +48,8 @@ export default function BillingSettings() {
   const [gatewayApiKey, setGatewayApiKey] = useState("");
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [reminderDaysBefore, setReminderDaysBefore] = useState(2);
+  const [reminderDaysBefore2, setReminderDaysBefore2] = useState(1);
+  const [reminderDaysAfter, setReminderDaysAfter] = useState(1);
   const [templateReminder, setTemplateReminder] = useState(
     "Olá {nome}! Sua fatura no valor de {valor} vence em {vencimento}. Fique atento para evitar atrasos."
   );
@@ -175,6 +177,8 @@ export default function BillingSettings() {
       setGatewayApiKey(settings.gateway_api_key || "");
       setReminderEnabled(settings.reminder_enabled);
       setReminderDaysBefore(settings.reminder_days_before);
+      setReminderDaysBefore2((settings as any).reminder_days_before_2 ?? 1);
+      setReminderDaysAfter((settings as any).reminder_days_after ?? 1);
       setTemplateReminder(settings.template_reminder);
       setTemplateDueDate(settings.template_due_date);
       setTemplateOverdue(settings.template_overdue);
@@ -197,6 +201,8 @@ export default function BillingSettings() {
         gateway_api_key: gatewayApiKey || null,
         reminder_enabled: reminderEnabled,
         reminder_days_before: reminderDaysBefore,
+        reminder_days_before_2: reminderDaysBefore2,
+        reminder_days_after: reminderDaysAfter,
         template_reminder: templateReminder,
         template_due_date: templateDueDate,
         template_overdue: templateOverdue,
@@ -660,7 +666,7 @@ export default function BillingSettings() {
                 {reminderEnabled && (
                   <>
                     <div className="space-y-2">
-                      <Label>Dias antes do vencimento para lembrete</Label>
+                      <Label>1º Lembrete — dias antes do vencimento</Label>
                       <Select value={String(reminderDaysBefore)} onValueChange={(v) => setReminderDaysBefore(parseInt(v))}>
                         <SelectTrigger className="max-w-[160px]"><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -671,15 +677,40 @@ export default function BillingSettings() {
                       </Select>
                     </div>
 
+                    <div className="space-y-2">
+                      <Label>2º Lembrete — dias antes do vencimento</Label>
+                      <Select value={String(reminderDaysBefore2)} onValueChange={(v) => setReminderDaysBefore2(parseInt(v))}>
+                        <SelectTrigger className="max-w-[160px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {[1,2,3,4,5,7,10,14,15,20,25,30].map((d) => (
+                            <SelectItem key={d} value={String(d)}>{d} dia{d > 1 ? "s" : ""}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Cobrança após vencimento — dias depois</Label>
+                      <Select value={String(reminderDaysAfter)} onValueChange={(v) => setReminderDaysAfter(parseInt(v))}>
+                        <SelectTrigger className="max-w-[160px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {[1,2,3,5,7,10,14,15,20,25,30].map((d) => (
+                            <SelectItem key={d} value={String(d)}>{d} dia{d > 1 ? "s" : ""}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     <div className="space-y-3">
                       <p className="text-sm font-medium text-foreground">Programação dos envios:</p>
                       <div className="space-y-2">
                         {[
-                          { icon: Bell, label: `${reminderDaysBefore} dia(s) antes`, desc: "Lembrete de vencimento próximo", cls: "text-primary" },
+                          { icon: Bell, label: `${reminderDaysBefore} dia(s) antes`, desc: "1º lembrete de vencimento próximo", cls: "text-primary" },
+                          { icon: Bell, label: `${reminderDaysBefore2} dia(s) antes`, desc: "2º lembrete de vencimento próximo", cls: "text-primary" },
                           { icon: AlertTriangle, label: "No dia do vencimento", desc: "Envio com chave Pix ou link de pagamento", cls: "text-warning" },
-                          { icon: XCircle, label: "Após o vencimento", desc: "Notificação de cobrança pendente", cls: "text-destructive" },
-                        ].map((item) => (
-                          <div key={item.label} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+                          { icon: XCircle, label: `${reminderDaysAfter} dia(s) após`, desc: "Notificação de cobrança pendente", cls: "text-destructive" },
+                        ].map((item, idx) => (
+                          <div key={idx} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
                             <item.icon className={`h-4 w-4 ${item.cls} shrink-0`} />
                             <div>
                               <p className="text-sm font-medium text-foreground">{item.label}</p>
