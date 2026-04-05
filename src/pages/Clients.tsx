@@ -177,8 +177,9 @@ export default function Clients() {
           });
         } else {
           const totalInstallments = parseInt(form.carne_installments) || 12;
+          const firstDue = getFirstDueDate();
           for (let i = 0; i < totalInstallments; i++) {
-            const dueDate = new Date(now.getFullYear(), now.getMonth() + i, dueDay);
+            const dueDate = new Date(firstDue.getFullYear(), firstDue.getMonth() + i, firstDue.getDate());
             invoices.push({
               client_id: clientId,
               organization_id: organizationId,
