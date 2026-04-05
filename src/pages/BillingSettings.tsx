@@ -661,14 +661,14 @@ export default function BillingSettings() {
                   <>
                     <div className="space-y-2">
                       <Label>Dias antes do vencimento para lembrete</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={30}
-                        value={reminderDaysBefore}
-                        onChange={(e) => setReminderDaysBefore(parseInt(e.target.value) || 2)}
-                        className="max-w-[120px]"
-                      />
+                      <Select value={String(reminderDaysBefore)} onValueChange={(v) => setReminderDaysBefore(parseInt(v))}>
+                        <SelectTrigger className="max-w-[160px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {[1,2,3,4,5,7,10,14,15,20,25,30].map((d) => (
+                            <SelectItem key={d} value={String(d)}>{d} dia{d > 1 ? "s" : ""}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <div className="space-y-3">
