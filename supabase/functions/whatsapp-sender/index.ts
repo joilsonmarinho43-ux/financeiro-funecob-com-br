@@ -112,22 +112,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get global API settings
+    // Get global API settings (including default instance name)
     const { data: globalSettings } = await supabase
       .from("global_settings")
       .select("key, value")
-      .in("key", ["api_host", "global_api_key"]);
+      .in("key", ["api_host", "global_api_key", "default_instance_name"]);
 
     const gs: Record<string, string> = {};
     (globalSettings || []).forEach((s: any) => { gs[s.key] = s.value; });
-
-    // Fetch default_instance_name from global_settings
-    const { data: instanceNameSetting } = await supabase
-      .from("global_settings")
-      .select("value")
-      .eq("key", "default_instance_name")
-      .maybeSingle();
-    const defaultInstanceName = (instanceNameSetting as any)?.value || "";
 
     // Group by org and get anti-ban configs
     const orgIds = [...new Set(queueItems.map((q: any) => q.organization_id).filter(Boolean))];
