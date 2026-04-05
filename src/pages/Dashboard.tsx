@@ -150,74 +150,8 @@ export default function Dashboard() {
     enabled: !!organizationId,
   });
 
-  // Client activity by period
-  const { data: clientChartData } = useQuery({
-    queryKey: ["dashboard-client-chart", organizationId, chartDays],
-    queryFn: async () => {
-      if (!organizationId) return [];
-      const now = new Date();
-      const days: { date: string; label: string }[] = [];
-      for (let i = chartDays - 1; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        days.push({
-          date: d.toISOString().split("T")[0],
-          label: `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`,
-        });
-      }
-      const startDate = days[0].date;
-      const { data, error } = await supabase
-        .from("clients")
-        .select("created_at, status")
-        .eq("organization_id", organizationId)
-        .gte("created_at", startDate);
-      if (error) throw error;
-      return days.map((day) => {
-        const dayClients = data.filter((c) => c.created_at.startsWith(day.date));
-        return {
-          name: day.label,
-          ativados: dayClients.filter((c) => c.status === "ativo").length,
-          cadastrados: dayClients.length,
-          renovados: 0,
-        };
-      });
-    },
-    enabled: !!organizationId,
-  });
 
-  // Transactions by period
-  const { data: txChartData } = useQuery({
-    queryKey: ["dashboard-tx-chart", organizationId, chartDays],
-    queryFn: async () => {
-      if (!organizationId) return [];
-      const now = new Date();
-      const days: { date: string; label: string }[] = [];
-      for (let i = chartDays - 1; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        days.push({
-          date: d.toISOString().split("T")[0],
-          label: `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`,
-        });
-      }
-      const startDate = days[0].date;
-      const { data, error } = await supabase
-        .from("transactions")
-        .select("amount, type, transaction_date")
-        .eq("organization_id", organizationId)
-        .gte("transaction_date", startDate);
-      if (error) throw error;
-      return days.map((day) => {
-        const dayTx = data.filter((t) => t.transaction_date === day.date);
-        return {
-          name: day.label,
-          entradas: dayTx.filter((t) => t.type === "entrada" || t.type === "receita").reduce((s, t) => s + Number(t.amount), 0),
-          saidas: dayTx.filter((t) => t.type === "saida" || t.type === "despesa").reduce((s, t) => s + Number(t.amount), 0),
-        };
-      });
-    },
-    enabled: !!organizationId,
-  });
+
 
   // Overdue clients
   const { data: overdueClients } = useQuery({
