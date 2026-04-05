@@ -9,12 +9,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Save, Globe, Key, Webhook, Loader2 } from "lucide-react";
 
-const SETTINGS_KEYS = ["api_host", "global_api_key", "webhook_url"] as const;
+const SETTINGS_KEYS = ["api_host", "global_api_key", "webhook_url", "default_instance_name"] as const;
 
 export default function GlobalSettings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ api_host: "", global_api_key: "", webhook_url: "" });
+  const [form, setForm] = useState({ api_host: "", global_api_key: "", webhook_url: "", default_instance_name: "" });
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ["global-settings"],
@@ -36,6 +36,7 @@ export default function GlobalSettings() {
         api_host: map.api_host || "",
         global_api_key: map.global_api_key || "",
         webhook_url: map.webhook_url || "",
+        default_instance_name: map.default_instance_name || "",
       });
     }
   }, [settings]);
