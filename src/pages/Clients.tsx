@@ -38,6 +38,7 @@ const emptyForm = {
   plan_id: "",
   custom_value: "",
   due_day: "5",
+  due_date_full: "",
   billing_type: "recorrencia" as "recorrencia" | "carne",
   carne_installments: "12",
   status: "ativo",
