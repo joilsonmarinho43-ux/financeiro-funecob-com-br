@@ -48,6 +48,8 @@ export default function BillingSettings() {
   const [gatewayApiKey, setGatewayApiKey] = useState("");
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [reminderDaysBefore, setReminderDaysBefore] = useState(2);
+  const [reminderDaysBefore2, setReminderDaysBefore2] = useState(1);
+  const [reminderDaysAfter, setReminderDaysAfter] = useState(1);
   const [templateReminder, setTemplateReminder] = useState(
     "Olá {nome}! Sua fatura no valor de {valor} vence em {vencimento}. Fique atento para evitar atrasos."
   );
