@@ -154,9 +154,18 @@ export default function Clients() {
         const now = new Date();
         const invoices: TablesInsert<"invoices">[] = [];
 
+        // Use full date if provided, otherwise calculate from due_day
+        const getFirstDueDate = () => {
+          if (form.due_date_full) {
+            return new Date(form.due_date_full + "T12:00:00");
+          }
+          const d = new Date(now.getFullYear(), now.getMonth(), dueDay);
+          if (d <= now) d.setMonth(d.getMonth() + 1);
+          return d;
+        };
+
         if (form.billing_type === "recorrencia") {
-          const dueDate = new Date(now.getFullYear(), now.getMonth(), dueDay);
-          if (dueDate <= now) dueDate.setMonth(dueDate.getMonth() + 1);
+          const dueDate = getFirstDueDate();
           invoices.push({
             client_id: clientId,
             organization_id: organizationId,
