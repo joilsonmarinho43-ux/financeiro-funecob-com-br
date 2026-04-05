@@ -107,6 +107,25 @@ export default function Clients() {
     enabled: !!detailDialog,
   });
 
+  // Fetch next pending invoice for editing client (to show due date)
+  const { data: editNextInvoice } = useQuery({
+    queryKey: ["edit-next-invoice", editingClient?.id],
+    queryFn: async () => {
+      if (!editingClient) return null;
+      const { data, error } = await supabase
+        .from("invoices")
+        .select("id, due_date, amount, status")
+        .eq("client_id", editingClient.id)
+        .in("status", ["pendente", "atrasada"])
+        .order("due_date", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!editingClient,
+  });
+
   const selectedPlan = plans.find((p) => p.id === form.plan_id);
   const invoiceAmount = form.custom_value
     ? parseFloat(form.custom_value)
