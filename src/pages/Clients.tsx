@@ -87,6 +87,7 @@ export default function Clients() {
       return data as Plan[];
     },
     enabled: !!organizationId,
+    staleTime: 10 * 60 * 1000,
   });
 
   // Client invoices for detail view
