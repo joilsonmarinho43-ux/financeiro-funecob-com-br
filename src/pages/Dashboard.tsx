@@ -1,4 +1,4 @@
-import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, X, Bell } from "lucide-react";
+import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, Bell } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -16,27 +16,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  AreaChart,
-  Area,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
 
 export default function Dashboard() {
   const [showValues, setShowValues] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
-  const [chartDays, setChartDays] = useState(7);
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const { organizationId } = useOrganization();
 
   // Fetch WhatsApp instance for sending
@@ -167,74 +150,8 @@ export default function Dashboard() {
     enabled: !!organizationId,
   });
 
-  // Client activity by period
-  const { data: clientChartData } = useQuery({
-    queryKey: ["dashboard-client-chart", organizationId, chartDays],
-    queryFn: async () => {
-      if (!organizationId) return [];
-      const now = new Date();
-      const days: { date: string; label: string }[] = [];
-      for (let i = chartDays - 1; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        days.push({
-          date: d.toISOString().split("T")[0],
-          label: `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`,
-        });
-      }
-      const startDate = days[0].date;
-      const { data, error } = await supabase
-        .from("clients")
-        .select("created_at, status")
-        .eq("organization_id", organizationId)
-        .gte("created_at", startDate);
-      if (error) throw error;
-      return days.map((day) => {
-        const dayClients = data.filter((c) => c.created_at.startsWith(day.date));
-        return {
-          name: day.label,
-          ativados: dayClients.filter((c) => c.status === "ativo").length,
-          cadastrados: dayClients.length,
-          renovados: 0,
-        };
-      });
-    },
-    enabled: !!organizationId,
-  });
 
-  // Transactions by period
-  const { data: txChartData } = useQuery({
-    queryKey: ["dashboard-tx-chart", organizationId, chartDays],
-    queryFn: async () => {
-      if (!organizationId) return [];
-      const now = new Date();
-      const days: { date: string; label: string }[] = [];
-      for (let i = chartDays - 1; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        days.push({
-          date: d.toISOString().split("T")[0],
-          label: `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`,
-        });
-      }
-      const startDate = days[0].date;
-      const { data, error } = await supabase
-        .from("transactions")
-        .select("amount, type, transaction_date")
-        .eq("organization_id", organizationId)
-        .gte("transaction_date", startDate);
-      if (error) throw error;
-      return days.map((day) => {
-        const dayTx = data.filter((t) => t.transaction_date === day.date);
-        return {
-          name: day.label,
-          entradas: dayTx.filter((t) => t.type === "entrada" || t.type === "receita").reduce((s, t) => s + Number(t.amount), 0),
-          saidas: dayTx.filter((t) => t.type === "saida" || t.type === "despesa").reduce((s, t) => s + Number(t.amount), 0),
-        };
-      });
-    },
-    enabled: !!organizationId,
-  });
+
 
   // Overdue clients
   const { data: overdueClients } = useQuery({
@@ -280,78 +197,8 @@ export default function Dashboard() {
     enabled: !!organizationId,
   });
 
-  const PIE_COLORS = [
-    "hsl(var(--primary))",
-    "hsl(var(--success))",
-    "hsl(var(--warning))",
-    "hsl(var(--destructive))",
-    "hsl(210, 70%, 55%)",
-    "hsl(280, 60%, 55%)",
-    "hsl(30, 80%, 55%)",
-    "hsl(180, 60%, 45%)",
-  ];
 
-  const { data: clientsByPlan } = useQuery({
-    queryKey: ["dashboard-clients-by-plan", organizationId],
-    queryFn: async () => {
-      if (!organizationId) return [];
-      const { data: invoices, error } = await supabase
-        .from("invoices")
-        .select("client_id, plans(name)")
-        .eq("organization_id", organizationId)
-        .eq("status", "aberto");
-      if (error) throw error;
-      const planMap: Record<string, Set<string>> = {};
-      for (const inv of invoices) {
-        const planName = (inv.plans as any)?.name || "Sem plano";
-        if (!planMap[planName]) planMap[planName] = new Set();
-        planMap[planName].add(inv.client_id);
-      }
-      return Object.entries(planMap).map(([name, clients]) => ({
-        name,
-        value: clients.size,
-      }));
-    },
-    enabled: !!organizationId,
-  });
 
-  // Fetch clients for selected plan slice
-  const { data: planClients, isLoading: loadingPlanClients } = useQuery({
-    queryKey: ["dashboard-plan-clients", organizationId, selectedPlan],
-    queryFn: async () => {
-      if (!organizationId || !selectedPlan) return [];
-      const { data: invoices, error } = await supabase
-        .from("invoices")
-        .select("client_id, clients(name, phone, email, status)")
-        .eq("organization_id", organizationId)
-        .eq("status", "aberto");
-      if (error) throw error;
-
-      // If "Sem plano", get invoices with no plan
-      let filtered = invoices;
-      if (selectedPlan !== "Sem plano") {
-        const { data: planInvoices, error: e2 } = await supabase
-          .from("invoices")
-          .select("client_id, plans!inner(name), clients(name, phone, email, status)")
-          .eq("organization_id", organizationId)
-          .eq("status", "aberto")
-          .eq("plans.name", selectedPlan);
-        if (e2) throw e2;
-        filtered = planInvoices;
-      } else {
-        filtered = invoices.filter((inv) => !(inv as any).plan_id);
-      }
-
-      // Deduplicate by client_id
-      const seen = new Set<string>();
-      return filtered.filter((inv) => {
-        if (seen.has(inv.client_id)) return false;
-        seen.add(inv.client_id);
-        return true;
-      }).map((inv) => inv.clients as any);
-    },
-    enabled: !!organizationId && !!selectedPlan,
-  });
 
   const formatCurrency = (value: number) =>
     value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -461,182 +308,6 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* Period filter */}
-      <div className="flex items-center justify-end gap-1">
-        {[7, 15, 30].map((d) => (
-          <Button
-            key={d}
-            size="sm"
-            variant={chartDays === d ? "default" : "outline"}
-            className="h-7 text-xs px-2.5"
-            onClick={() => setChartDays(d)}
-          >
-            {d} dias
-          </Button>
-        ))}
-      </div>
-
-      {/* Status Clientes */}
-      <Card className="border-0 shadow-sm">
-        <CardContent className="p-4">
-          <h3 className="font-semibold text-sm text-foreground mb-3">Status Clientes — Últimos {chartDays} Dias</h3>
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={clientChartData ?? []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: 12 }} />
-                <Line type="monotone" dataKey="ativados" stroke="hsl(var(--success))" strokeWidth={2} dot={{ r: 3 }} name="Clientes Ativados" />
-                <Line type="monotone" dataKey="cadastrados" stroke="hsl(var(--warning))" strokeWidth={2} dot={{ r: 3 }} name="Apenas Cadastrados" />
-                <Line type="monotone" dataKey="renovados" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} name="Clientes Renovados" />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Movimentações Últimos 7 Dias */}
-      <Card className="border-0 shadow-sm">
-        <CardContent className="p-4">
-          <h3 className="font-semibold text-sm text-foreground mb-3">Movimentações — Últimos {chartDays} Dias</h3>
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={txChartData ?? []}>
-                <defs>
-                  <linearGradient id="colorEntradas" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(160, 84%, 39%)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(160, 84%, 39%)" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorSaidas" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(0, 72%, 51%)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(0, 72%, 51%)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: 12 }} />
-                <Area type="monotone" dataKey="entradas" stroke="hsl(var(--success))" fill="url(#colorEntradas)" strokeWidth={2} name="Entradas" />
-                <Area type="monotone" dataKey="saidas" stroke="hsl(var(--destructive))" fill="url(#colorSaidas)" strokeWidth={2} name="Saídas" />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Distribuição de Clientes por Plano */}
-      <Card className="border-0 shadow-sm">
-        <CardContent className="p-4">
-          <h3 className="font-semibold text-sm text-foreground mb-3">Distribuição de Clientes por Plano</h3>
-          <div className="h-[260px]">
-            {(!clientsByPlan || clientsByPlan.length === 0) ? (
-              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-                Nenhum dado disponível
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={clientsByPlan}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={90}
-                    paddingAngle={3}
-                    dataKey="value"
-                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                    labelLine={{ stroke: "hsl(var(--muted-foreground))" }}
-                    onClick={(_, index) => {
-                      const planName = clientsByPlan[index]?.name;
-                      setSelectedPlan(selectedPlan === planName ? null : planName);
-                    }}
-                    cursor="pointer"
-                  >
-                    {clientsByPlan.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={PIE_COLORS[index % PIE_COLORS.length]}
-                        stroke={selectedPlan === entry.name ? "hsl(var(--foreground))" : "transparent"}
-                        strokeWidth={selectedPlan === entry.name ? 3 : 0}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "8px",
-                      fontSize: 12,
-                    }}
-                    formatter={(value: number) => [`${value} cliente(s)`, "Quantidade"]}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Selected Plan Clients Detail */}
-      {selectedPlan && (
-        <Card className="border-0 shadow-sm overflow-hidden">
-          <div className="bg-primary px-4 py-3 flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-sm text-primary-foreground">Clientes — {selectedPlan}</h3>
-              <p className="text-xs text-primary-foreground/80">Clique na fatia novamente para fechar</p>
-            </div>
-            <Button size="icon" variant="ghost" className="h-7 w-7 text-primary-foreground hover:text-primary-foreground/80" onClick={() => setSelectedPlan(null)}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs">Nome</TableHead>
-                    <TableHead className="text-xs">Telefone</TableHead>
-                    <TableHead className="text-xs">Email</TableHead>
-                    <TableHead className="text-xs">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loadingPlanClients ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center py-6">
-                        <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
-                      </TableCell>
-                    </TableRow>
-                  ) : (!planClients || planClients.length === 0) ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-6">
-                        Nenhum cliente encontrado
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    planClients.map((client: any, idx: number) => (
-                      <TableRow key={idx}>
-                        <TableCell className="text-xs font-medium">{client?.name ?? "—"}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{client?.phone ?? "—"}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{client?.email ?? "—"}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-[10px]">
-                            {client?.status ?? "—"}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Lembretes Ativos — clientes com vencimento nos próximos 10 dias */}
       <Card className="border-0 shadow-sm overflow-hidden">
