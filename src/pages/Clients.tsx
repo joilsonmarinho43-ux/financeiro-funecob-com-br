@@ -107,6 +107,25 @@ export default function Clients() {
     enabled: !!detailDialog,
   });
 
+  // Fetch next pending invoice for editing client (to show due date)
+  const { data: editNextInvoice } = useQuery({
+    queryKey: ["edit-next-invoice", editingClient?.id],
+    queryFn: async () => {
+      if (!editingClient) return null;
+      const { data, error } = await supabase
+        .from("invoices")
+        .select("id, due_date, amount, status")
+        .eq("client_id", editingClient.id)
+        .in("status", ["pendente", "atrasada"])
+        .order("due_date", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!editingClient,
+  });
+
   const selectedPlan = plans.find((p) => p.id === form.plan_id);
   const invoiceAmount = form.custom_value
     ? parseFloat(form.custom_value)
@@ -139,6 +158,14 @@ export default function Clients() {
           .update(clientPayload)
           .eq("id", editingClient.id);
         if (error) throw error;
+
+        // Update next invoice due date if changed
+        if (form.due_date_full && editNextInvoice?.id) {
+          await supabase
+            .from("invoices")
+            .update({ due_date: form.due_date_full })
+            .eq("id", editNextInvoice.id);
+        }
       } else {
         const { data, error } = await supabase
           .from("clients")
@@ -359,6 +386,22 @@ export default function Clients() {
                           <SelectItem value="inadimplente">Inadimplente</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+                  )}
+                  {/* Due date - visible when editing */}
+                  {editingClient && (
+                    <div className="space-y-2">
+                      <Label>Próximo Vencimento</Label>
+                      <Input
+                        type="date"
+                        value={form.due_date_full || editNextInvoice?.due_date || ""}
+                        onChange={(e) => setForm({ ...form, due_date_full: e.target.value })}
+                      />
+                      {editNextInvoice && !form.due_date_full && (
+                        <p className="text-xs text-muted-foreground">
+                          Vencimento atual: {format(new Date(editNextInvoice.due_date + "T12:00:00"), "dd/MM/yyyy")} — {editNextInvoice.status}
+                        </p>
+                      )}
                     </div>
                   )}
                   {/* Show dates when editing */}
