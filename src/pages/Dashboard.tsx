@@ -53,6 +53,7 @@ export default function Dashboard() {
       return data;
     },
     enabled: !!organizationId,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Fetch billing settings for message template
@@ -68,6 +69,7 @@ export default function Dashboard() {
       return data;
     },
     enabled: !!organizationId,
+    staleTime: 10 * 60 * 1000,
   });
 
   const sendWhatsAppMessage = async (inv: any) => {
