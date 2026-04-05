@@ -9,12 +9,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Save, Globe, Key, Webhook, Loader2 } from "lucide-react";
 
-const SETTINGS_KEYS = ["api_host", "global_api_key", "webhook_url"] as const;
+const SETTINGS_KEYS = ["api_host", "global_api_key", "webhook_url", "default_instance_name"] as const;
 
 export default function GlobalSettings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ api_host: "", global_api_key: "", webhook_url: "" });
+  const [form, setForm] = useState({ api_host: "", global_api_key: "", webhook_url: "", default_instance_name: "" });
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ["global-settings"],
@@ -36,6 +36,7 @@ export default function GlobalSettings() {
         api_host: map.api_host || "",
         global_api_key: map.global_api_key || "",
         webhook_url: map.webhook_url || "",
+        default_instance_name: map.default_instance_name || "",
       });
     }
   }, [settings]);
@@ -123,6 +124,17 @@ export default function GlobalSettings() {
                     onChange={(e) => setForm({ ...form, webhook_url: e.target.value })}
                   />
                   <p className="text-xs text-muted-foreground">URL de retorno para receber eventos de mensagens.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="default_instance_name" className="flex items-center gap-2"><Webhook className="h-4 w-4" /> Nome da Instância Padrão</Label>
+                  <Input
+                    id="default_instance_name"
+                    placeholder="funecob-default"
+                    value={form.default_instance_name}
+                    onChange={(e) => setForm({ ...form, default_instance_name: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">Nome da instância padrão para envio quando a organização não tem instância própria.</p>
                 </div>
 
                 <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="w-full sm:w-auto">
