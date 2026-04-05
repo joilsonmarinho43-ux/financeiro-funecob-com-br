@@ -234,7 +234,7 @@ Deno.serve(async (req) => {
 
         const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
         const apiKey = instance?.api_key || gs.global_api_key || "";
-        const instanceName = instance?.name || "";
+        const instanceName = instance?.name || gs.default_instance_name || "";
 
         if (!apiUrl || !apiKey || !instanceName) {
           throw new Error("Nenhuma instância WhatsApp conectada com API configurada");
