@@ -114,6 +114,7 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const { user, signOut } = useAuth();
+  const { organization } = useOrganization();
 
   const { data: isAdmin } = useQuery({
     queryKey: ["is-admin-sidebar", user?.id],
@@ -134,16 +135,24 @@ export function AppSidebar() {
     .join("")
     .toUpperCase();
 
+  const orgName = (organization as any)?.name || "FuneCob";
+  const orgLogo = (organization as any)?.logo_url || null;
+  const orgInitials = orgName.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase();
+
   return (
     <Sidebar collapsible="icon" className="gradient-sidebar border-r-0">
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg gradient-primary flex items-center justify-center shrink-0">
-            <span className="text-primary-foreground font-bold text-sm">FC</span>
-          </div>
+          {orgLogo ? (
+            <img src={orgLogo} alt={orgName} className="h-8 w-8 rounded-lg object-cover shrink-0" />
+          ) : (
+            <div className="h-8 w-8 rounded-lg gradient-primary flex items-center justify-center shrink-0">
+              <span className="text-primary-foreground font-bold text-sm">{orgInitials}</span>
+            </div>
+          )}
           {!collapsed && (
             <div>
-              <h2 className="text-sm font-semibold text-sidebar-accent-foreground">FuneCob</h2>
+              <h2 className="text-sm font-semibold text-sidebar-accent-foreground">{orgName}</h2>
               <p className="text-[11px] text-sidebar-muted">Sistema de Cobrança</p>
             </div>
           )}
