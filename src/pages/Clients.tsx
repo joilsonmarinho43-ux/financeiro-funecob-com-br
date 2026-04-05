@@ -38,6 +38,7 @@ const emptyForm = {
   plan_id: "",
   custom_value: "",
   due_day: "5",
+  due_date_full: "",
   billing_type: "recorrencia" as "recorrencia" | "carne",
   carne_installments: "12",
   status: "ativo",
@@ -153,9 +154,18 @@ export default function Clients() {
         const now = new Date();
         const invoices: TablesInsert<"invoices">[] = [];
 
+        // Use full date if provided, otherwise calculate from due_day
+        const getFirstDueDate = () => {
+          if (form.due_date_full) {
+            return new Date(form.due_date_full + "T12:00:00");
+          }
+          const d = new Date(now.getFullYear(), now.getMonth(), dueDay);
+          if (d <= now) d.setMonth(d.getMonth() + 1);
+          return d;
+        };
+
         if (form.billing_type === "recorrencia") {
-          const dueDate = new Date(now.getFullYear(), now.getMonth(), dueDay);
-          if (dueDate <= now) dueDate.setMonth(dueDate.getMonth() + 1);
+          const dueDate = getFirstDueDate();
           invoices.push({
             client_id: clientId,
             organization_id: organizationId,
@@ -167,8 +177,9 @@ export default function Clients() {
           });
         } else {
           const totalInstallments = parseInt(form.carne_installments) || 12;
+          const firstDue = getFirstDueDate();
           for (let i = 0; i < totalInstallments; i++) {
-            const dueDate = new Date(now.getFullYear(), now.getMonth() + i, dueDay);
+            const dueDate = new Date(firstDue.getFullYear(), firstDue.getMonth() + i, firstDue.getDate());
             invoices.push({
               client_id: clientId,
               organization_id: organizationId,
@@ -398,6 +409,15 @@ export default function Clients() {
                               ))}
                             </SelectContent>
                           </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Data do 1º Vencimento</Label>
+                          <Input
+                            type="date"
+                            value={form.due_date_full}
+                            onChange={(e) => setForm({ ...form, due_date_full: e.target.value })}
+                          />
+                          <p className="text-xs text-muted-foreground">Se preenchido, ignora o "Dia" acima</p>
                         </div>
                       </div>
                     </div>
