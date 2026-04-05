@@ -102,6 +102,7 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
       return count || 0;
     },
     enabled: !!organizationId,
+    staleTime: 30_000,
     staleTime: 30000,
   });
 
@@ -125,6 +126,8 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
       return data;
     },
     enabled: !!organizationId,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 
   const sendMutation = useMutation({
@@ -1074,6 +1077,7 @@ function AntiBanTab({ organizationId }: { organizationId: string }) {
       return data;
     },
     enabled: !!organizationId,
+    staleTime: 10 * 60 * 1000,
   });
 
   useEffect(() => {
