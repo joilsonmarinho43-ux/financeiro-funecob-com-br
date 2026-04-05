@@ -380,6 +380,22 @@ export default function Clients() {
                       </Select>
                     </div>
                   )}
+                  {/* Due date - visible when editing */}
+                  {editingClient && (
+                    <div className="space-y-2">
+                      <Label>Próximo Vencimento</Label>
+                      <Input
+                        type="date"
+                        value={form.due_date_full || editNextInvoice?.due_date || ""}
+                        onChange={(e) => setForm({ ...form, due_date_full: e.target.value })}
+                      />
+                      {editNextInvoice && !form.due_date_full && (
+                        <p className="text-xs text-muted-foreground">
+                          Vencimento atual: {format(new Date(editNextInvoice.due_date + "T12:00:00"), "dd/MM/yyyy")} — {editNextInvoice.status}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {/* Show dates when editing */}
                   {editingClient && (
                     <div className="rounded-lg bg-muted/50 border border-border p-3 text-sm space-y-1">
