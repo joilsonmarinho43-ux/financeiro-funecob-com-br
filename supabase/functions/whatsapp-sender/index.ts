@@ -121,6 +121,14 @@ Deno.serve(async (req) => {
     const gs: Record<string, string> = {};
     (globalSettings || []).forEach((s: any) => { gs[s.key] = s.value; });
 
+    // Fetch default_instance_name from global_settings
+    const { data: instanceNameSetting } = await supabase
+      .from("global_settings")
+      .select("value")
+      .eq("key", "default_instance_name")
+      .maybeSingle();
+    const defaultInstanceName = (instanceNameSetting as any)?.value || "";
+
     // Group by org and get anti-ban configs
     const orgIds = [...new Set(queueItems.map((q: any) => q.organization_id).filter(Boolean))];
     const orgConfigs: Record<string, any> = {};
