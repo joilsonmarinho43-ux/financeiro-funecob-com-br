@@ -400,6 +400,15 @@ export default function Clients() {
                             </SelectContent>
                           </Select>
                         </div>
+                        <div className="space-y-2">
+                          <Label>Data do 1º Vencimento</Label>
+                          <Input
+                            type="date"
+                            value={form.due_date_full}
+                            onChange={(e) => setForm({ ...form, due_date_full: e.target.value })}
+                          />
+                          <p className="text-xs text-muted-foreground">Se preenchido, ignora o "Dia" acima</p>
+                        </div>
                       </div>
                     </div>
 
