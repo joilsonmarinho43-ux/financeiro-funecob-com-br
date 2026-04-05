@@ -1127,37 +1127,94 @@ function AntiBanTab({ organizationId }: { organizationId: string }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Horário início</Label>
-              <Input type="time" value={config.send_window_start} onChange={(e) => setConfig({ ...config, send_window_start: e.target.value })} />
+              <Select value={config.send_window_start} onValueChange={(v) => setConfig({ ...config, send_window_start: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-60">
+                  {Array.from({ length: 48 }, (_, i) => {
+                    const h = String(Math.floor(i / 2)).padStart(2, "0");
+                    const m = i % 2 === 0 ? "00" : "30";
+                    return `${h}:${m}`;
+                  }).map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Horário fim</Label>
-              <Input type="time" value={config.send_window_end} onChange={(e) => setConfig({ ...config, send_window_end: e.target.value })} />
+              <Select value={config.send_window_end} onValueChange={(v) => setConfig({ ...config, send_window_end: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-60">
+                  {Array.from({ length: 48 }, (_, i) => {
+                    const h = String(Math.floor(i / 2)).padStart(2, "0");
+                    const m = i % 2 === 0 ? "00" : "30";
+                    return `${h}:${m}`;
+                  }).map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>Máx/minuto</Label>
-              <Input type="number" min="1" max="10" value={config.max_per_minute} onChange={(e) => setConfig({ ...config, max_per_minute: parseInt(e.target.value) || 3 })} />
+              <Select value={String(config.max_per_minute)} onValueChange={(v) => setConfig({ ...config, max_per_minute: parseInt(v) })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[1,2,3,4,5,6,7,8,9,10].map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Máx/hora</Label>
-              <Input type="number" min="1" max="200" value={config.max_per_hour} onChange={(e) => setConfig({ ...config, max_per_hour: parseInt(e.target.value) || 60 })} />
+              <Select value={String(config.max_per_hour)} onValueChange={(v) => setConfig({ ...config, max_per_hour: parseInt(v) })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-60">
+                  {[10,20,30,40,50,60,80,100,120,150,200].map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Máx/dia</Label>
-              <Input type="number" min="1" max="2000" value={config.max_per_day} onChange={(e) => setConfig({ ...config, max_per_day: parseInt(e.target.value) || 500 })} />
+              <Select value={String(config.max_per_day)} onValueChange={(v) => setConfig({ ...config, max_per_day: parseInt(v) })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-60">
+                  {[50,100,200,300,500,700,1000,1500,2000].map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Delay mínimo (seg)</Label>
-              <Input type="number" min="5" max="120" value={config.min_delay} onChange={(e) => setConfig({ ...config, min_delay: parseInt(e.target.value) || 30 })} />
+              <Select value={String(config.min_delay)} onValueChange={(v) => setConfig({ ...config, min_delay: parseInt(v) })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[5,10,15,20,25,30,45,60,90,120].map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}s</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Delay máximo (seg)</Label>
-              <Input type="number" min="10" max="300" value={config.max_delay} onChange={(e) => setConfig({ ...config, max_delay: parseInt(e.target.value) || 60 })} />
+              <Select value={String(config.max_delay)} onValueChange={(v) => setConfig({ ...config, max_delay: parseInt(v) })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[10,20,30,45,60,90,120,180,240,300].map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}s</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
