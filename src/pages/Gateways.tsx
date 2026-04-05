@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/AppLayout";
@@ -7,14 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/hooks/useOrganization";
-import { Settings2, Key, Shield, Plus } from "lucide-react";
+import { Settings2, Key, Shield, Plus, CheckCircle2 } from "lucide-react";
 
 const GATEWAYS = [
   { id: "asaas", name: "Asaas", description: "Pagamentos via boleto, PIX e cartão" },
-  { id: "mercadopago", name: "Mercado Pago", description: "Gateway completo de pagamentos" },
+  { id: "mercadopago", name: "Mercado Pago", description: "Gateway completo de pagamentos", default: true },
   { id: "v3pay", name: "V3Pay", description: "Solução de pagamentos integrada" },
   { id: "efi", name: "Efí (Gerencianet)", description: "PIX, boleto e carnê" },
   { id: "caixa", name: "Caixa Econômica", description: "Boleto e PIX via Caixa Federal" },
@@ -49,6 +49,15 @@ export default function Gateways() {
     enabled: !!organizationId,
   });
 
+  const [selectedGw, setSelectedGw] = useState("mercadopago");
+  const [apiKey, setApiKey] = useState("");
+
+  useEffect(() => {
+    if (settings?.gateway_provider) {
+      setSelectedGw(settings.gateway_provider);
+    }
+  }, [settings]);
+
   const updateMutation = useMutation({
     mutationFn: async (values: { gateway_provider: string; gateway_api_key: string }) => {
       if (!organizationId) throw new Error("Sem organização");
@@ -72,9 +81,6 @@ export default function Gateways() {
     onError: (e) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
-  const [selectedGw, setSelectedGw] = useState("");
-  const [apiKey, setApiKey] = useState("");
-
   const handleSave = () => {
     if (!selectedGw || !apiKey) {
       toast({ title: "Preencha todos os campos", variant: "destructive" });
@@ -82,6 +88,9 @@ export default function Gateways() {
     }
     updateMutation.mutate({ gateway_provider: selectedGw, gateway_api_key: apiKey });
   };
+
+  const activeGw = GATEWAYS.find((g) => g.id === settings?.gateway_provider);
+  const selectedGwInfo = GATEWAYS.find((g) => g.id === selectedGw);
 
   return (
     <AppLayout>
@@ -91,61 +100,66 @@ export default function Gateways() {
           <p className="text-muted-foreground text-sm">Configure suas integrações de pagamento</p>
         </div>
 
-        {settings?.gateway_provider && (
+        {activeGw && (
           <Card className="border-primary/30 bg-primary/5">
             <CardContent className="p-4 flex items-center gap-3">
-              <Shield className="h-5 w-5 text-primary" />
+              <CheckCircle2 className="h-5 w-5 text-primary" />
               <div>
-                <p className="text-sm font-medium text-foreground">Gateway ativo: <span className="text-primary">{settings.gateway_provider}</span></p>
-                <p className="text-xs text-muted-foreground">Chave configurada: ••••{settings.gateway_api_key?.slice(-4)}</p>
+                <p className="text-sm font-medium text-foreground">Gateway ativo: <span className="text-primary">{activeGw.name}</span></p>
+                <p className="text-xs text-muted-foreground">Chave configurada: ••••{settings?.gateway_api_key?.slice(-4)}</p>
               </div>
               <Badge className="ml-auto">Ativo</Badge>
             </CardContent>
           </Card>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {GATEWAYS.map((gw) => (
-            <Card
-              key={gw.id}
-              className={`cursor-pointer transition-all hover:shadow-md ${selectedGw === gw.id ? "ring-2 ring-primary" : ""}`}
-              onClick={() => setSelectedGw(gw.id)}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <Settings2 className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-sm text-foreground">{gw.name}</p>
-                    <p className="text-xs text-muted-foreground">{gw.description}</p>
-                  </div>
-                  {settings?.gateway_provider === gw.id && <Badge variant="secondary" className="text-xs">Atual</Badge>}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Settings2 className="h-4 w-4" /> Selecionar Gateway
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Provedor</Label>
+              <Select value={selectedGw} onValueChange={setSelectedGw}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um gateway" />
+                </SelectTrigger>
+                <SelectContent>
+                  {GATEWAYS.map((gw) => (
+                    <SelectItem key={gw.id} value={gw.id}>
+                      <span className="flex items-center gap-2">
+                        {gw.name}
+                        {settings?.gateway_provider === gw.id && (
+                          <span className="text-xs text-primary font-medium">• Atual</span>
+                        )}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedGwInfo && (
+                <p className="text-xs text-muted-foreground">{selectedGwInfo.description}</p>
+              )}
+            </div>
 
-        {selectedGw && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Key className="h-4 w-4" /> Configurar {GATEWAYS.find(g => g.id === selectedGw)?.name}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Chave de API</Label>
-                <Input type="password" placeholder="Cole sua chave de API aqui" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-              </div>
-              <Button onClick={handleSave} disabled={updateMutation.isPending} className="w-full sm:w-auto">
-                <Plus className="h-4 w-4 mr-2" />
-                {updateMutation.isPending ? "Salvando..." : "Salvar Gateway"}
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+            <div className="space-y-2">
+              <Label>Chave de API</Label>
+              <Input
+                type="password"
+                placeholder="Cole sua chave de API aqui"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+              />
+            </div>
+
+            <Button onClick={handleSave} disabled={updateMutation.isPending} className="w-full sm:w-auto">
+              <Plus className="h-4 w-4 mr-2" />
+              {updateMutation.isPending ? "Salvando..." : "Salvar Gateway"}
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   );
