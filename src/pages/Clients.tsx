@@ -624,9 +624,31 @@ export default function Clients() {
 
               {/* Financial History */}
               <div className="border-t border-border pt-4">
-                <p className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                  <CreditCard className="h-4 w-4 text-primary" /> Histórico Financeiro
-                </p>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <CreditCard className="h-4 w-4 text-primary" /> Histórico Financeiro
+                  </p>
+                  {clientInvoices.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-7 text-xs"
+                      onClick={async () => {
+                        if (!window.confirm("Tem certeza que deseja apagar TODAS as faturas deste cliente? Esta ação é irreversível.")) return;
+                        if (!window.confirm("Confirme novamente: apagar todo o histórico financeiro?")) return;
+                        const ids = clientInvoices.map((inv: any) => inv.id);
+                        for (const id of ids) {
+                          await supabase.from("invoices").delete().eq("id", id);
+                        }
+                        queryClient.invalidateQueries({ queryKey: ["client-invoices"] });
+                        queryClient.invalidateQueries({ queryKey: ["invoices"] });
+                        toast({ title: "Histórico financeiro apagado" });
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" /> Apagar Tudo
+                    </Button>
+                  )}
+                </div>
                 {clientInvoices.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Nenhuma fatura encontrada.</p>
                 ) : (
@@ -638,6 +660,7 @@ export default function Clients() {
                           <TableHead>Valor</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Pagamento</TableHead>
+                          <TableHead className="w-10"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -651,12 +674,56 @@ export default function Clients() {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-sm">{inv.paid_date ? format(new Date(inv.paid_date), "dd/MM/yyyy") : "—"}</TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-destructive hover:text-destructive"
+                                onClick={async () => {
+                                  if (!window.confirm("Apagar esta fatura?")) return;
+                                  await supabase.from("invoices").delete().eq("id", inv.id);
+                                  queryClient.invalidateQueries({ queryKey: ["client-invoices"] });
+                                  queryClient.invalidateQueries({ queryKey: ["invoices"] });
+                                  toast({ title: "Fatura apagada" });
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
                   </div>
                 )}
+              </div>
+
+              {/* Delete Message History */}
+              <div className="border-t border-border pt-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-primary" /> Mensagens WhatsApp
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
+                    onClick={async () => {
+                      if (!detailDialog?.phone || !organizationId) return;
+                      if (!window.confirm("Apagar todo o histórico de mensagens deste cliente?")) return;
+                      const phone = detailDialog.phone.replace(/\D/g, "");
+                      await supabase
+                        .from("whatsapp_messages")
+                        .update({ deleted_at: new Date().toISOString(), deleted_by: user?.id || null })
+                        .eq("organization_id", organizationId)
+                        .ilike("phone", `%${phone}%`);
+                      queryClient.invalidateQueries({ queryKey: ["whatsapp-messages"] });
+                      toast({ title: "Histórico de mensagens apagado" });
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3 mr-1" /> Apagar Histórico
+                  </Button>
+                </div>
               </div>
 
               {/* Quick Actions */}
