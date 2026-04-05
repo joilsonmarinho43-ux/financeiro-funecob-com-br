@@ -1,4 +1,4 @@
-import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, X, Bell } from "lucide-react";
+import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, Bell } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
