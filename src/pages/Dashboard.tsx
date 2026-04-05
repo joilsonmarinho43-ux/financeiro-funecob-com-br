@@ -197,78 +197,8 @@ export default function Dashboard() {
     enabled: !!organizationId,
   });
 
-  const PIE_COLORS = [
-    "hsl(var(--primary))",
-    "hsl(var(--success))",
-    "hsl(var(--warning))",
-    "hsl(var(--destructive))",
-    "hsl(210, 70%, 55%)",
-    "hsl(280, 60%, 55%)",
-    "hsl(30, 80%, 55%)",
-    "hsl(180, 60%, 45%)",
-  ];
 
-  const { data: clientsByPlan } = useQuery({
-    queryKey: ["dashboard-clients-by-plan", organizationId],
-    queryFn: async () => {
-      if (!organizationId) return [];
-      const { data: invoices, error } = await supabase
-        .from("invoices")
-        .select("client_id, plans(name)")
-        .eq("organization_id", organizationId)
-        .eq("status", "aberto");
-      if (error) throw error;
-      const planMap: Record<string, Set<string>> = {};
-      for (const inv of invoices) {
-        const planName = (inv.plans as any)?.name || "Sem plano";
-        if (!planMap[planName]) planMap[planName] = new Set();
-        planMap[planName].add(inv.client_id);
-      }
-      return Object.entries(planMap).map(([name, clients]) => ({
-        name,
-        value: clients.size,
-      }));
-    },
-    enabled: !!organizationId,
-  });
 
-  // Fetch clients for selected plan slice
-  const { data: planClients, isLoading: loadingPlanClients } = useQuery({
-    queryKey: ["dashboard-plan-clients", organizationId, selectedPlan],
-    queryFn: async () => {
-      if (!organizationId || !selectedPlan) return [];
-      const { data: invoices, error } = await supabase
-        .from("invoices")
-        .select("client_id, clients(name, phone, email, status)")
-        .eq("organization_id", organizationId)
-        .eq("status", "aberto");
-      if (error) throw error;
-
-      // If "Sem plano", get invoices with no plan
-      let filtered = invoices;
-      if (selectedPlan !== "Sem plano") {
-        const { data: planInvoices, error: e2 } = await supabase
-          .from("invoices")
-          .select("client_id, plans!inner(name), clients(name, phone, email, status)")
-          .eq("organization_id", organizationId)
-          .eq("status", "aberto")
-          .eq("plans.name", selectedPlan);
-        if (e2) throw e2;
-        filtered = planInvoices;
-      } else {
-        filtered = invoices.filter((inv) => !(inv as any).plan_id);
-      }
-
-      // Deduplicate by client_id
-      const seen = new Set<string>();
-      return filtered.filter((inv) => {
-        if (seen.has(inv.client_id)) return false;
-        seen.add(inv.client_id);
-        return true;
-      }).map((inv) => inv.clients as any);
-    },
-    enabled: !!organizationId && !!selectedPlan,
-  });
 
   const formatCurrency = (value: number) =>
     value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
