@@ -158,6 +158,14 @@ export default function Clients() {
           .update(clientPayload)
           .eq("id", editingClient.id);
         if (error) throw error;
+
+        // Update next invoice due date if changed
+        if (form.due_date_full && editNextInvoice?.id) {
+          await supabase
+            .from("invoices")
+            .update({ due_date: form.due_date_full })
+            .eq("id", editNextInvoice.id);
+        }
       } else {
         const { data, error } = await supabase
           .from("clients")
