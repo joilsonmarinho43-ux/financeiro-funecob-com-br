@@ -201,6 +201,8 @@ export default function BillingSettings() {
         gateway_api_key: gatewayApiKey || null,
         reminder_enabled: reminderEnabled,
         reminder_days_before: reminderDaysBefore,
+        reminder_days_before_2: reminderDaysBefore2,
+        reminder_days_after: reminderDaysAfter,
         template_reminder: templateReminder,
         template_due_date: templateDueDate,
         template_overdue: templateOverdue,
