@@ -103,7 +103,6 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
     },
     enabled: !!organizationId,
     staleTime: 30_000,
-    staleTime: 30000,
   });
 
   const { data: messages = [], isLoading } = useQuery({
