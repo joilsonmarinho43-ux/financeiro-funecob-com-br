@@ -50,6 +50,8 @@ export default function BillingSettings() {
   const [reminderDaysBefore, setReminderDaysBefore] = useState(2);
   const [reminderDaysBefore2, setReminderDaysBefore2] = useState(1);
   const [reminderDaysAfter, setReminderDaysAfter] = useState(1);
+  const [robotScheduleTime, setRobotScheduleTime] = useState("08:00");
+  const [robotSendInterval, setRobotSendInterval] = useState("2");
   const [templateReminder, setTemplateReminder] = useState(
     "Olá {nome}! Sua fatura no valor de {valor} vence em {vencimento}. Fique atento para evitar atrasos."
   );
