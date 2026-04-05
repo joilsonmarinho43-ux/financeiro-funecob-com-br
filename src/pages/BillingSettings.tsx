@@ -177,6 +177,8 @@ export default function BillingSettings() {
       setGatewayApiKey(settings.gateway_api_key || "");
       setReminderEnabled(settings.reminder_enabled);
       setReminderDaysBefore(settings.reminder_days_before);
+      setReminderDaysBefore2((settings as any).reminder_days_before_2 ?? 1);
+      setReminderDaysAfter((settings as any).reminder_days_after ?? 1);
       setTemplateReminder(settings.template_reminder);
       setTemplateDueDate(settings.template_due_date);
       setTemplateOverdue(settings.template_overdue);
