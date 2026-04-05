@@ -666,7 +666,7 @@ export default function BillingSettings() {
                 {reminderEnabled && (
                   <>
                     <div className="space-y-2">
-                      <Label>Dias antes do vencimento para lembrete</Label>
+                      <Label>1º Lembrete — dias antes do vencimento</Label>
                       <Select value={String(reminderDaysBefore)} onValueChange={(v) => setReminderDaysBefore(parseInt(v))}>
                         <SelectTrigger className="max-w-[160px]"><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -677,15 +677,40 @@ export default function BillingSettings() {
                       </Select>
                     </div>
 
+                    <div className="space-y-2">
+                      <Label>2º Lembrete — dias antes do vencimento</Label>
+                      <Select value={String(reminderDaysBefore2)} onValueChange={(v) => setReminderDaysBefore2(parseInt(v))}>
+                        <SelectTrigger className="max-w-[160px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {[1,2,3,4,5,7,10,14,15,20,25,30].map((d) => (
+                            <SelectItem key={d} value={String(d)}>{d} dia{d > 1 ? "s" : ""}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Cobrança após vencimento — dias depois</Label>
+                      <Select value={String(reminderDaysAfter)} onValueChange={(v) => setReminderDaysAfter(parseInt(v))}>
+                        <SelectTrigger className="max-w-[160px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {[1,2,3,5,7,10,14,15,20,25,30].map((d) => (
+                            <SelectItem key={d} value={String(d)}>{d} dia{d > 1 ? "s" : ""}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     <div className="space-y-3">
                       <p className="text-sm font-medium text-foreground">Programação dos envios:</p>
                       <div className="space-y-2">
                         {[
-                          { icon: Bell, label: `${reminderDaysBefore} dia(s) antes`, desc: "Lembrete de vencimento próximo", cls: "text-primary" },
+                          { icon: Bell, label: `${reminderDaysBefore} dia(s) antes`, desc: "1º lembrete de vencimento próximo", cls: "text-primary" },
+                          { icon: Bell, label: `${reminderDaysBefore2} dia(s) antes`, desc: "2º lembrete de vencimento próximo", cls: "text-primary" },
                           { icon: AlertTriangle, label: "No dia do vencimento", desc: "Envio com chave Pix ou link de pagamento", cls: "text-warning" },
-                          { icon: XCircle, label: "Após o vencimento", desc: "Notificação de cobrança pendente", cls: "text-destructive" },
-                        ].map((item) => (
-                          <div key={item.label} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+                          { icon: XCircle, label: `${reminderDaysAfter} dia(s) após`, desc: "Notificação de cobrança pendente", cls: "text-destructive" },
+                        ].map((item, idx) => (
+                          <div key={idx} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
                             <item.icon className={`h-4 w-4 ${item.cls} shrink-0`} />
                             <div>
                               <p className="text-sm font-medium text-foreground">{item.label}</p>
