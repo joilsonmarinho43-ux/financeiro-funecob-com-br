@@ -698,15 +698,19 @@ function PairTab({ organizationId }: { organizationId: string }) {
           Authorization: `Bearer ${session?.access_token || ""}`,
           apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         },
-        body: JSON.stringify({ action: "connect", instanceId }),
+        body: JSON.stringify({ action: "get_qr", instance_id: instanceId }),
       });
       const result = await res.json();
-      if (result.qrcode?.base64) {
-        setQrBase64(result.qrcode.base64);
+      if (!res.ok) throw new Error(result.error || "Erro ao obter QR Code");
+
+      if (result.qr_code) {
+        setQrBase64(result.qr_code);
       } else if (result.status === "connected") {
         toast({ title: "Instância já está conectada!" });
         queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
         setQrDialogOpen(false);
+      } else {
+        throw new Error("QR Code não retornado pela instância");
       }
     } catch (err) {
       toast({ title: "Erro ao obter QR Code", description: (err as Error).message, variant: "destructive" });
@@ -754,15 +758,16 @@ function PairTab({ organizationId }: { organizationId: string }) {
           Authorization: `Bearer ${session?.access_token || ""}`,
           apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         },
-        body: JSON.stringify({ action: "status", instanceId: inst.id }),
+        body: JSON.stringify({ action: "check_status", instance_id: inst.id }),
       });
       const result = await res.json();
-      const newStatus = result.instance?.state === "open" ? "connected" : "disconnected";
+      if (!res.ok) throw new Error(result.error || "Erro ao verificar status");
+      const newStatus = result.status === "connected" ? "connected" : result.status === "pairing" ? "pairing" : "disconnected";
       await supabase.from("whatsapp_instances").update({ status: newStatus }).eq("id", inst.id);
       queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
-      toast({ title: `Status: ${newStatus === "connected" ? "Conectado" : "Desconectado"}` });
+      toast({ title: `Status: ${newStatus === "connected" ? "Conectado" : newStatus === "pairing" ? "Pareando" : "Desconectado"}` });
     } catch (err) {
-      toast({ title: "Erro ao verificar status", variant: "destructive" });
+      toast({ title: "Erro ao verificar status", description: (err as Error).message, variant: "destructive" });
     }
   };
 
@@ -778,7 +783,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
           Authorization: `Bearer ${session?.access_token || ""}`,
           apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         },
-        body: JSON.stringify({ action: "disconnect", instanceId: inst.id }),
+        body: JSON.stringify({ action: "disconnect", instance_id: inst.id }),
       });
       await supabase.from("whatsapp_instances").update({ status: "disconnected" }).eq("id", inst.id);
       queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
@@ -801,10 +806,9 @@ function PairTab({ organizationId }: { organizationId: string }) {
           apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         },
         body: JSON.stringify({
-          action: "create",
-          name: form.name.replace(/\s+/g, "_"),
-          phone: form.phone,
-          organizationId,
+          action: "create_instance",
+          instance_name: form.name.replace(/\s+/g, "_").trim(),
+          organization_id: organizationId,
         }),
       });
       const result = await res.json();
@@ -816,9 +820,9 @@ function PairTab({ organizationId }: { organizationId: string }) {
       toast({ title: "Instância criada com sucesso!" });
       setDialogOpen(false);
       setForm({ name: "", phone: "" });
-      if (result.qrcode?.base64) {
-        setQrBase64(result.qrcode.base64);
-        setSelectedInstance(result.instance || { id: result.instanceId, name: form.name });
+      if (result.qr_code) {
+        setQrBase64(result.qr_code);
+        setSelectedInstance({ id: result.instance_id, name: result.instance_name || form.name });
         setQrDialogOpen(true);
       }
     },
