@@ -23,8 +23,36 @@ import {
   Save, Zap, Key, MessageSquare, Clock, Bell, BellRing,
   AlertTriangle, CheckCircle2, XCircle, Loader2, CreditCard,
   QrCode, Settings2, FileText, Activity, TrendingUp, RefreshCw,
-  Send, BarChart3,
+  Send, BarChart3, Link2, Copy, ExternalLink, Shield,
 } from "lucide-react";
+
+const GATEWAY_PROVIDERS = [
+  { id: "asaas", name: "Asaas", desc: "Boleto, PIX e cartão", fields: ["api_key"] },
+  { id: "mercadopago", name: "Mercado Pago", desc: "Gateway completo", fields: ["access_token"] },
+  { id: "v3pay", name: "V3Pay", desc: "Pagamentos integrada", fields: ["api_key"] },
+  { id: "efi", name: "Efí (Gerencianet)", desc: "PIX, boleto e carnê", fields: ["client_id", "client_secret", "certificate"] },
+  { id: "caixa", name: "Caixa Econômica", desc: "Boleto e PIX via Caixa", fields: ["client_id", "client_secret"] },
+  { id: "bb", name: "Banco do Brasil", desc: "Cobranças via API do BB", fields: ["client_id", "client_secret", "developer_key"] },
+  { id: "itau", name: "Itaú", desc: "Itaú Shopline / API", fields: ["client_id", "client_secret"] },
+  { id: "bradesco", name: "Bradesco", desc: "Boleto e PIX", fields: ["client_id", "client_secret"] },
+  { id: "santander", name: "Santander", desc: "Cobranças e PIX", fields: ["client_id", "client_secret"] },
+  { id: "sicoob", name: "Sicoob", desc: "Cooperativa — boleto e PIX", fields: ["client_id", "client_secret"] },
+  { id: "sicredi", name: "Sicredi", desc: "Cooperativa — boleto e PIX", fields: ["client_id", "client_secret"] },
+  { id: "inter", name: "Banco Inter", desc: "PIX e boleto", fields: ["client_id", "client_secret", "certificate"] },
+  { id: "pagseguro", name: "PagSeguro", desc: "Gateway PagBank", fields: ["api_key"] },
+  { id: "cielo", name: "Cielo", desc: "Adquirente — cartão e boleto", fields: ["merchant_id", "merchant_key"] },
+];
+
+const FIELD_LABELS: Record<string, string> = {
+  api_key: "Chave de API",
+  access_token: "Access Token",
+  client_id: "Client ID",
+  client_secret: "Client Secret",
+  certificate: "Certificado (.pem / Base64)",
+  developer_key: "Developer Application Key",
+  merchant_id: "Merchant ID",
+  merchant_key: "Merchant Key",
+};
 
 const TEMPLATE_VARS = [
   { var: "{nome}", desc: "Nome do cliente" },
@@ -46,6 +74,7 @@ export default function BillingSettings() {
   const [pixKeyType, setPixKeyType] = useState("aleatoria");
   const [gatewayProvider, setGatewayProvider] = useState("");
   const [gatewayApiKey, setGatewayApiKey] = useState("");
+  const [gatewayCredentials, setGatewayCredentials] = useState<Record<string, string>>({});
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [reminderDaysBefore, setReminderDaysBefore] = useState(2);
   const [reminderDaysBefore2, setReminderDaysBefore2] = useState(1);
@@ -177,6 +206,17 @@ export default function BillingSettings() {
       setPixKeyType(settings.pix_key_type || "aleatoria");
       setGatewayProvider(settings.gateway_provider || "");
       setGatewayApiKey(settings.gateway_api_key || "");
+      // Parse stored credentials JSON
+      try {
+        const stored = settings.gateway_api_key ? JSON.parse(settings.gateway_api_key) : {};
+        if (typeof stored === "object" && stored !== null) {
+          setGatewayCredentials(stored);
+        } else {
+          setGatewayCredentials({ api_key: settings.gateway_api_key || "" });
+        }
+      } catch {
+        setGatewayCredentials({ api_key: settings.gateway_api_key || "" });
+      }
       setReminderEnabled(settings.reminder_enabled);
       setReminderDaysBefore(settings.reminder_days_before);
       setReminderDaysBefore2((settings as any).reminder_days_before_2 ?? 1);
@@ -200,7 +240,12 @@ export default function BillingSettings() {
         pix_key: pixKey || null,
         pix_key_type: pixKeyType,
         gateway_provider: gatewayProvider || null,
-        gateway_api_key: gatewayApiKey || null,
+        gateway_api_key: billingMode === "gateway" && gatewayProvider
+          ? JSON.stringify(gatewayCredentials)
+          : gatewayApiKey || null,
+        gateway_webhook_url: billingMode === "gateway" && gatewayProvider
+          ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bip-receiver?org=${organizationId}&provider=${gatewayProvider}`
+          : null,
         reminder_enabled: reminderEnabled,
         reminder_days_before: reminderDaysBefore,
         reminder_days_before_2: reminderDaysBefore2,
@@ -608,40 +653,110 @@ export default function BillingSettings() {
               <Card className="border-0 shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
-                    <CreditCard className="h-4 w-4 text-primary" /> Configuração do Gateway
+                    <CreditCard className="h-4 w-4 text-primary" /> Gateway de Pagamento
                   </CardTitle>
                   <CardDescription>
-                    Configure a integração com o gateway de pagamento
+                    Selecione o provedor e insira as credenciais — a URL do Webhook será gerada automaticamente
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* Provider Select */}
                   <div className="space-y-2">
                     <Label>Provedor</Label>
-                    <Select value={gatewayProvider} onValueChange={setGatewayProvider}>
-                      <SelectTrigger><SelectValue placeholder="Selecione o gateway" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="asaas">Asaas</SelectItem>
-                        <SelectItem value="efi">Efí (Gerencianet)</SelectItem>
-                        <SelectItem value="v3pay">V3Pay</SelectItem>
+                    <Select value={gatewayProvider} onValueChange={(v) => { setGatewayProvider(v); setGatewayCredentials({}); }}>
+                      <SelectTrigger><SelectValue placeholder="Selecione o gateway ou banco" /></SelectTrigger>
+                      <SelectContent className="max-h-72">
+                        {GATEWAY_PROVIDERS.map((gw) => (
+                          <SelectItem key={gw.id} value={gw.id}>
+                            <span className="flex items-center gap-2">
+                              {gw.name}
+                              <span className="text-xs text-muted-foreground">— {gw.desc}</span>
+                              {settings?.gateway_provider === gw.id && (
+                                <Badge variant="outline" className="text-[10px] ml-1">Atual</Badge>
+                              )}
+                            </span>
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Chave da API</Label>
-                    <Input
-                      type="password"
-                      placeholder="Insira a chave de API do gateway"
-                      value={gatewayApiKey}
-                      onChange={(e) => setGatewayApiKey(e.target.value)}
-                    />
-                  </div>
-                  <div className="rounded-lg bg-warning/10 border border-warning/20 p-3 text-sm flex items-start gap-2">
-                    <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
-                    <p className="text-muted-foreground">
-                      <strong className="text-foreground">Em breve:</strong> A integração com gateways será ativada após configuração da API.
-                      Pagamentos via Pix copia e cola e boleto com baixa automática via webhook.
-                    </p>
-                  </div>
+
+                  {/* Dynamic Credential Fields */}
+                  {gatewayProvider && (() => {
+                    const provider = GATEWAY_PROVIDERS.find((g) => g.id === gatewayProvider);
+                    if (!provider) return null;
+                    return (
+                      <div className="space-y-3 p-4 rounded-lg bg-muted/30 border border-border">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Shield className="h-4 w-4 text-primary" />
+                          <p className="text-sm font-medium text-foreground">Credenciais — {provider.name}</p>
+                        </div>
+                        {provider.fields.map((field) => (
+                          <div key={field} className="space-y-1.5">
+                            <Label className="text-xs">{FIELD_LABELS[field] || field}</Label>
+                            {field === "certificate" ? (
+                              <Textarea
+                                placeholder="Cole o conteúdo do certificado .pem ou Base64"
+                                value={gatewayCredentials[field] || ""}
+                                onChange={(e) => setGatewayCredentials((prev) => ({ ...prev, [field]: e.target.value }))}
+                                rows={3}
+                                className="font-mono text-xs"
+                              />
+                            ) : (
+                              <Input
+                                type="password"
+                                placeholder={`Insira ${FIELD_LABELS[field] || field}`}
+                                value={gatewayCredentials[field] || ""}
+                                onChange={(e) => setGatewayCredentials((prev) => ({ ...prev, [field]: e.target.value }))}
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Webhook URL */}
+                  {gatewayProvider && organizationId && (
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-1.5">
+                        <Link2 className="h-3.5 w-3.5" /> URL do Webhook (baixa automática)
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          readOnly
+                          value={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bip-receiver?org=${organizationId}&provider=${gatewayProvider}`}
+                          className="font-mono text-xs bg-muted/50"
+                        />
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          onClick={() => {
+                            navigator.clipboard.writeText(
+                              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bip-receiver?org=${organizationId}&provider=${gatewayProvider}`
+                            );
+                            toast({ title: "URL copiada!" });
+                          }}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Cadastre esta URL no painel do <strong>{GATEWAY_PROVIDERS.find((g) => g.id === gatewayProvider)?.name}</strong> para receber notificações de pagamento e atualizar faturas automaticamente.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Status info */}
+                  {gatewayProvider && (
+                    <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-sm flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                      <p className="text-muted-foreground">
+                        <strong className="text-foreground">Baixa automática:</strong> Ao receber a confirmação de pagamento via webhook, o status da fatura será alterado para <strong>"Pago"</strong> sem intervenção manual.
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
