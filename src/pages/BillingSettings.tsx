@@ -206,6 +206,17 @@ export default function BillingSettings() {
       setPixKeyType(settings.pix_key_type || "aleatoria");
       setGatewayProvider(settings.gateway_provider || "");
       setGatewayApiKey(settings.gateway_api_key || "");
+      // Parse stored credentials JSON
+      try {
+        const stored = settings.gateway_api_key ? JSON.parse(settings.gateway_api_key) : {};
+        if (typeof stored === "object" && stored !== null) {
+          setGatewayCredentials(stored);
+        } else {
+          setGatewayCredentials({ api_key: settings.gateway_api_key || "" });
+        }
+      } catch {
+        setGatewayCredentials({ api_key: settings.gateway_api_key || "" });
+      }
       setReminderEnabled(settings.reminder_enabled);
       setReminderDaysBefore(settings.reminder_days_before);
       setReminderDaysBefore2((settings as any).reminder_days_before_2 ?? 1);
