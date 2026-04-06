@@ -240,7 +240,12 @@ export default function BillingSettings() {
         pix_key: pixKey || null,
         pix_key_type: pixKeyType,
         gateway_provider: gatewayProvider || null,
-        gateway_api_key: gatewayApiKey || null,
+        gateway_api_key: billingMode === "gateway" && gatewayProvider
+          ? JSON.stringify(gatewayCredentials)
+          : gatewayApiKey || null,
+        gateway_webhook_url: billingMode === "gateway" && gatewayProvider
+          ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bip-receiver?org=${organizationId}&provider=${gatewayProvider}`
+          : null,
         reminder_enabled: reminderEnabled,
         reminder_days_before: reminderDaysBefore,
         reminder_days_before_2: reminderDaysBefore2,
