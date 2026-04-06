@@ -74,6 +74,7 @@ export default function BillingSettings() {
   const [pixKeyType, setPixKeyType] = useState("aleatoria");
   const [gatewayProvider, setGatewayProvider] = useState("");
   const [gatewayApiKey, setGatewayApiKey] = useState("");
+  const [gatewayCredentials, setGatewayCredentials] = useState<Record<string, string>>({});
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [reminderDaysBefore, setReminderDaysBefore] = useState(2);
   const [reminderDaysBefore2, setReminderDaysBefore2] = useState(1);
