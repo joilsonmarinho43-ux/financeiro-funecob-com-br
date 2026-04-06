@@ -23,8 +23,36 @@ import {
   Save, Zap, Key, MessageSquare, Clock, Bell, BellRing,
   AlertTriangle, CheckCircle2, XCircle, Loader2, CreditCard,
   QrCode, Settings2, FileText, Activity, TrendingUp, RefreshCw,
-  Send, BarChart3,
+  Send, BarChart3, Link2, Copy, ExternalLink, Shield,
 } from "lucide-react";
+
+const GATEWAY_PROVIDERS = [
+  { id: "asaas", name: "Asaas", desc: "Boleto, PIX e cartão", fields: ["api_key"] },
+  { id: "mercadopago", name: "Mercado Pago", desc: "Gateway completo", fields: ["access_token"] },
+  { id: "v3pay", name: "V3Pay", desc: "Pagamentos integrada", fields: ["api_key"] },
+  { id: "efi", name: "Efí (Gerencianet)", desc: "PIX, boleto e carnê", fields: ["client_id", "client_secret", "certificate"] },
+  { id: "caixa", name: "Caixa Econômica", desc: "Boleto e PIX via Caixa", fields: ["client_id", "client_secret"] },
+  { id: "bb", name: "Banco do Brasil", desc: "Cobranças via API do BB", fields: ["client_id", "client_secret", "developer_key"] },
+  { id: "itau", name: "Itaú", desc: "Itaú Shopline / API", fields: ["client_id", "client_secret"] },
+  { id: "bradesco", name: "Bradesco", desc: "Boleto e PIX", fields: ["client_id", "client_secret"] },
+  { id: "santander", name: "Santander", desc: "Cobranças e PIX", fields: ["client_id", "client_secret"] },
+  { id: "sicoob", name: "Sicoob", desc: "Cooperativa — boleto e PIX", fields: ["client_id", "client_secret"] },
+  { id: "sicredi", name: "Sicredi", desc: "Cooperativa — boleto e PIX", fields: ["client_id", "client_secret"] },
+  { id: "inter", name: "Banco Inter", desc: "PIX e boleto", fields: ["client_id", "client_secret", "certificate"] },
+  { id: "pagseguro", name: "PagSeguro", desc: "Gateway PagBank", fields: ["api_key"] },
+  { id: "cielo", name: "Cielo", desc: "Adquirente — cartão e boleto", fields: ["merchant_id", "merchant_key"] },
+];
+
+const FIELD_LABELS: Record<string, string> = {
+  api_key: "Chave de API",
+  access_token: "Access Token",
+  client_id: "Client ID",
+  client_secret: "Client Secret",
+  certificate: "Certificado (.pem / Base64)",
+  developer_key: "Developer Application Key",
+  merchant_id: "Merchant ID",
+  merchant_key: "Merchant Key",
+};
 
 const TEMPLATE_VARS = [
   { var: "{nome}", desc: "Nome do cliente" },
