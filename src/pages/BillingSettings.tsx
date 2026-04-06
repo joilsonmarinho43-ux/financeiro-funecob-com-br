@@ -258,21 +258,14 @@ export default function BillingSettings() {
         template_remarcar: templateRemarcar,
       } as any;
 
-      if (settings?.id) {
-        const { error } = await supabase
-          .from("billing_settings")
-          .update(payload)
-          .eq("id", settings.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("billing_settings")
-          .insert(payload);
-        if (error) throw error;
-      }
+      const { error } = await supabase
+        .from("billing_settings")
+        .upsert(payload, { onConflict: "organization_id" });
+
+      if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["billing-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["billing-settings", organizationId] });
       toast({ title: "Configurações de cobrança salvas!" });
     },
     onError: (err: Error) => {
