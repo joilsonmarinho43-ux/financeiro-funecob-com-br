@@ -104,7 +104,7 @@ export default function BillingSettings() {
     setTemplateBaixa(DEFAULT_TEMPLATES.baixa);
     setTemplateRetorno(DEFAULT_TEMPLATES.retorno);
     setTemplateRemarcar(DEFAULT_TEMPLATES.remarcar);
-    toast.success("Templates restaurados para o padrão profissional!");
+    toast({ title: "Templates restaurados para o padrão profissional!" });
   };
 
   const { data: settings, isLoading } = useQuery({
