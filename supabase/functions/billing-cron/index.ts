@@ -16,7 +16,6 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Get all organizations with billing settings enabled
     const { data: allSettings, error: settingsErr } = await supabase
       .from("billing_settings")
       .select("*")
@@ -38,12 +37,20 @@ Deno.serve(async (req) => {
     for (const settings of allSettings) {
       const orgId = settings.organization_id;
 
-      // Calculate reminder date
-      const reminderDate = new Date(today);
-      reminderDate.setDate(reminderDate.getDate() + settings.reminder_days_before);
-      const reminderDateStr = reminderDate.toISOString().split("T")[0];
+      // Calculate all reminder dates
+      const reminder1Date = new Date(today);
+      reminder1Date.setDate(reminder1Date.getDate() + settings.reminder_days_before);
+      const reminder1Str = reminder1Date.toISOString().split("T")[0];
 
-      // Get open invoices with client info for this org
+      const reminder2Date = new Date(today);
+      reminder2Date.setDate(reminder2Date.getDate() + (settings.reminder_days_before_2 || 1));
+      const reminder2Str = reminder2Date.toISOString().split("T")[0];
+
+      const overdueDate = new Date(today);
+      overdueDate.setDate(overdueDate.getDate() - (settings.reminder_days_after || 1));
+      const overdueDateStr = overdueDate.toISOString().split("T")[0];
+
+      // Get open invoices
       const { data: invoices, error: invErr } = await supabase
         .from("invoices")
         .select("*, clients(name, phone)")
@@ -54,10 +61,9 @@ Deno.serve(async (req) => {
         console.error(`Error fetching invoices for org ${orgId}:`, invErr);
         continue;
       }
-
       if (!invoices || invoices.length === 0) continue;
 
-      // Get already sent reminders for today to avoid duplicates
+      // Sent today dedup
       const { data: sentToday } = await supabase
         .from("billing_reminders")
         .select("invoice_id, reminder_type")
@@ -69,116 +75,114 @@ Deno.serve(async (req) => {
         (sentToday || []).map((s: any) => `${s.invoice_id}:${s.reminder_type}`)
       );
 
+      // Build pix/link info
+      const buildPixOrLink = () => {
+        if (settings.billing_mode === "gateway" && settings.gateway_provider) {
+          return "💳 *Pagamento automático:* Seu link/boleto de pagamento foi gerado automaticamente pelo sistema. Caso não tenha recebido, entre em contato.";
+        }
+        if (settings.billing_mode === "pix_direto" && settings.pix_key) {
+          const typeMap: Record<string, string> = {
+            cpf: "CPF/CNPJ", email: "E-mail", telefone: "Telefone", aleatoria: "Chave Aleatória",
+          };
+          return `📲 *Pix Manual:*\nTipo: ${typeMap[settings.pix_key_type] || settings.pix_key_type}\nChave: \`${settings.pix_key}\`\n\n_Após o pagamento, envie o comprovante para confirmação._`;
+        }
+        return "Entre em contato para informações de pagamento.";
+      };
+
+      const pixOrLink = buildPixOrLink();
+
       for (const invoice of invoices) {
         const client = invoice.clients as any;
         if (!client?.phone) continue;
 
         const dueDate = invoice.due_date;
-        let reminderType: string | null = null;
-        let template = "";
+        const remindersToSend: Array<{ type: string; template: string }> = [];
 
-        // Determine which reminder to send
-        if (dueDate === reminderDateStr) {
-          reminderType = "reminder";
-          template = settings.template_reminder;
-        } else if (dueDate === todayStr) {
-          reminderType = "due_date";
-          template = settings.template_due_date;
-        } else if (dueDate < todayStr) {
-          reminderType = "overdue";
-          template = settings.template_overdue;
+        // 1st reminder
+        if (dueDate === reminder1Str) {
+          remindersToSend.push({ type: "reminder", template: settings.template_reminder });
+        }
+        // 2nd reminder (only if different day from 1st)
+        if (dueDate === reminder2Str && reminder2Str !== reminder1Str) {
+          remindersToSend.push({ type: "reminder_2", template: settings.template_reminder });
+        }
+        // Due date
+        if (dueDate === todayStr) {
+          remindersToSend.push({ type: "due_date", template: settings.template_due_date });
+        }
+        // Overdue — send if due_date matches the overdue threshold
+        if (dueDate === overdueDateStr) {
+          remindersToSend.push({ type: "overdue", template: settings.template_overdue });
         }
 
-        if (!reminderType) continue;
+        for (const reminder of remindersToSend) {
+          const key = `${invoice.id}:${reminder.type}`;
+          if (sentSet.has(key)) continue;
 
-        // Check if already sent today
-        const key = `${invoice.id}:${reminderType}`;
-        if (sentSet.has(key)) continue;
+          const amount = Number(invoice.amount).toLocaleString("pt-BR", {
+            style: "currency",
+            currency: "BRL",
+          });
+          const formattedDueDate = dueDate.split("-").reverse().join("/");
 
-        // Build message from template
-        const pixOrLink =
-          settings.billing_mode === "pix_direto" && settings.pix_key
-            ? `Chave Pix (${settings.pix_key_type}): ${settings.pix_key}`
-            : "Link de pagamento será enviado em breve.";
-
-        const amount = Number(invoice.amount).toLocaleString("pt-BR", {
-          style: "currency",
-          currency: "BRL",
-        });
-
-        const formattedDueDate = dueDate.split("-").reverse().join("/");
-
-        // Generate or get portal link for client
-        let portalLink = "";
-        try {
-          const { data: existingToken } = await supabase
-            .from("client_portal_tokens")
-            .select("token")
-            .eq("client_id", invoice.client_id)
-            .maybeSingle();
-
-          if (existingToken?.token) {
-            portalLink = `https://funecob.com.br/portal/${existingToken.token}`;
-          } else {
-            const { data: newToken } = await supabase
+          // Portal link
+          let portalLink = "";
+          try {
+            const { data: existingToken } = await supabase
               .from("client_portal_tokens")
-              .insert({ client_id: invoice.client_id, organization_id: orgId })
               .select("token")
-              .single();
-            if (newToken?.token) {
-              portalLink = `https://funecob.com.br/portal/${newToken.token}`;
+              .eq("client_id", invoice.client_id)
+              .maybeSingle();
+            if (existingToken?.token) {
+              portalLink = `https://funecob.com.br/portal/${existingToken.token}`;
+            } else {
+              const { data: newToken } = await supabase
+                .from("client_portal_tokens")
+                .insert({ client_id: invoice.client_id, organization_id: orgId })
+                .select("token")
+                .single();
+              if (newToken?.token) portalLink = `https://funecob.com.br/portal/${newToken.token}`;
             }
+          } catch (e) {
+            console.error("Error generating portal token:", e);
           }
-        } catch (e) {
-          console.error("Error generating portal token:", e);
+
+          const message = reminder.template
+            .replace(/{nome}/g, client.name || "Cliente")
+            .replace(/{valor}/g, amount)
+            .replace(/{vencimento}/g, formattedDueDate)
+            .replace(/{link_ou_chave_pix}/g, pixOrLink)
+            .replace(/{link_portal}/g, portalLink || "");
+
+          await supabase.from("billing_reminders").insert({
+            organization_id: orgId,
+            invoice_id: invoice.id,
+            reminder_type: reminder.type,
+            status: "pending",
+          });
+
+          await supabase.from("whatsapp_queue").insert({
+            organization_id: orgId,
+            phone: client.phone,
+            message,
+            status: "queued",
+          });
+
+          totalQueued++;
+          totalProcessed++;
         }
-
-        const message = template
-          .replace(/{nome}/g, client.name || "Cliente")
-          .replace(/{valor}/g, amount)
-          .replace(/{vencimento}/g, formattedDueDate)
-          .replace(/{link_ou_chave_pix}/g, pixOrLink)
-          .replace(/{link_portal}/g, portalLink || "");
-
-        // Insert into billing_reminders
-        await supabase.from("billing_reminders").insert({
-          organization_id: orgId,
-          invoice_id: invoice.id,
-          reminder_type: reminderType,
-          status: "pending",
-        });
-
-        // Insert into whatsapp_queue for actual sending
-        await supabase.from("whatsapp_queue").insert({
-          organization_id: orgId,
-          phone: client.phone,
-          message,
-          status: "queued",
-        });
-
-        totalQueued++;
-        totalProcessed++;
       }
     }
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        processed: totalProcessed,
-        queued: totalQueued,
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ success: true, processed: totalProcessed, queued: totalQueued }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("Billing cron error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
