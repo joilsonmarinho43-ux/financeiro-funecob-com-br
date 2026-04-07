@@ -6,6 +6,82 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-api-key",
 };
 
+// ─── Provider-specific webhook payload parsers ───
+function parseWebhookPayload(provider: string, body: any): { paid: boolean; externalId?: string; amount?: number } | null {
+  try {
+    switch (provider) {
+      case "mercadopago":
+        // MP sends { action: "payment.updated", data: { id } } or full payment object
+        if (body?.action === "payment.updated" || body?.action === "payment.created") {
+          return { paid: body?.data?.status === "approved" || body?.type === "payment", externalId: String(body?.data?.id) };
+        }
+        if (body?.status === "approved") return { paid: true, externalId: String(body?.id), amount: body?.transaction_amount };
+        return { paid: true, externalId: String(body?.data?.id || body?.id || "") };
+
+      case "asaas":
+        // Asaas: { event: "PAYMENT_RECEIVED", payment: { id, value, status } }
+        if (body?.event === "PAYMENT_RECEIVED" || body?.event === "PAYMENT_CONFIRMED") {
+          return { paid: true, externalId: body?.payment?.externalReference || body?.payment?.id, amount: body?.payment?.value };
+        }
+        return null;
+
+      case "efi":
+        // Efí/Gerencianet PIX webhook: { pix: [{ txid, valor, ... }] }
+        if (body?.pix && Array.isArray(body.pix) && body.pix.length > 0) {
+          const pix = body.pix[0];
+          return { paid: true, externalId: pix.txid || pix.endToEndId, amount: parseFloat(pix.valor) };
+        }
+        return null;
+
+      case "v3pay":
+        if (body?.status === "paid" || body?.status === "approved") {
+          return { paid: true, externalId: body?.reference || body?.id, amount: body?.amount };
+        }
+        return null;
+
+      case "pagseguro":
+        if (body?.status === "PAID" || body?.charges?.[0]?.status === "PAID") {
+          return { paid: true, externalId: body?.reference_id || body?.id, amount: body?.charges?.[0]?.amount?.value ? body.charges[0].amount.value / 100 : undefined };
+        }
+        return null;
+
+      case "cielo":
+        if (body?.Payment?.Status === 2 || body?.Payment?.Status === "2") {
+          return { paid: true, externalId: body?.MerchantOrderId, amount: body?.Payment?.Amount ? body.Payment.Amount / 100 : undefined };
+        }
+        return null;
+
+      // Banks (BB, Itaú, Bradesco, Santander, Sicoob, Sicredi, Inter)
+      case "bb":
+      case "itau":
+      case "bradesco":
+      case "santander":
+      case "sicoob":
+      case "sicredi":
+      case "inter":
+        // Most bank APIs send PIX confirmation: { pix: [...] } or { pagamento: { status } }
+        if (body?.pix && Array.isArray(body.pix)) {
+          const pix = body.pix[0];
+          return { paid: true, externalId: pix.txid || pix.endToEndId, amount: parseFloat(pix.valor || "0") };
+        }
+        if (body?.status === "CONCLUIDA" || body?.status === "REALIZADO" || body?.status === "paid") {
+          return { paid: true, externalId: body?.txid || body?.id || body?.codigoSolicitacao, amount: body?.valor ? parseFloat(body.valor) : undefined };
+        }
+        return { paid: true, externalId: body?.txid || body?.id || "" };
+
+      default:
+        // Generic: trust any payload that explicitly says paid/approved
+        if (body?.status === "paid" || body?.status === "approved" || body?.status === "CONCLUIDA") {
+          return { paid: true, externalId: body?.id || body?.txid, amount: body?.amount || body?.valor };
+        }
+        return null;
+    }
+  } catch (e) {
+    console.error("Error parsing webhook payload:", e);
+    return null;
+  }
+}
+
 async function trySendWhatsApp(instance: any, phone: string, message: string): Promise<boolean> {
   try {
     const cleanPhone = phone.replace(/\D/g, "");
@@ -36,19 +112,172 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const url = new URL(req.url);
+    const orgParam = url.searchParams.get("org");
+    const providerParam = url.searchParams.get("provider");
+
+    // ─── MODE 1: Universal Webhook (org + provider in query params) ───
+    if (orgParam && providerParam) {
+      const body = await req.json();
+      console.log(`[bip-receiver] Webhook from ${providerParam} for org ${orgParam}`, JSON.stringify(body).slice(0, 500));
+
+      // Verify org exists and is active
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("active, name")
+        .eq("id", orgParam)
+        .single();
+
+      if (!org?.active) {
+        return new Response(JSON.stringify({ error: "Organization not found or inactive" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Verify billing_settings matches this provider
+      const { data: billingSettings } = await supabase
+        .from("billing_settings")
+        .select("*")
+        .eq("organization_id", orgParam)
+        .eq("gateway_provider", providerParam)
+        .maybeSingle();
+
+      if (!billingSettings) {
+        return new Response(JSON.stringify({ error: "Provider not configured for this organization" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Parse payload based on provider
+      const parsed = parseWebhookPayload(providerParam, body);
+      if (!parsed || !parsed.paid) {
+        // Not a payment confirmation — acknowledge but do nothing
+        return new Response(JSON.stringify({ received: true, action: "ignored", reason: "Not a payment confirmation" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Try to find matching invoice by external ID or amount
+      let invoice: any = null;
+
+      if (parsed.externalId) {
+        // Try matching by description containing the external ID
+        const { data: invoices } = await supabase
+          .from("invoices")
+          .select("*, clients(name, phone, collector_id)")
+          .eq("organization_id", orgParam)
+          .eq("status", "aberto")
+          .limit(50);
+
+        if (invoices && invoices.length > 0) {
+          // Match by external reference in description or by amount
+          invoice = invoices.find((inv: any) =>
+            inv.description?.includes(parsed.externalId) ||
+            (parsed.amount && Math.abs(Number(inv.amount) - parsed.amount) < 0.01)
+          );
+          // Fallback: if only one open invoice with that amount
+          if (!invoice && parsed.amount) {
+            const amountMatches = invoices.filter((inv: any) => Math.abs(Number(inv.amount) - parsed.amount!) < 0.01);
+            if (amountMatches.length === 1) invoice = amountMatches[0];
+          }
+        }
+      }
+
+      if (!invoice) {
+        console.log(`[bip-receiver] No matching invoice found for ref=${parsed.externalId} amount=${parsed.amount}`);
+        return new Response(JSON.stringify({
+          received: true, action: "no_match",
+          message: "Payment received but no matching open invoice found",
+          externalId: parsed.externalId,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Mark invoice as paid
+      const paidDate = new Date().toISOString().split("T")[0];
+      await supabase.from("invoices").update({
+        status: "pago",
+        paid_date: paidDate,
+      }).eq("id", invoice.id);
+
+      // Record transaction
+      await supabase.from("transactions").insert({
+        organization_id: orgParam,
+        type: "entrada",
+        amount: invoice.amount,
+        description: `Baixa automática via ${providerParam} — ${invoice.clients?.name || "Cliente"}`,
+        invoice_id: invoice.id,
+      });
+
+      // Send WhatsApp confirmation
+      const client = invoice.clients;
+      if (client?.phone) {
+        const tpl = billingSettings.template_baixa ||
+          "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏";
+        const message = tpl
+          .replace(/{nome}/g, client.name || "Cliente")
+          .replace(/{valor}/g, Number(invoice.amount).toFixed(2))
+          .replace(/{data_pagamento}/g, paidDate.split("-").reverse().join("/"));
+
+        let directSent = false;
+        if (client.collector_id) {
+          const { data: ci } = await supabase
+            .from("whatsapp_instances")
+            .select("*")
+            .eq("organization_id", orgParam)
+            .eq("collector_id", client.collector_id)
+            .eq("status", "connected")
+            .maybeSingle();
+          if (ci?.api_url && ci?.api_key) directSent = await trySendWhatsApp(ci, client.phone, message);
+        }
+        if (!directSent) {
+          const { data: mi } = await supabase
+            .from("whatsapp_instances")
+            .select("*")
+            .eq("organization_id", orgParam)
+            .is("collector_id", null)
+            .eq("status", "connected")
+            .limit(1)
+            .maybeSingle();
+          if (mi?.api_url && mi?.api_key) directSent = await trySendWhatsApp(mi, client.phone, message);
+        }
+        if (!directSent) {
+          await supabase.from("whatsapp_queue").insert({
+            organization_id: orgParam,
+            phone: client.phone,
+            message,
+            status: "queued",
+          });
+        }
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        provider: providerParam,
+        invoice_id: invoice.id,
+        client: client?.name,
+        action: "baixa_automatica",
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ─── MODE 2: Legacy API key-based bip (barcode reader) ───
     const apiKey = req.headers.get("x-api-key");
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "API key required" }), {
+      return new Response(JSON.stringify({ error: "API key required or use ?org=&provider= for webhook" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-
-    // Validate API key
     const { data: apiKeyRecord, error: keyErr } = await supabase
       .from("org_api_keys")
       .select("organization_id, active")
@@ -64,7 +293,6 @@ Deno.serve(async (req) => {
 
     const organizationId = apiKeyRecord.organization_id;
 
-    // Check org is active
     const { data: org } = await supabase
       .from("organizations")
       .select("active, name")
@@ -88,7 +316,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get barcode config for this org
     const { data: barcodeConfig } = await supabase
       .from("barcode_configs")
       .select("*")
@@ -110,7 +337,6 @@ Deno.serve(async (req) => {
     const year = clean.substring(config.client_id_length, config.client_id_length + config.year_length);
     const month = clean.substring(config.client_id_length + config.year_length, totalLen);
 
-    // Find client
     const { data: client } = await supabase
       .from("clients")
       .select("*")
@@ -125,7 +351,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Idempotency: check if this barcode was already processed
+    // Idempotency
     const { data: existingBip } = await supabase
       .from("bips")
       .select("id")
@@ -137,16 +363,13 @@ Deno.serve(async (req) => {
 
     if (existingBip) {
       return new Response(JSON.stringify({
-        success: true,
-        duplicate: true,
-        bip_id: existingBip.id,
+        success: true, duplicate: true, bip_id: existingBip.id,
         message: "Bip já processado anteriormente",
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Find matching invoice — use date range for the target month
     const monthStart = `${year}-${month}-01`;
     const monthNum = parseInt(month);
     const yearNum = parseInt(year);
@@ -166,7 +389,6 @@ Deno.serve(async (req) => {
 
     const invoice = invoices?.[0];
 
-    // Process action
     if (action === "baixa" && invoice) {
       await supabase.from("invoices").update({
         status: "pago",
@@ -184,7 +406,6 @@ Deno.serve(async (req) => {
       await supabase.from("invoices").update({ due_date: new_due_date }).eq("id", invoice.id);
     }
 
-    // Record bip
     const { data: bip } = await supabase.from("bips").insert({
       organization_id: organizationId,
       client_id: client.id,
@@ -197,9 +418,8 @@ Deno.serve(async (req) => {
       status: "processed",
     }).select().single();
 
-    // Send WhatsApp via collector's instance if client has phone
+    // Send WhatsApp
     if (client.phone) {
-      // Load message templates from billing_settings
       const { data: billingSettings } = await supabase
         .from("billing_settings")
         .select("template_baixa, template_retorno, template_remarcar")
@@ -210,57 +430,36 @@ Deno.serve(async (req) => {
       const paidDate = new Date().toISOString().split("T")[0];
       if (action === "baixa") {
         const tpl = billingSettings?.template_baixa || "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏";
-        message = tpl
-          .replace("{nome}", client.name)
-          .replace("{valor}", Number(invoice?.amount || 0).toFixed(2))
-          .replace("{data_pagamento}", paidDate);
+        message = tpl.replace(/{nome}/g, client.name).replace(/{valor}/g, Number(invoice?.amount || 0).toFixed(2)).replace(/{data_pagamento}/g, paidDate);
       } else if (action === "remarcacao") {
         const tpl = billingSettings?.template_remarcar || "Olá {nome}! 📅\n\nSua fatura no valor de R$ {valor} foi remarcada.\nNova data de vencimento: {nova_data}\n\nQualquer dúvida, estamos à disposição!";
-        message = tpl
-          .replace("{nome}", client.name)
-          .replace("{valor}", Number(invoice?.amount || 0).toFixed(2))
-          .replace("{nova_data}", new_due_date || "");
+        message = tpl.replace(/{nome}/g, client.name).replace(/{valor}/g, Number(invoice?.amount || 0).toFixed(2)).replace(/{nova_data}/g, new_due_date || "");
       } else {
         const tpl = billingSettings?.template_retorno || "Olá {nome}! 👋\n\nNosso cobrador esteve no endereço cadastrado e não encontrou ninguém.\nPor favor, entre em contato para agendar uma nova visita.";
-        message = tpl.replace("{nome}", client.name);
+        message = tpl.replace(/{nome}/g, client.name);
       }
 
-      // Try to send directly via collector's WhatsApp instance
       let directSent = false;
-
-      // 1. Try collector's WhatsApp instance
       if (client.collector_id) {
-        const { data: collectorInstance } = await supabase
-          .from("whatsapp_instances")
-          .select("*")
+        const { data: ci } = await supabase
+          .from("whatsapp_instances").select("*")
           .eq("organization_id", organizationId)
           .eq("collector_id", client.collector_id)
           .eq("status", "connected")
           .maybeSingle();
-
-        if (collectorInstance?.api_url && collectorInstance?.api_key) {
-          directSent = await trySendWhatsApp(collectorInstance, client.phone, message);
-        }
+        if (ci?.api_url && ci?.api_key) directSent = await trySendWhatsApp(ci, client.phone, message);
       }
-
-      // 2. Fallback: main org instance (no collector_id or collector_id is null)
       if (!directSent) {
-        const { data: mainInstance } = await supabase
-          .from("whatsapp_instances")
-          .select("*")
+        const { data: mi } = await supabase
+          .from("whatsapp_instances").select("*")
           .eq("organization_id", organizationId)
           .is("collector_id", null)
           .eq("status", "connected")
           .limit(1)
           .maybeSingle();
-
-        if (mainInstance?.api_url && mainInstance?.api_key) {
-          directSent = await trySendWhatsApp(mainInstance, client.phone, message);
-        }
+        if (mi?.api_url && mi?.api_key) directSent = await trySendWhatsApp(mi, client.phone, message);
       }
-
       if (!directSent) {
-        // Fallback: enqueue for whatsapp-sender to process
         await supabase.from("whatsapp_queue").insert({
           organization_id: organizationId,
           phone: client.phone,
@@ -268,7 +467,6 @@ Deno.serve(async (req) => {
           status: "queued",
         });
       }
-
       await supabase.from("bips").update({ whatsapp_sent: true }).eq("id", bip.id);
     }
 

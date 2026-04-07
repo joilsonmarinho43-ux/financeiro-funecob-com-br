@@ -185,27 +185,43 @@ Deno.serve(async (req) => {
       const config = orgConfigs[orgId] || orgConfigs[orgIds[0]];
       const limits = rateLimits[orgId] || { minute: 0, hour: 0, day: 0 };
 
-      // Check send window (BRT approximation)
+      // Check send window — use configurable BRT offset (UTC-3)
       const currentHour = now.getUTCHours() - 3;
-      const windowStart = parseInt((config.send_window_start || "08:00").split(":")[0]);
-      const windowEnd = parseInt((config.send_window_end || "18:00").split(":")[0]);
+      const currentMinute = now.getUTCMinutes();
+      const [startH, startM] = (config.send_window_start || "08:00").split(":").map(Number);
+      const [endH, endM] = (config.send_window_end || "18:00").split(":").map(Number);
       const adjustedHour = currentHour < 0 ? currentHour + 24 : currentHour;
+      const currentTime = adjustedHour * 60 + currentMinute;
+      const startTime = startH * 60 + (startM || 0);
+      const endTime = endH * 60 + (endM || 0);
 
-      if (adjustedHour < windowStart || adjustedHour >= windowEnd) {
+      if (currentTime < startTime || currentTime >= endTime) {
+        // Outside window — reschedule for next window start, but DON'T change status
         const tomorrow = new Date(now);
-        tomorrow.setUTCHours(windowStart + 3, Math.floor(Math.random() * 59), 0);
+        tomorrow.setUTCHours(startH + 3, Math.floor(Math.random() * 59), 0);
         if (tomorrow <= now) tomorrow.setDate(tomorrow.getDate() + 1);
         await supabase.from("whatsapp_queue").update({ scheduled_for: tomorrow.toISOString() }).eq("id", item.id);
         paused++;
         continue;
       }
 
-      // Check rate limits
+      // Check rate limits — only pause temporarily, never change status to "paused"
       if (config.auto_pause_enabled) {
-        if (limits.minute >= config.max_per_minute) { paused++; continue; }
-        if (limits.hour >= config.max_per_hour) { paused++; continue; }
+        if (limits.minute >= config.max_per_minute) {
+          // Skip this cycle, will retry next invocation
+          paused++;
+          continue;
+        }
+        if (limits.hour >= config.max_per_hour) {
+          paused++;
+          continue;
+        }
         if (limits.day >= config.max_per_day) {
-          await supabase.from("whatsapp_queue").update({ status: "paused", error_message: "Limite diário atingido" }).eq("id", item.id);
+          // Reschedule for tomorrow, but keep status as "queued"
+          const tomorrow = new Date(now);
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          tomorrow.setUTCHours(startH + 3, Math.floor(Math.random() * 30), 0);
+          await supabase.from("whatsapp_queue").update({ scheduled_for: tomorrow.toISOString() }).eq("id", item.id);
           paused++;
           continue;
         }
