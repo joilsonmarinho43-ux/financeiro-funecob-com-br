@@ -1045,7 +1045,14 @@ export default function BillingSettings() {
               </Card>
             ))}
 
-            <div className="flex justify-end">
+            <div className="flex justify-between">
+              <Button
+                variant="outline"
+                onClick={resetTemplates}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Restaurar Padrão
+              </Button>
               <Button
                 onClick={() => saveMutation.mutate()}
                 disabled={saveMutation.isPending}
