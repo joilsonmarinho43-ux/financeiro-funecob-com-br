@@ -82,22 +82,22 @@ export default function BillingSettings() {
   const [robotScheduleTime, setRobotScheduleTime] = useState("08:00");
   const [robotSendInterval, setRobotSendInterval] = useState("2");
   const [templateReminder, setTemplateReminder] = useState(
-    "Olá {nome}! Sua fatura no valor de {valor} vence em {vencimento}. Fique atento para evitar atrasos."
+    "Olá {nome}! 📋\n\nGostaríamos de lembrar que sua fatura no valor de *{valor}* tem vencimento em *{vencimento}*.\n\nEvite juros e multas realizando o pagamento com antecedência.\n\n{link_ou_chave_pix}\n\n📎 Acesse seu portal: {link_portal}\n\nQualquer dúvida, estamos à disposição! 😊"
   );
   const [templateDueDate, setTemplateDueDate] = useState(
-    "Olá {nome}! Sua fatura no valor de {valor} vence HOJE ({vencimento}). {link_ou_chave_pix}"
+    "Olá {nome}! ⚠️\n\nSua fatura no valor de *{valor}* vence *HOJE* ({vencimento}).\n\nRealize o pagamento para evitar pendências:\n\n{link_ou_chave_pix}\n\n📎 Portal do cliente: {link_portal}\n\nAgradecemos sua atenção! 🙏"
   );
   const [templateOverdue, setTemplateOverdue] = useState(
-    "Olá {nome}! Sua fatura no valor de {valor} com vencimento em {vencimento} está em atraso. Por favor, regularize o pagamento. {link_ou_chave_pix}"
+    "Olá {nome}! 🔔\n\nIdentificamos que sua fatura no valor de *{valor}*, com vencimento em *{vencimento}*, encontra-se em aberto.\n\nPor favor, regularize o pagamento o quanto antes para evitar encargos adicionais:\n\n{link_ou_chave_pix}\n\n📎 Portal do cliente: {link_portal}\n\nCaso já tenha efetuado o pagamento, por favor desconsidere esta mensagem. 😊"
   );
   const [templateBaixa, setTemplateBaixa] = useState(
-    "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏"
+    "Olá {nome}! ✅\n\n*Pagamento confirmado com sucesso!*\n\n📌 Valor: R$ {valor}\n📅 Data: {data_pagamento}\n\nAgradecemos pela pontualidade! Seu comprovante está disponível no portal.\n\nObrigado por confiar em nossos serviços! 🙏"
   );
   const [templateRetorno, setTemplateRetorno] = useState(
-    "Olá {nome}! 👋\n\nNosso cobrador esteve no endereço cadastrado e não encontrou ninguém.\nPor favor, entre em contato para agendar uma nova visita.\n\n{link_ou_chave_pix}"
+    "Olá {nome}! 👋\n\nNosso representante esteve no endereço cadastrado, mas não foi possível localizá-lo(a).\n\nPor gentileza, entre em contato conosco para agendar uma nova visita ou realize o pagamento diretamente:\n\n{link_ou_chave_pix}\n\nEstamos à disposição! 😊"
   );
   const [templateRemarcar, setTemplateRemarcar] = useState(
-    "Olá {nome}! 📅\n\nSua fatura no valor de R$ {valor} foi remarcada.\nNova data de vencimento: {nova_data}\n\nQualquer dúvida, estamos à disposição!"
+    "Olá {nome}! 📅\n\nInformamos que sua fatura no valor de *R$ {valor}* foi remarcada.\n\n📌 *Nova data de vencimento:* {nova_data}\n\nFique atento à nova data para evitar pendências.\n\nQualquer dúvida, estamos à disposição! 😊"
   );
 
   const { data: settings, isLoading } = useQuery({
