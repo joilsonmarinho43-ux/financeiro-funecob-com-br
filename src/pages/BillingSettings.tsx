@@ -64,6 +64,15 @@ const TEMPLATE_VARS = [
   { var: "{nova_data}", desc: "Nova data (remarcação)" },
 ];
 
+const DEFAULT_TEMPLATES = {
+  reminder: "Olá {nome}! 📋\n\nGostaríamos de lembrar que sua fatura no valor de *{valor}* tem vencimento em *{vencimento}*.\n\nEvite juros e multas realizando o pagamento com antecedência.\n\n{link_ou_chave_pix}\n\n📎 Acesse seu portal: {link_portal}\n\nQualquer dúvida, estamos à disposição! 😊",
+  due_date: "Olá {nome}! ⚠️\n\nSua fatura no valor de *{valor}* vence *HOJE* ({vencimento}).\n\nRealize o pagamento para evitar pendências:\n\n{link_ou_chave_pix}\n\n📎 Portal do cliente: {link_portal}\n\nAgradecemos sua atenção! 🙏",
+  overdue: "Olá {nome}! 🔔\n\nIdentificamos que sua fatura no valor de *{valor}*, com vencimento em *{vencimento}*, encontra-se em aberto.\n\nPor favor, regularize o pagamento o quanto antes para evitar encargos adicionais:\n\n{link_ou_chave_pix}\n\n📎 Portal do cliente: {link_portal}\n\nCaso já tenha efetuado o pagamento, por favor desconsidere esta mensagem. 😊",
+  baixa: "Olá {nome}! ✅\n\n*Pagamento confirmado com sucesso!*\n\n📌 Valor: R$ {valor}\n📅 Data: {data_pagamento}\n\nAgradecemos pela pontualidade! Seu comprovante está disponível no portal.\n\nObrigado por confiar em nossos serviços! 🙏",
+  retorno: "Olá {nome}! 👋\n\nNosso representante esteve no endereço cadastrado, mas não foi possível localizá-lo(a).\n\nPor gentileza, entre em contato conosco para agendar uma nova visita ou realize o pagamento diretamente:\n\n{link_ou_chave_pix}\n\nEstamos à disposição! 😊",
+  remarcar: "Olá {nome}! 📅\n\nInformamos que sua fatura no valor de *R$ {valor}* foi remarcada.\n\n📌 *Nova data de vencimento:* {nova_data}\n\nFique atento à nova data para evitar pendências.\n\nQualquer dúvida, estamos à disposição! 😊",
+};
+
 export default function BillingSettings() {
   const { organizationId } = useOrganization();
   const { toast } = useToast();
@@ -81,24 +90,22 @@ export default function BillingSettings() {
   const [reminderDaysAfter, setReminderDaysAfter] = useState(1);
   const [robotScheduleTime, setRobotScheduleTime] = useState("08:00");
   const [robotSendInterval, setRobotSendInterval] = useState("2");
-  const [templateReminder, setTemplateReminder] = useState(
-    "Olá {nome}! 📋\n\nGostaríamos de lembrar que sua fatura no valor de *{valor}* tem vencimento em *{vencimento}*.\n\nEvite juros e multas realizando o pagamento com antecedência.\n\n{link_ou_chave_pix}\n\n📎 Acesse seu portal: {link_portal}\n\nQualquer dúvida, estamos à disposição! 😊"
-  );
-  const [templateDueDate, setTemplateDueDate] = useState(
-    "Olá {nome}! ⚠️\n\nSua fatura no valor de *{valor}* vence *HOJE* ({vencimento}).\n\nRealize o pagamento para evitar pendências:\n\n{link_ou_chave_pix}\n\n📎 Portal do cliente: {link_portal}\n\nAgradecemos sua atenção! 🙏"
-  );
-  const [templateOverdue, setTemplateOverdue] = useState(
-    "Olá {nome}! 🔔\n\nIdentificamos que sua fatura no valor de *{valor}*, com vencimento em *{vencimento}*, encontra-se em aberto.\n\nPor favor, regularize o pagamento o quanto antes para evitar encargos adicionais:\n\n{link_ou_chave_pix}\n\n📎 Portal do cliente: {link_portal}\n\nCaso já tenha efetuado o pagamento, por favor desconsidere esta mensagem. 😊"
-  );
-  const [templateBaixa, setTemplateBaixa] = useState(
-    "Olá {nome}! ✅\n\n*Pagamento confirmado com sucesso!*\n\n📌 Valor: R$ {valor}\n📅 Data: {data_pagamento}\n\nAgradecemos pela pontualidade! Seu comprovante está disponível no portal.\n\nObrigado por confiar em nossos serviços! 🙏"
-  );
-  const [templateRetorno, setTemplateRetorno] = useState(
-    "Olá {nome}! 👋\n\nNosso representante esteve no endereço cadastrado, mas não foi possível localizá-lo(a).\n\nPor gentileza, entre em contato conosco para agendar uma nova visita ou realize o pagamento diretamente:\n\n{link_ou_chave_pix}\n\nEstamos à disposição! 😊"
-  );
-  const [templateRemarcar, setTemplateRemarcar] = useState(
-    "Olá {nome}! 📅\n\nInformamos que sua fatura no valor de *R$ {valor}* foi remarcada.\n\n📌 *Nova data de vencimento:* {nova_data}\n\nFique atento à nova data para evitar pendências.\n\nQualquer dúvida, estamos à disposição! 😊"
-  );
+  const [templateReminder, setTemplateReminder] = useState(DEFAULT_TEMPLATES.reminder);
+  const [templateDueDate, setTemplateDueDate] = useState(DEFAULT_TEMPLATES.due_date);
+  const [templateOverdue, setTemplateOverdue] = useState(DEFAULT_TEMPLATES.overdue);
+  const [templateBaixa, setTemplateBaixa] = useState(DEFAULT_TEMPLATES.baixa);
+  const [templateRetorno, setTemplateRetorno] = useState(DEFAULT_TEMPLATES.retorno);
+  const [templateRemarcar, setTemplateRemarcar] = useState(DEFAULT_TEMPLATES.remarcar);
+
+  const resetTemplates = () => {
+    setTemplateReminder(DEFAULT_TEMPLATES.reminder);
+    setTemplateDueDate(DEFAULT_TEMPLATES.due_date);
+    setTemplateOverdue(DEFAULT_TEMPLATES.overdue);
+    setTemplateBaixa(DEFAULT_TEMPLATES.baixa);
+    setTemplateRetorno(DEFAULT_TEMPLATES.retorno);
+    setTemplateRemarcar(DEFAULT_TEMPLATES.remarcar);
+    toast({ title: "Templates restaurados para o padrão profissional!" });
+  };
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ["billing-settings", organizationId],
@@ -1038,7 +1045,14 @@ export default function BillingSettings() {
               </Card>
             ))}
 
-            <div className="flex justify-end">
+            <div className="flex justify-between">
+              <Button
+                variant="outline"
+                onClick={resetTemplates}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Restaurar Padrão
+              </Button>
               <Button
                 onClick={() => saveMutation.mutate()}
                 disabled={saveMutation.isPending}
