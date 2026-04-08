@@ -127,6 +127,7 @@ Deno.serve(async (req) => {
 
           // Portal link
           let portalLink = "";
+          const portalBaseUrl = Deno.env.get("PORTAL_BASE_URL") || "https://funecob-app.lovable.app";
           try {
             const { data: existingToken } = await supabase
               .from("client_portal_tokens")
@@ -134,14 +135,14 @@ Deno.serve(async (req) => {
               .eq("client_id", invoice.client_id)
               .maybeSingle();
             if (existingToken?.token) {
-              portalLink = `https://funecob.com.br/portal/${existingToken.token}`;
+              portalLink = `${portalBaseUrl}/portal/${existingToken.token}`;
             } else {
               const { data: newToken } = await supabase
                 .from("client_portal_tokens")
                 .insert({ client_id: invoice.client_id, organization_id: orgId })
                 .select("token")
                 .single();
-              if (newToken?.token) portalLink = `https://funecob.com.br/portal/${newToken.token}`;
+              if (newToken?.token) portalLink = `${portalBaseUrl}/portal/${newToken.token}`;
             }
           } catch (e) {
             console.error("Error generating portal token:", e);
