@@ -144,6 +144,7 @@ export default function Invoices() {
       }
 
       // Generate portal link
+      const PORTAL_BASE = "https://funecob.com.br";
       let portalLink = "";
       try {
         const { data: existingToken } = await supabase
@@ -152,14 +153,14 @@ export default function Invoices() {
           .eq("client_id", inv.client_id)
           .maybeSingle();
         if (existingToken?.token) {
-          portalLink = `${window.location.origin}/portal/${existingToken.token}`;
+          portalLink = `${PORTAL_BASE}/portal/${existingToken.token}`;
         } else {
           const { data: newToken } = await supabase
             .from("client_portal_tokens")
             .insert({ client_id: inv.client_id, organization_id: organizationId })
             .select("token")
             .single();
-          if (newToken?.token) portalLink = `${window.location.origin}/portal/${newToken.token}`;
+          if (newToken?.token) portalLink = `${PORTAL_BASE}/portal/${newToken.token}`;
         }
       } catch (e) {
         console.error("Erro ao gerar token do portal:", e);
@@ -446,7 +447,7 @@ export default function Invoices() {
                                   onClick={() => notifyMutation.mutate(inv)}
                                   title="Enviar notificação manual via WhatsApp"
                                 >
-                                  <Send className="h-3.5 w-3.5 mr-1" /> Notificar
+                                  <Send className="h-3.5 w-3.5 mr-1" /> Enviar Agora
                                 </Button>
                                 <Button
                                   size="sm"
