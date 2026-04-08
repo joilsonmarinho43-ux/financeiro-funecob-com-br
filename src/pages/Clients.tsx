@@ -686,7 +686,7 @@ export default function Clients() {
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setMsgDialog(null)}>Cancelar</Button>
               <Button type="submit" className="gradient-primary text-primary-foreground" disabled={sendManualMsgMutation.isPending}>
-                {sendManualMsgMutation.isPending ? "Enviando..." : "Enviar para Fila"}
+                {sendManualMsgMutation.isPending ? "Enviando..." : "Enviar Agora"}
               </Button>
             </div>
           </form>
