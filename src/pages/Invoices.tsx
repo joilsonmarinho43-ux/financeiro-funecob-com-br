@@ -131,22 +131,110 @@ export default function Invoices() {
 
       const amount = Number(inv.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
       const dueFormatted = inv.due_date.split("-").reverse().join("/");
-      const template = settings?.template_reminder || "Olá {nome}! Sua fatura de {valor} vence em {vencimento}.";
+
+      // Build Pix/Link info
+      let pixOrLink = "Entre em contato para informações de pagamento.";
+      if (settings?.billing_mode === "gateway" && settings?.gateway_provider) {
+        pixOrLink = "💳 *Pagamento automático:* Seu link/boleto de pagamento foi gerado automaticamente pelo sistema. Caso não tenha recebido, entre em contato.";
+      } else if (settings?.pix_key) {
+        const typeMap: Record<string, string> = {
+          cpf: "CPF/CNPJ", email: "E-mail", telefone: "Telefone", aleatoria: "Chave Aleatória",
+        };
+        pixOrLink = `📲 *Pix Manual:*\nTipo: ${typeMap[settings.pix_key_type || "aleatoria"] || settings.pix_key_type}\nChave: \`${settings.pix_key}\`\n\n_Após o pagamento, envie o comprovante para confirmação._`;
+      }
+
+      // Generate portal link
+      let portalLink = "";
+      try {
+        const { data: existingToken } = await supabase
+          .from("client_portal_tokens")
+          .select("token")
+          .eq("client_id", inv.client_id)
+          .maybeSingle();
+        if (existingToken?.token) {
+          portalLink = `${window.location.origin}/portal/${existingToken.token}`;
+        } else {
+          const { data: newToken } = await supabase
+            .from("client_portal_tokens")
+            .insert({ client_id: inv.client_id, organization_id: organizationId })
+            .select("token")
+            .single();
+          if (newToken?.token) portalLink = `${window.location.origin}/portal/${newToken.token}`;
+        }
+      } catch (e) {
+        console.error("Erro ao gerar token do portal:", e);
+      }
+
+      const template = settings?.template_reminder || "Olá {nome}! Sua fatura de {valor} vence em {vencimento}. {link_ou_chave_pix}";
       const message = template
         .replace(/{nome}/g, client.name || "Cliente")
         .replace(/{valor}/g, amount)
-        .replace(/{vencimento}/g, dueFormatted);
+        .replace(/{vencimento}/g, dueFormatted)
+        .replace(/{link_ou_chave_pix}/g, pixOrLink)
+        .replace(/{link_portal}/g, portalLink || "");
 
-      const { error } = await supabase.from("whatsapp_queue").insert({
+      // Get WhatsApp instance for immediate send
+      const { data: instance } = await supabase
+        .from("whatsapp_instances")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .eq("status", "connected")
+        .limit(1)
+        .maybeSingle();
+
+      const { data: globalSettings } = await supabase
+        .from("global_settings")
+        .select("key, value")
+        .in("key", ["api_host", "global_api_key", "default_instance_name"]);
+
+      const gs: Record<string, string> = {};
+      (globalSettings || []).forEach((s) => { gs[s.key] = s.value; });
+
+      const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
+      const apiKey = instance?.api_key || gs.global_api_key || "";
+      const instanceName = instance?.name || gs.default_instance_name || "";
+
+      if (!apiUrl || !apiKey || !instanceName) {
+        // Fallback: add to queue if no direct API config
+        const { error } = await supabase.from("whatsapp_queue").insert({
+          organization_id: organizationId,
+          phone: client.phone,
+          message,
+          status: "queued",
+        });
+        if (error) throw error;
+        return "queued";
+      }
+
+      // Send immediately via API
+      const phone = client.phone.replace(/\D/g, "");
+      const sendUrl = `${apiUrl}/message/sendText/${instanceName}`;
+      const response = await fetch(sendUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: apiKey },
+        body: JSON.stringify({ number: phone, textMessage: { text: message } }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Erro ao enviar: ${response.status} - ${errorBody}`);
+      }
+
+      // Log sent message
+      await supabase.from("whatsapp_messages").insert({
         organization_id: organizationId,
         phone: client.phone,
         message,
-        status: "queued",
+        direction: "outgoing",
+        status: "sent",
+        instance_id: instance?.id || null,
+        sent_at: new Date().toISOString(),
       });
-      if (error) throw error;
+
+      return "sent";
     },
-    onSuccess: () => {
-      toast({ title: "Notificação enviada para a fila de WhatsApp!" });
+    onSuccess: (result) => {
+      toast({ title: result === "sent" ? "Mensagem enviada com sucesso! ✅" : "Mensagem adicionada à fila de envio!" });
     },
     onError: (err: Error) => {
       toast({ title: "Erro ao notificar", description: err.message, variant: "destructive" });

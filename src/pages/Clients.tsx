@@ -258,6 +258,52 @@ export default function Clients() {
     mutationFn: async () => {
       if (!msgDialog || !organizationId) throw new Error("Dados inválidos");
       const phone = msgDialog.phone.replace(/\D/g, "");
+
+      // Try to send immediately via WhatsApp API
+      const { data: instance } = await supabase
+        .from("whatsapp_instances")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .eq("status", "connected")
+        .limit(1)
+        .maybeSingle();
+
+      const { data: globalSettings } = await supabase
+        .from("global_settings")
+        .select("key, value")
+        .in("key", ["api_host", "global_api_key", "default_instance_name"]);
+
+      const gs: Record<string, string> = {};
+      (globalSettings || []).forEach((s) => { gs[s.key] = s.value; });
+
+      const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
+      const apiKey = instance?.api_key || gs.global_api_key || "";
+      const instanceName = instance?.name || gs.default_instance_name || "";
+
+      if (apiUrl && apiKey && instanceName) {
+        const sendUrl = `${apiUrl}/message/sendText/${instanceName}`;
+        const response = await fetch(sendUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: apiKey },
+          body: JSON.stringify({ number: phone, textMessage: { text: manualMsg } }),
+        });
+        if (!response.ok) {
+          const errorBody = await response.text();
+          throw new Error(`Erro ao enviar: ${response.status} - ${errorBody}`);
+        }
+        await supabase.from("whatsapp_messages").insert({
+          organization_id: organizationId,
+          phone: msgDialog.phone,
+          message: manualMsg,
+          direction: "outgoing",
+          status: "sent",
+          instance_id: instance?.id || null,
+          sent_at: new Date().toISOString(),
+        });
+        return "sent";
+      }
+
+      // Fallback to queue
       const { error } = await supabase.from("whatsapp_queue").insert({
         organization_id: organizationId,
         phone,
@@ -265,9 +311,10 @@ export default function Clients() {
         status: "queued",
       });
       if (error) throw error;
+      return "queued";
     },
-    onSuccess: () => {
-      toast({ title: "Mensagem adicionada à fila!" });
+    onSuccess: (result) => {
+      toast({ title: result === "sent" ? "Mensagem enviada com sucesso! ✅" : "Mensagem adicionada à fila!" });
       setMsgDialog(null);
       setManualMsg("");
     },
@@ -639,7 +686,7 @@ export default function Clients() {
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setMsgDialog(null)}>Cancelar</Button>
               <Button type="submit" className="gradient-primary text-primary-foreground" disabled={sendManualMsgMutation.isPending}>
-                {sendManualMsgMutation.isPending ? "Enviando..." : "Enviar para Fila"}
+                {sendManualMsgMutation.isPending ? "Enviando..." : "Enviar Agora"}
               </Button>
             </div>
           </form>
