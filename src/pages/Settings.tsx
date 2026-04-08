@@ -520,7 +520,7 @@ function ExtensionDownloadSection({ organizationId, orgName, logoUrl }: { organi
     enabled: !!organizationId,
   });
 
-  const endpointUrl = `https://jxhgssqzyhrlfpvlqliv.supabase.co/functions/v1/bip-receiver`;
+  const endpointUrl = `https://funecob.com.br/api/bip-receiver`;
 
   const downloadExtension = async () => {
     if (!apiKeyData?.api_key) {
@@ -556,8 +556,8 @@ let barcodeTimeout = null;
 
 document.addEventListener("keypress", (e) => {
   if (e.target.tagName === "TEXTAREA" || (e.target.tagName === "INPUT" && e.target.type !== "hidden")) return;
-  if (e.key === "Enter" && barcodeBuffer.length >= 8) {
-    const barcode = barcodeBuffer.trim();
+   if (e.key === "Enter" && barcodeBuffer.trim().length >= 8) {
+    const barcode = barcodeBuffer.replace(/\\s+/g, "").trim();
     barcodeBuffer = "";
     clearTimeout(barcodeTimeout);
     sendBip(barcode);

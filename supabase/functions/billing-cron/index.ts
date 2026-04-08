@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
 
           // Portal link
           let portalLink = "";
-          const portalBaseUrl = Deno.env.get("PORTAL_BASE_URL") || "https://funecob-app.lovable.app";
+          const portalBaseUrl = Deno.env.get("PORTAL_BASE_URL") || "https://funecob.com.br";
           try {
             const { data: existingToken } = await supabase
               .from("client_portal_tokens")
