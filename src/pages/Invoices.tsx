@@ -163,7 +163,7 @@ export default function Invoices() {
           if (newToken?.token) portalLink = `${PORTAL_BASE}/portal/${newToken.token}`;
         }
       } catch (e) {
-        console.error("Erro ao gerar token do portal:", e);
+        console.warn("Portal token error");
       }
 
       const template = settings?.template_reminder || "Olá {nome}! Sua fatura de {valor} vence em {vencimento}. {link_ou_chave_pix}";
