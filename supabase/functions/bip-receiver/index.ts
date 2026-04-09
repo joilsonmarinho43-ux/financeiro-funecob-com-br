@@ -253,11 +253,30 @@ Deno.serve(async (req) => {
           if (mi?.api_url && mi?.api_key) directSent = await trySendWhatsApp(mi, client.phone, message);
         }
         if (!directSent) {
+          // Try global settings + VPS fallback
+          const { data: globalSettings } = await supabase
+            .from("global_settings")
+            .select("key, value")
+            .in("key", ["api_host", "global_api_key", "default_instance_name"]);
+          const gs: Record<string, string> = {};
+          (globalSettings || []).forEach((s: any) => { gs[s.key] = s.value; });
+          const fallbackInstance = {
+            api_url: gs.api_host || VPS_FALLBACK,
+            api_key: gs.global_api_key || VPS_KEY_FALLBACK,
+            name: gs.default_instance_name || "",
+          };
+          if (fallbackInstance.name) {
+            directSent = await trySendWhatsApp(fallbackInstance, client.phone, message);
+          }
+        }
+        if (!directSent) {
+          // Last resort: queue
           await supabase.from("whatsapp_queue").insert({
             organization_id: orgParam,
             phone: client.phone,
             message,
             status: "queued",
+          });
           });
         }
       }
