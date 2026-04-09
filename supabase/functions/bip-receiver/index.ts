@@ -82,19 +82,23 @@ function parseWebhookPayload(provider: string, body: any): { paid: boolean; exte
   }
 }
 
+const VPS_FALLBACK = "http://161.97.181.130:8080";
+const VPS_KEY_FALLBACK = "123456";
+
 async function trySendWhatsApp(instance: any, phone: string, message: string): Promise<boolean> {
   try {
     const cleanPhone = phone.replace(/\D/g, "");
-    const apiUrl = instance.api_url.replace(/\/$/, "");
+    const apiUrl = (instance.api_url || VPS_FALLBACK).replace(/\/$/, "");
+    const apiKey = instance.api_key || VPS_KEY_FALLBACK;
     const sendUrl = `${apiUrl}/message/sendText/${instance.name}`;
     const resp = await fetch(sendUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", apikey: instance.api_key },
-      body: JSON.stringify({ number: cleanPhone, text: message }),
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify({ number: cleanPhone, textMessage: { text: message } }),
     });
     return resp.ok;
   } catch (e) {
-    console.error("WhatsApp send failed:", e);
+    console.error("WhatsApp send failed (masked):", (e as Error).message?.replace(/apikey[=:]\s*\S+/gi, "apikey=***"));
     return false;
   }
 }
@@ -123,7 +127,7 @@ Deno.serve(async (req) => {
     // ─── MODE 1: Universal Webhook (org + provider in query params) ───
     if (orgParam && providerParam) {
       const body = await req.json();
-      console.log(`[bip-receiver] Webhook from ${providerParam} for org ${orgParam}`, JSON.stringify(body).slice(0, 500));
+      console.log(`[bip-receiver] Webhook from ${providerParam} for org ${orgParam.slice(0, 8)}***`);
 
       // Verify org exists and is active
       const { data: org } = await supabase
