@@ -218,8 +218,6 @@ Deno.serve(async (req) => {
         amount: invoice.amount,
         description: `Baixa automática via ${providerParam} — ${invoice.clients?.name || "Cliente"}`,
         invoice_id: invoice.id,
-      });
-
       // Send WhatsApp confirmation
       const client = invoice.clients;
       if (client?.phone) {
