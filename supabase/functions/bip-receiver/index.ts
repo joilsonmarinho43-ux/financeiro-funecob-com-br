@@ -505,7 +505,6 @@ Deno.serve(async (req) => {
           message,
           status: "queued",
         });
-        });
       }
       await supabase.from("bips").update({ whatsapp_sent: true }).eq("id", bip.id);
     }
