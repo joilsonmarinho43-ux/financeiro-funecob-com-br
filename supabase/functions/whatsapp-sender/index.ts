@@ -248,19 +248,22 @@ Deno.serve(async (req) => {
           .limit(1)
           .maybeSingle();
 
-        const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
-        const apiKey = instance?.api_key || gs.global_api_key || "";
+        const VPS_FALLBACK = "http://161.97.181.130:8080";
+        const VPS_KEY_FALLBACK = "123456";
+        const apiUrl = (instance?.api_url || gs.api_host || VPS_FALLBACK).replace(/\/$/, "");
+        const apiKey = instance?.api_key || gs.global_api_key || VPS_KEY_FALLBACK;
         const instanceName = instance?.name || gs.default_instance_name || "";
 
-        if (!apiUrl || !apiKey || !instanceName) {
-          throw new Error("Nenhuma instância WhatsApp conectada com API configurada");
+        if (!instanceName) {
+          throw new Error("Nenhuma instância WhatsApp conectada — configure o nome da instância");
         }
 
         const phone = item.phone.replace(/\D/g, "");
         const sendUrl = `${apiUrl}/message/sendText/${instanceName}`;
         const variedMessage = varyMessage(item.message, config.randomness_level || "medium");
 
-        console.log(`[whatsapp-sender] Sending to ${phone} via ${sendUrl} (attempt ${retryCount + 1})`);
+        const maskedKey = apiKey.length > 4 ? apiKey.slice(0, 2) + "***" + apiKey.slice(-2) : "***";
+        console.log(`[whatsapp-sender] Sending to ${phone.slice(0, 4)}**** via ${sendUrl} (key: ${maskedKey}, attempt ${retryCount + 1})`);
 
         const response = await fetch(sendUrl, {
           method: "POST",
@@ -274,7 +277,7 @@ Deno.serve(async (req) => {
         }
 
         await response.text();
-        console.log(`[whatsapp-sender] Success for ${phone}`);
+        console.log(`[whatsapp-sender] Success for ${phone.slice(0, 4)}****`);
 
         await supabase.from("whatsapp_queue").update({
           status: "sent",
@@ -301,7 +304,7 @@ Deno.serve(async (req) => {
         const retryCount = parseInt(item.error_message?.match(/\[retry:(\d+)\]/)?.[1] || "0");
         const nextRetry = retryCount + 1;
 
-        console.error(`[whatsapp-sender] Failed ${item.phone} (attempt ${nextRetry}):`, errorMsg);
+        console.error(`[whatsapp-sender] Failed ${item.phone.slice(0, 4)}**** (attempt ${nextRetry}):`, errorMsg.replace(/apikey[=:]\s*\S+/gi, "apikey=***"));
 
         if (nextRetry < MAX_RETRIES) {
           const backoffMs = 30000 * Math.pow(2, retryCount);

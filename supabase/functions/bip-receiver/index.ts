@@ -82,19 +82,23 @@ function parseWebhookPayload(provider: string, body: any): { paid: boolean; exte
   }
 }
 
+const VPS_FALLBACK = "http://161.97.181.130:8080";
+const VPS_KEY_FALLBACK = "123456";
+
 async function trySendWhatsApp(instance: any, phone: string, message: string): Promise<boolean> {
   try {
     const cleanPhone = phone.replace(/\D/g, "");
-    const apiUrl = instance.api_url.replace(/\/$/, "");
+    const apiUrl = (instance.api_url || VPS_FALLBACK).replace(/\/$/, "");
+    const apiKey = instance.api_key || VPS_KEY_FALLBACK;
     const sendUrl = `${apiUrl}/message/sendText/${instance.name}`;
     const resp = await fetch(sendUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", apikey: instance.api_key },
-      body: JSON.stringify({ number: cleanPhone, text: message }),
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify({ number: cleanPhone, textMessage: { text: message } }),
     });
     return resp.ok;
   } catch (e) {
-    console.error("WhatsApp send failed:", e);
+    console.error("WhatsApp send failed (masked):", (e as Error).message?.replace(/apikey[=:]\s*\S+/gi, "apikey=***"));
     return false;
   }
 }
@@ -123,7 +127,7 @@ Deno.serve(async (req) => {
     // ─── MODE 1: Universal Webhook (org + provider in query params) ───
     if (orgParam && providerParam) {
       const body = await req.json();
-      console.log(`[bip-receiver] Webhook from ${providerParam} for org ${orgParam}`, JSON.stringify(body).slice(0, 500));
+      console.log(`[bip-receiver] Webhook from ${providerParam} for org ${orgParam.slice(0, 8)}***`);
 
       // Verify org exists and is active
       const { data: org } = await supabase
@@ -249,6 +253,24 @@ Deno.serve(async (req) => {
           if (mi?.api_url && mi?.api_key) directSent = await trySendWhatsApp(mi, client.phone, message);
         }
         if (!directSent) {
+          // Try global settings + VPS fallback
+          const { data: globalSettings } = await supabase
+            .from("global_settings")
+            .select("key, value")
+            .in("key", ["api_host", "global_api_key", "default_instance_name"]);
+          const gs: Record<string, string> = {};
+          (globalSettings || []).forEach((s: any) => { gs[s.key] = s.value; });
+          const fallbackInstance = {
+            api_url: gs.api_host || VPS_FALLBACK,
+            api_key: gs.global_api_key || VPS_KEY_FALLBACK,
+            name: gs.default_instance_name || "",
+          };
+          if (fallbackInstance.name) {
+            directSent = await trySendWhatsApp(fallbackInstance, client.phone, message);
+          }
+        }
+        if (!directSent) {
+          // Last resort: queue
           await supabase.from("whatsapp_queue").insert({
             organization_id: orgParam,
             phone: client.phone,
@@ -458,6 +480,23 @@ Deno.serve(async (req) => {
           .limit(1)
           .maybeSingle();
         if (mi?.api_url && mi?.api_key) directSent = await trySendWhatsApp(mi, client.phone, message);
+      }
+      if (!directSent) {
+        // Try global settings + VPS fallback
+        const { data: globalSettings2 } = await supabase
+          .from("global_settings")
+          .select("key, value")
+          .in("key", ["api_host", "global_api_key", "default_instance_name"]);
+        const gs2: Record<string, string> = {};
+        (globalSettings2 || []).forEach((s: any) => { gs2[s.key] = s.value; });
+        const fallbackInstance2 = {
+          api_url: gs2.api_host || VPS_FALLBACK,
+          api_key: gs2.global_api_key || VPS_KEY_FALLBACK,
+          name: gs2.default_instance_name || "",
+        };
+        if (fallbackInstance2.name) {
+          directSent = await trySendWhatsApp(fallbackInstance2, client.phone, message);
+        }
       }
       if (!directSent) {
         await supabase.from("whatsapp_queue").insert({

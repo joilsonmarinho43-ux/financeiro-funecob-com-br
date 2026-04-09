@@ -163,7 +163,7 @@ export default function Invoices() {
           if (newToken?.token) portalLink = `${PORTAL_BASE}/portal/${newToken.token}`;
         }
       } catch (e) {
-        console.error("Erro ao gerar token do portal:", e);
+        console.warn("Portal token error");
       }
 
       const template = settings?.template_reminder || "Olá {nome}! Sua fatura de {valor} vence em {vencimento}. {link_ou_chave_pix}";
@@ -191,12 +191,14 @@ export default function Invoices() {
       const gs: Record<string, string> = {};
       (globalSettings || []).forEach((s) => { gs[s.key] = s.value; });
 
-      const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
-      const apiKey = instance?.api_key || gs.global_api_key || "";
+      const VPS_FALLBACK = "http://161.97.181.130:8080";
+      const VPS_KEY_FALLBACK = "123456";
+      const apiUrl = (instance?.api_url || gs.api_host || VPS_FALLBACK).replace(/\/$/, "");
+      const apiKey = instance?.api_key || gs.global_api_key || VPS_KEY_FALLBACK;
       const instanceName = instance?.name || gs.default_instance_name || "";
 
-      if (!apiUrl || !apiKey || !instanceName) {
-        // Fallback: add to queue if no direct API config
+      if (!instanceName) {
+        // No instance name — queue as fallback
         const { error } = await supabase.from("whatsapp_queue").insert({
           organization_id: organizationId,
           phone: client.phone,
