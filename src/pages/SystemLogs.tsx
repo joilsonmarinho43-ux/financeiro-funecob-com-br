@@ -95,12 +95,13 @@ export default function SystemLogs() {
                     <TableHead>Ação</TableHead>
                     <TableHead>Detalhes</TableHead>
                     <TableHead>IP</TableHead>
+                    <TableHead>Navegador</TableHead>
                     <TableHead>Data</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.length === 0 ? (
-                    <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">Nenhum log registrado</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Nenhum log registrado</TableCell></TableRow>
                   ) : filtered.map((log: any) => {
                     const variant = actionColors[log.action] || "secondary";
                     return (
@@ -112,6 +113,7 @@ export default function SystemLogs() {
                           {typeof log.details === "object" ? JSON.stringify(log.details) : log.details || "-"}
                         </TableCell>
                         <TableCell className="text-sm font-mono">{log.ip_address || "-"}</TableCell>
+                        <TableCell className="text-sm max-w-[150px] truncate" title={(log as any).user_agent || ""}>{(log as any).user_agent?.slice(0, 30) || "-"}</TableCell>
                         <TableCell className="text-sm">{format(new Date(log.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}</TableCell>
                       </TableRow>
                     );
