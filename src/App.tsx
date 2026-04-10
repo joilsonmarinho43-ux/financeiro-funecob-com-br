@@ -104,39 +104,41 @@ function LicenseExpiredPage() {
 }
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/auth" element={<AuthRoute><Auth /></AuthRoute>} />
-            <Route path="/license-expired" element={<LicenseExpiredPage />} />
-            <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-            <Route path="/clientes/planos" element={<ProtectedRoute><Plans /></ProtectedRoute>} />
-            <Route path="/clientes" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
-            <Route path="/financeiro" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
-            <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-            <Route path="/movimentacoes" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
-            <Route path="/prestacao" element={<ProtectedRoute><Settlement /></ProtectedRoute>} />
-            <Route path="/whatsapp" element={<ProtectedRoute><WhatsApp /></ProtectedRoute>} />
-            <Route path="/cobranca" element={<ProtectedRoute><BillingSettings /></ProtectedRoute>} />
-            <Route path="/configuracoes" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-            <Route path="/v3pay" element={<ProtectedRoute><V3Pay /></ProtectedRoute>} />
-            <Route path="/gateways" element={<ProtectedRoute><Gateways /></ProtectedRoute>} />
-            <Route path="/webhooks" element={<ProtectedRoute><WebHooks /></ProtectedRoute>} />
-            <Route path="/sms" element={<ProtectedRoute><SMS /></ProtectedRoute>} />
-            <Route path="/logs" element={<ProtectedRoute><SystemLogs /></ProtectedRoute>} />
-            <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
-            <Route path="/admin/global-settings" element={<ProtectedRoute adminOnly><GlobalSettings /></ProtectedRoute>} />
-            <Route path="/portal/:token" element={<ClientPortal />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/auth" element={<AuthRoute><Auth /></AuthRoute>} />
+              <Route path="/license-expired" element={<LicenseExpiredPage />} />
+              <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+              <Route path="/clientes/planos" element={<ProtectedRoute><Plans /></ProtectedRoute>} />
+              <Route path="/clientes" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
+              <Route path="/financeiro" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
+              <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+              <Route path="/movimentacoes" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
+              <Route path="/prestacao" element={<ProtectedRoute><Settlement /></ProtectedRoute>} />
+              <Route path="/whatsapp" element={<ProtectedRoute><WhatsApp /></ProtectedRoute>} />
+              <Route path="/cobranca" element={<ProtectedRoute><BillingSettings /></ProtectedRoute>} />
+              <Route path="/configuracoes" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              <Route path="/v3pay" element={<ProtectedRoute><V3Pay /></ProtectedRoute>} />
+              <Route path="/gateways" element={<ProtectedRoute><Gateways /></ProtectedRoute>} />
+              <Route path="/webhooks" element={<ProtectedRoute><WebHooks /></ProtectedRoute>} />
+              <Route path="/sms" element={<ProtectedRoute><SMS /></ProtectedRoute>} />
+              <Route path="/logs" element={<ProtectedRoute><SystemLogs /></ProtectedRoute>} />
+              <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
+              <Route path="/admin/global-settings" element={<ProtectedRoute adminOnly><GlobalSettings /></ProtectedRoute>} />
+              <Route path="/portal/:token" element={<ClientPortal />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;
