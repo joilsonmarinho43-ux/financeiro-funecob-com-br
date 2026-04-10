@@ -551,6 +551,7 @@ export default function Invoices() {
                       payMutation.mutate({
                         id: payDialog.id,
                         paid_date: format(paidDate, "yyyy-MM-dd"),
+                        invoice: payDialog,
                       });
                     }
                   }}
