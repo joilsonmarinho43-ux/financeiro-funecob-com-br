@@ -459,17 +459,27 @@ export default function Dashboard() {
                           <Button 
                             size="icon" 
                             variant="ghost" 
+                            className="h-7 w-7 text-success hover:text-success"
+                            onClick={() => handleBaixa(inv)}
+                            disabled={payingId === inv.id}
+                            title="Confirmar pagamento"
+                          >
+                            {payingId === inv.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
                             className="h-7 w-7 text-primary hover:text-primary"
                             onClick={() => sendWhatsAppMessage(inv)}
                             disabled={sendingId === inv.id}
-                            title="Enviar cobrança via robô"
+                            title="Enviar cobrança via WhatsApp"
                           >
                             {sendingId === inv.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                           </Button>
                           <Button 
                             size="icon" 
                             variant="ghost" 
-                            className="h-7 w-7 text-success hover:text-success"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
                             onClick={() => openWhatsAppDirect(inv)}
                             title="Abrir WhatsApp Web"
                           >
