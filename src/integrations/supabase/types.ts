@@ -59,6 +59,7 @@ export type Database = {
           id: string
           invoice_id: string
           organization_id: string
+          reminder_date: string
           reminder_type: string
           sent_at: string | null
           status: string
@@ -69,6 +70,7 @@ export type Database = {
           id?: string
           invoice_id: string
           organization_id: string
+          reminder_date?: string
           reminder_type: string
           sent_at?: string | null
           status?: string
@@ -79,6 +81,7 @@ export type Database = {
           id?: string
           invoice_id?: string
           organization_id?: string
+          reminder_date?: string
           reminder_type?: string
           sent_at?: string | null
           status?: string
@@ -709,6 +712,7 @@ export type Database = {
           id: string
           ip_address: string | null
           organization_id: string | null
+          user_agent: string | null
           user_id: string
         }
         Insert: {
@@ -718,6 +722,7 @@ export type Database = {
           id?: string
           ip_address?: string | null
           organization_id?: string | null
+          user_agent?: string | null
           user_id: string
         }
         Update: {
@@ -727,6 +732,7 @@ export type Database = {
           id?: string
           ip_address?: string | null
           organization_id?: string | null
+          user_agent?: string | null
           user_id?: string
         }
         Relationships: [
