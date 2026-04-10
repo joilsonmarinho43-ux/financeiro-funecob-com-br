@@ -63,13 +63,12 @@ Deno.serve(async (req) => {
       }
       if (!invoices || invoices.length === 0) continue;
 
-      // Sent today dedup
+      // Sent today dedup using reminder_date constraint
       const { data: sentToday } = await supabase
         .from("billing_reminders")
         .select("invoice_id, reminder_type")
         .eq("organization_id", orgId)
-        .gte("created_at", `${todayStr}T00:00:00Z`)
-        .lte("created_at", `${todayStr}T23:59:59Z`);
+        .eq("reminder_date", todayStr);
 
       const sentSet = new Set(
         (sentToday || []).map((s: any) => `${s.invoice_id}:${s.reminder_type}`)
@@ -127,7 +126,7 @@ Deno.serve(async (req) => {
 
           // Portal link
           let portalLink = "";
-          const portalBaseUrl = Deno.env.get("PORTAL_BASE_URL") || "https://funecob.com.br";
+          const portalBaseUrl = Deno.env.get("PORTAL_BASE_URL") || "";
           try {
             const { data: existingToken } = await supabase
               .from("client_portal_tokens")
@@ -155,12 +154,21 @@ Deno.serve(async (req) => {
             .replace(/{link_ou_chave_pix}/g, pixOrLink)
             .replace(/{link_portal}/g, portalLink || "");
 
-          await supabase.from("billing_reminders").insert({
+          // Use ON CONFLICT to enforce idempotency via unique index
+          const { error: reminderErr } = await supabase.from("billing_reminders").insert({
             organization_id: orgId,
             invoice_id: invoice.id,
             reminder_type: reminder.type,
+            reminder_date: todayStr,
             status: "pending",
-          });
+          } as any);
+
+          // Skip if duplicate (already sent today)
+          if (reminderErr) {
+            if (reminderErr.code === "23505") continue; // unique violation = already sent
+            console.error(`[billing-cron] Reminder insert error:`, reminderErr.message);
+            continue;
+          }
 
           await supabase.from("whatsapp_queue").insert({
             organization_id: orgId,

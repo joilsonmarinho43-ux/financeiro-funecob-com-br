@@ -1,4 +1,4 @@
-import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, Bell } from "lucide-react";
+import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, Bell, CheckCircle2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -55,15 +55,13 @@ export default function Dashboard() {
     staleTime: 10 * 60 * 1000,
   });
 
+  const [payingId, setPayingId] = useState<string | null>(null);
+
   const sendWhatsAppMessage = async (inv: any) => {
     const client = inv.clients as any;
     const phone = client?.phone;
     if (!phone) {
       toast({ title: "Erro", description: "Cliente sem telefone cadastrado.", variant: "destructive" });
-      return;
-    }
-    if (!whatsappInstance?.api_url || !whatsappInstance?.api_key) {
-      toast({ title: "Erro", description: "Instância WhatsApp não configurada. Vá em WhatsApp → Parear.", variant: "destructive" });
       return;
     }
 
@@ -77,20 +75,70 @@ export default function Dashboard() {
         .replace("{vencimento}", new Date(inv.due_date).toLocaleDateString("pt-BR"))
         .replace("{link_ou_chave_pix}", billingSettings?.pix_key ? `Chave PIX: ${billingSettings.pix_key}` : "");
 
-      // Queue the message
-      const { error } = await supabase.from("whatsapp_queue").insert({
-        phone: phone.replace(/\D/g, ""),
-        message,
-        organization_id: organizationId,
-        status: "queued",
+      // Send immediately via Edge Function proxy
+      const { data: sendResult, error: sendError } = await supabase.functions.invoke("send-now", {
+        body: { phone: phone.replace(/\D/g, ""), message, organization_id: organizationId },
       });
 
-      if (error) throw error;
-      toast({ title: "Mensagem enfileirada!", description: `Cobrança enviada para ${client?.name}.` });
+      if (sendError) throw new Error(sendError.message);
+      if (sendResult?.error) throw new Error(sendResult.error);
+
+      toast({ title: "Mensagem enviada! ✅", description: `Cobrança enviada para ${client?.name}.` });
     } catch (e: any) {
-      toast({ title: "Erro ao enviar", description: e.message, variant: "destructive" });
+      toast({ title: "Falha no envio", description: "Não foi possível enviar a mensagem. Tente novamente.", variant: "destructive" });
     } finally {
       setSendingId(null);
+    }
+  };
+
+  const handleBaixa = async (inv: any) => {
+    const client = inv.clients as any;
+    if (!window.confirm(`Confirmar pagamento de ${client?.name}?`)) return;
+    
+    setPayingId(inv.id);
+    try {
+      // Idempotency check
+      const { data: current } = await supabase
+        .from("invoices")
+        .select("status")
+        .eq("id", inv.id)
+        .single();
+      if (current?.status === "pago") {
+        toast({ title: "Fatura já estava paga." });
+        return;
+      }
+
+      const paidDate = new Date().toISOString().split("T")[0];
+      const { error } = await supabase
+        .from("invoices")
+        .update({ status: "pago", paid_date: paidDate })
+        .eq("id", inv.id)
+        .eq("status", "aberto"); // optimistic lock
+      if (error) throw error;
+
+      // Cancel pending reminders
+      await supabase
+        .from("billing_reminders")
+        .update({ status: "cancelled" } as any)
+        .eq("invoice_id", inv.id)
+        .eq("status", "pending");
+
+      // Send baixa confirmation
+      if (client?.phone && organizationId) {
+        try {
+          const amount = Number(inv.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+          const message = `Pagamento confirmado! ✅\nCliente: ${client.name}\nValor: ${amount}\nData: ${paidDate.split("-").reverse().join("/")}`;
+          await supabase.functions.invoke("send-now", {
+            body: { phone: client.phone, message, organization_id: organizationId },
+          });
+        } catch {}
+      }
+
+      toast({ title: "Pagamento confirmado! ✅" });
+    } catch {
+      toast({ title: "Erro ao confirmar pagamento", description: "Tente novamente.", variant: "destructive" });
+    } finally {
+      setPayingId(null);
     }
   };
 
@@ -411,17 +459,27 @@ export default function Dashboard() {
                           <Button 
                             size="icon" 
                             variant="ghost" 
+                            className="h-7 w-7 text-success hover:text-success"
+                            onClick={() => handleBaixa(inv)}
+                            disabled={payingId === inv.id}
+                            title="Confirmar pagamento"
+                          >
+                            {payingId === inv.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
                             className="h-7 w-7 text-primary hover:text-primary"
                             onClick={() => sendWhatsAppMessage(inv)}
                             disabled={sendingId === inv.id}
-                            title="Enviar cobrança via robô"
+                            title="Enviar cobrança via WhatsApp"
                           >
                             {sendingId === inv.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                           </Button>
                           <Button 
                             size="icon" 
                             variant="ghost" 
-                            className="h-7 w-7 text-success hover:text-success"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
                             onClick={() => openWhatsAppDirect(inv)}
                             title="Abrir WhatsApp Web"
                           >

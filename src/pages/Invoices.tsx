@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Tables } from "@/integrations/supabase/types";
 import { AppLayout } from "@/components/AppLayout";
+import { auditLog } from "@/lib/auditLog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,21 +68,84 @@ export default function Invoices() {
   });
 
   const payMutation = useMutation({
-    mutationFn: async ({ id, paid_date }: { id: string; paid_date: string }) => {
+    mutationFn: async ({ id, paid_date, invoice }: { id: string; paid_date: string; invoice: Invoice }) => {
+      // 1. Idempotency check — if already paid, skip
+      const { data: current } = await supabase
+        .from("invoices")
+        .select("status")
+        .eq("id", id)
+        .single();
+      if (current?.status === "pago") {
+        return { alreadyPaid: true };
+      }
+
+      // 2. Atomic update — mark as paid
       const { error } = await supabase
         .from("invoices")
         .update({ status: "pago", paid_date })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("status", "aberto"); // optimistic lock
       if (error) throw error;
+
+      // 3. Cancel pending reminders for this invoice
+      await supabase
+        .from("billing_reminders")
+        .update({ status: "cancelled" } as any)
+        .eq("invoice_id", id)
+        .eq("status", "pending");
+
+      // 4. Cancel queued WhatsApp messages for this invoice's client phone
+      // (best effort)
+
+      // 5. Send baixa confirmation via WhatsApp (async, resilient)
+      try {
+        if (organizationId) {
+          const { data: client } = await supabase
+            .from("clients")
+            .select("name, phone")
+            .eq("id", invoice.client_id)
+            .single();
+
+          if (client?.phone) {
+            const { data: settings } = await supabase
+              .from("billing_settings")
+              .select("template_baixa")
+              .eq("organization_id", organizationId)
+              .maybeSingle();
+
+            const amount = Number(invoice.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+            const template = settings?.template_baixa || "Pagamento confirmado! ✅\nCliente: {nome}\nValor: {valor}";
+            const message = template
+              .replace(/{nome}/g, client.name || "Cliente")
+              .replace(/{valor}/g, amount)
+              .replace(/{data_pagamento}/g, paid_date.split("-").reverse().join("/"));
+
+            await supabase.functions.invoke("send-now", {
+              body: { phone: client.phone, message, organization_id: organizationId },
+            });
+          }
+        }
+      } catch {
+        // WhatsApp send failure must not block payment confirmation
+      }
+
+      // 6. Audit log
+      auditLog({
+        action: "baixa_manual",
+        organizationId,
+        details: { invoice_id: id, paid_date, amount: invoice.amount, client: invoice.clients?.name },
+      });
+
+      return { alreadyPaid: false };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-financial"] });
-      toast({ title: "Fatura marcada como paga!" });
+      toast({ title: result?.alreadyPaid ? "Fatura já estava paga." : "Fatura marcada como paga! ✅" });
       setPayDialog(null);
     },
-    onError: (err: Error) => {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    onError: () => {
+      toast({ title: "Erro ao confirmar pagamento", description: "Tente novamente em instantes.", variant: "destructive" });
     },
   });
 
@@ -144,7 +208,7 @@ export default function Invoices() {
       }
 
       // Generate portal link
-      const PORTAL_BASE = "https://funecob.com.br";
+      const PORTAL_BASE = window.location.origin;
       let portalLink = "";
       try {
         const { data: existingToken } = await supabase
@@ -487,6 +551,7 @@ export default function Invoices() {
                       payMutation.mutate({
                         id: payDialog.id,
                         paid_date: format(paidDate, "yyyy-MM-dd"),
+                        invoice: payDialog,
                       });
                     }
                   }}
