@@ -520,7 +520,8 @@ function ExtensionDownloadSection({ organizationId, orgName, logoUrl }: { organi
     enabled: !!organizationId,
   });
 
-  const endpointUrl = `https://funecob.com.br/api/bip-receiver`;
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const endpointUrl = `${supabaseUrl}/functions/v1/bip-receiver`;
 
   const downloadExtension = async () => {
     if (!apiKeyData?.api_key) {
