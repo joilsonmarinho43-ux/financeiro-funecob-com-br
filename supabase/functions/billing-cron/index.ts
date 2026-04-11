@@ -133,9 +133,9 @@ Deno.serve(async (req) => {
               .select("token")
               .eq("client_id", invoice.client_id)
               .maybeSingle();
-            if (existingToken?.token) {
+            if (existingToken?.token && portalBaseUrl) {
               portalLink = `${portalBaseUrl}/portal/${existingToken.token}`;
-            } else {
+            } else if (portalBaseUrl) {
               const { data: newToken } = await supabase
                 .from("client_portal_tokens")
                 .insert({ client_id: invoice.client_id, organization_id: orgId })
@@ -147,12 +147,17 @@ Deno.serve(async (req) => {
             console.error("Error generating portal token:", e);
           }
 
+          // Build portal link section - only include if link exists and make it clickable
+          const portalSection = portalLink
+            ? `\n\n📋 *Acesse seu portal:*\n${portalLink}`
+            : "";
+
           const message = reminder.template
             .replace(/{nome}/g, client.name || "Cliente")
             .replace(/{valor}/g, amount)
             .replace(/{vencimento}/g, formattedDueDate)
             .replace(/{link_ou_chave_pix}/g, pixOrLink)
-            .replace(/{link_portal}/g, portalLink || "");
+            .replace(/{link_portal}/g, portalSection);
 
           // Use ON CONFLICT to enforce idempotency via unique index
           const { error: reminderErr } = await supabase.from("billing_reminders").insert({

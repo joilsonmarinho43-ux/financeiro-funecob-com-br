@@ -1,7 +1,7 @@
 import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, Bell, CheckCircle2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,6 +21,7 @@ export default function Dashboard() {
   const [showValues, setShowValues] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
 
   // Fetch WhatsApp instance for sending
   const { data: whatsappInstance } = useQuery({
@@ -97,44 +98,21 @@ export default function Dashboard() {
     
     setPayingId(inv.id);
     try {
-      // Idempotency check
-      const { data: current } = await supabase
-        .from("invoices")
-        .select("status")
-        .eq("id", inv.id)
-        .single();
-      if (current?.status === "pago") {
-        toast({ title: "Fatura já estava paga." });
-        return;
-      }
-
       const paidDate = new Date().toISOString().split("T")[0];
-      const { error } = await supabase
-        .from("invoices")
-        .update({ status: "pago", paid_date: paidDate })
-        .eq("id", inv.id)
-        .eq("status", "aberto"); // optimistic lock
-      if (error) throw error;
+      const { data: result, error: fnError } = await supabase.functions.invoke("baixa-manual", {
+        body: {
+          invoice_id: inv.id,
+          paid_date: paidDate,
+          organization_id: organizationId,
+        },
+      });
 
-      // Cancel pending reminders
-      await supabase
-        .from("billing_reminders")
-        .update({ status: "cancelled" } as any)
-        .eq("invoice_id", inv.id)
-        .eq("status", "pending");
+      if (fnError) throw new Error("Falha na comunicação");
+      if (result?.error) throw new Error(result.error);
 
-      // Send baixa confirmation
-      if (client?.phone && organizationId) {
-        try {
-          const amount = Number(inv.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-          const message = `Pagamento confirmado! ✅\nCliente: ${client.name}\nValor: ${amount}\nData: ${paidDate.split("-").reverse().join("/")}`;
-          await supabase.functions.invoke("send-now", {
-            body: { phone: client.phone, message, organization_id: organizationId },
-          });
-        } catch {}
-      }
-
-      toast({ title: "Pagamento confirmado! ✅" });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-overdue"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-financial"] });
+      toast({ title: result?.already_paid ? "Fatura já estava paga." : "Pagamento confirmado! ✅" });
     } catch {
       toast({ title: "Erro ao confirmar pagamento", description: "Tente novamente.", variant: "destructive" });
     } finally {
@@ -206,11 +184,13 @@ export default function Dashboard() {
     queryKey: ["dashboard-overdue", organizationId],
     queryFn: async () => {
       if (!organizationId) return [];
+      const todayStr = new Date().toISOString().split("T")[0];
       const { data, error } = await supabase
         .from("invoices")
         .select("id, amount, due_date, status, clients(name, phone), plans(name)")
         .eq("organization_id", organizationId)
-        .eq("status", "vencido")
+        .eq("status", "aberto")
+        .lt("due_date", todayStr)
         .order("due_date", { ascending: true })
         .limit(20);
       if (error) throw error;

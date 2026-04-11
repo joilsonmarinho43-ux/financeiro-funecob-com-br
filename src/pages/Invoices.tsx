@@ -69,83 +69,27 @@ export default function Invoices() {
 
   const payMutation = useMutation({
     mutationFn: async ({ id, paid_date, invoice }: { id: string; paid_date: string; invoice: Invoice }) => {
-      // 1. Idempotency check — if already paid, skip
-      const { data: current } = await supabase
-        .from("invoices")
-        .select("status")
-        .eq("id", id)
-        .single();
-      if (current?.status === "pago") {
-        return { alreadyPaid: true };
-      }
-
-      // 2. Atomic update — mark as paid
-      const { error } = await supabase
-        .from("invoices")
-        .update({ status: "pago", paid_date })
-        .eq("id", id)
-        .eq("status", "aberto"); // optimistic lock
-      if (error) throw error;
-
-      // 3. Cancel pending reminders for this invoice
-      await supabase
-        .from("billing_reminders")
-        .update({ status: "cancelled" } as any)
-        .eq("invoice_id", id)
-        .eq("status", "pending");
-
-      // 4. Cancel queued WhatsApp messages for this invoice's client phone
-      // (best effort)
-
-      // 5. Send baixa confirmation via WhatsApp (async, resilient)
-      try {
-        if (organizationId) {
-          const { data: client } = await supabase
-            .from("clients")
-            .select("name, phone")
-            .eq("id", invoice.client_id)
-            .single();
-
-          if (client?.phone) {
-            const { data: settings } = await supabase
-              .from("billing_settings")
-              .select("template_baixa")
-              .eq("organization_id", organizationId)
-              .maybeSingle();
-
-            const amount = Number(invoice.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-            const template = settings?.template_baixa || "Pagamento confirmado! ✅\nCliente: {nome}\nValor: {valor}";
-            const message = template
-              .replace(/{nome}/g, client.name || "Cliente")
-              .replace(/{valor}/g, amount)
-              .replace(/{data_pagamento}/g, paid_date.split("-").reverse().join("/"));
-
-            await supabase.functions.invoke("send-now", {
-              body: { phone: client.phone, message, organization_id: organizationId },
-            });
-          }
-        }
-      } catch {
-        // WhatsApp send failure must not block payment confirmation
-      }
-
-      // 6. Audit log
-      auditLog({
-        action: "baixa_manual",
-        organizationId,
-        details: { invoice_id: id, paid_date, amount: invoice.amount, client: invoice.clients?.name },
+      const { data: result, error: fnError } = await supabase.functions.invoke("baixa-manual", {
+        body: {
+          invoice_id: id,
+          paid_date,
+          organization_id: organizationId,
+          user_id: user?.id,
+        },
       });
 
-      return { alreadyPaid: false };
+      if (fnError) throw new Error("Falha na comunicação com o servidor");
+      if (result?.error) throw new Error(result.error);
+      return result;
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-financial"] });
-      toast({ title: result?.alreadyPaid ? "Fatura já estava paga." : "Fatura marcada como paga! ✅" });
+      toast({ title: result?.already_paid ? "Fatura já estava paga." : "Pagamento confirmado! ✅" });
       setPayDialog(null);
     },
-    onError: () => {
-      toast({ title: "Erro ao confirmar pagamento", description: "Tente novamente em instantes.", variant: "destructive" });
+    onError: (err: Error) => {
+      toast({ title: "Erro ao confirmar pagamento", description: err.message || "Tente novamente em instantes.", variant: "destructive" });
     },
   });
 
@@ -230,13 +174,18 @@ export default function Invoices() {
         console.warn("Portal token error");
       }
 
+      // Build portal section - clickable link, only when available
+      const portalSection = portalLink
+        ? `\n\n📋 *Acesse seu portal:*\n${portalLink}`
+        : "";
+
       const template = settings?.template_reminder || "Olá {nome}! Sua fatura de {valor} vence em {vencimento}. {link_ou_chave_pix}";
       const message = template
         .replace(/{nome}/g, client.name || "Cliente")
         .replace(/{valor}/g, amount)
         .replace(/{vencimento}/g, dueFormatted)
         .replace(/{link_ou_chave_pix}/g, pixOrLink)
-        .replace(/{link_portal}/g, portalLink || "");
+        .replace(/{link_portal}/g, portalSection);
 
       // Send immediately via Edge Function proxy (avoids mixed content)
       const { data: sendResult, error: sendError } = await supabase.functions.invoke("send-now", {

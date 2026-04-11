@@ -10,7 +10,6 @@ const corsHeaders = {
  *  over any HTTPS domain that may cause TLS handshake issues with self-signed certs. */
 function resolveApiUrl(instanceUrl: string | null, globalHost: string | null): string {
   const url = (instanceUrl || globalHost || "").replace(/\/$/, "");
-  // If the URL points to funecob.com.br (nginx proxy), keep it but log warning
   return url;
 }
 
