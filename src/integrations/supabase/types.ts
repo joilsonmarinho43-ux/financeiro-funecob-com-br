@@ -1209,6 +1209,15 @@ export type Database = {
         Returns: boolean
       }
       is_collector: { Args: { _user_id: string }; Returns: boolean }
+      perform_baixa_manual: {
+        Args: {
+          p_invoice_id: string
+          p_organization_id: string
+          p_paid_date: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin" | "user"

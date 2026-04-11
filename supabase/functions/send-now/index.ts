@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { phone, message, organization_id, instance_id } = await req.json();
+    const { phone, message, organization_id } = await req.json();
 
     if (!phone || !message || !organization_id) {
       return new Response(
@@ -41,17 +41,15 @@ Deno.serve(async (req) => {
       .in("key", ["api_host", "global_api_key", "default_instance_name"]);
 
     const gs: Record<string, string> = {};
-    (globalSettings || []).forEach((s: any) => { gs[s.key] = s.value; });
+    (globalSettings || []).forEach((s: { key: string; value: string }) => { gs[s.key] = s.value; });
 
-    const VPS_FALLBACK = "http://161.97.181.130:8080";
-    const VPS_KEY_FALLBACK = "123456";
-    const apiUrl = (instance?.api_url || gs.api_host || VPS_FALLBACK).replace(/\/$/, "");
-    const apiKey = instance?.api_key || gs.global_api_key || VPS_KEY_FALLBACK;
+    const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
+    const apiKey = instance?.api_key || gs.global_api_key || "";
     const instanceName = instance?.name || gs.default_instance_name || "";
 
-    if (!instanceName) {
+    if (!instanceName || !apiUrl || !apiKey) {
       return new Response(
-        JSON.stringify({ error: "Nenhuma instância WhatsApp configurada" }),
+        JSON.stringify({ error: "WhatsApp não configurado. Verifique instância e configurações globais." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -59,7 +57,8 @@ Deno.serve(async (req) => {
     const cleanPhone = phone.replace(/\D/g, "");
     const sendUrl = `${apiUrl}/message/sendText/${instanceName}`;
 
-    console.log(`[send-now] Sending to ${cleanPhone.slice(0, 4)}**** via ${instanceName}`);
+    const maskedKey = apiKey.length > 4 ? apiKey.slice(0, 2) + "***" + apiKey.slice(-2) : "***";
+    console.log(`[send-now] Sending to ${cleanPhone.slice(0, 4)}**** via ${instanceName} (key: ${maskedKey})`);
 
     const response = await fetch(sendUrl, {
       method: "POST",
@@ -71,7 +70,7 @@ Deno.serve(async (req) => {
       const errorBody = await response.text();
       console.error(`[send-now] API error: ${response.status} - ${errorBody.slice(0, 200)}`);
       return new Response(
-        JSON.stringify({ error: `API ${response.status}: ${errorBody.slice(0, 200)}` }),
+        JSON.stringify({ error: "Falha no envio da mensagem. Tente novamente." }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -98,7 +97,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("[send-now] Error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: "Erro interno ao enviar mensagem." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

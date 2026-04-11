@@ -25,99 +25,56 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // === TRANSAÇÃO ATÔMICA via RPC ou queries sequenciais com service_role ===
+    // === ATOMIC TRANSACTION via RPC (SELECT FOR UPDATE inside PostgreSQL) ===
+    const { data: rpcResult, error: rpcError } = await supabase.rpc("perform_baixa_manual", {
+      p_invoice_id: invoice_id,
+      p_paid_date: paid_date,
+      p_organization_id: organization_id,
+      p_user_id: user_id || "00000000-0000-0000-0000-000000000000",
+    });
 
-    // 1. Idempotency check
-    const { data: invoice, error: fetchErr } = await supabase
-      .from("invoices")
-      .select("id, status, amount, client_id, due_date")
-      .eq("id", invoice_id)
-      .eq("organization_id", organization_id)
-      .single();
-
-    if (fetchErr || !invoice) {
+    if (rpcError) {
+      console.error("[baixa-manual] RPC error:", rpcError.message);
       return new Response(
-        JSON.stringify({ error: "Fatura não encontrada" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Falha ao processar pagamento. Tente novamente." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (invoice.status === "pago") {
+    const result = rpcResult as Record<string, unknown>;
+
+    if (!result?.success) {
+      return new Response(
+        JSON.stringify({ error: result?.error || "Operação não permitida" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (result.already_paid) {
       return new Response(
         JSON.stringify({ success: true, already_paid: true, message: "Fatura já estava paga" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (invoice.status !== "aberto") {
-      return new Response(
-        JSON.stringify({ error: `Fatura com status '${invoice.status}' não pode receber baixa` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // 2. Atomic update with optimistic lock
-    const { error: updateErr, count } = await supabase
-      .from("invoices")
-      .update({ status: "pago", paid_date })
-      .eq("id", invoice_id)
-      .eq("status", "aberto");
-
-    if (updateErr) {
-      console.error("[baixa-manual] Update error:", updateErr.message);
-      // Log the failure
-      await supabase.from("system_logs").insert({
-        action: "baixa_manual_erro",
-        user_id: user_id || "00000000-0000-0000-0000-000000000000",
-        organization_id,
-        details: { invoice_id, error: updateErr.message },
-      });
-      return new Response(
-        JSON.stringify({ error: "Falha ao atualizar fatura" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // 3. Cancel pending reminders
-    await supabase
-      .from("billing_reminders")
-      .update({ status: "cancelled" })
-      .eq("invoice_id", invoice_id)
-      .eq("status", "pending");
-
-    // 4. Cancel queued WhatsApp messages for this invoice's client
-    // (best effort — won't rollback if this fails)
-
-    // 5. Audit log
-    await supabase.from("system_logs").insert({
-      action: "baixa_manual",
-      user_id: user_id || "00000000-0000-0000-0000-000000000000",
-      organization_id,
-      details: {
-        invoice_id,
-        paid_date,
-        amount: invoice.amount,
-        client_id: invoice.client_id,
-      },
-    });
-
-    // 6. Send WhatsApp confirmation OUTSIDE the transaction (async, resilient)
+    // === ASYNC WhatsApp confirmation (outside transaction — resilient) ===
     let whatsapp_sent = false;
     try {
+      const clientId = result.client_id as string;
       const { data: client } = await supabase
         .from("clients")
         .select("name, phone")
-        .eq("id", invoice.client_id)
+        .eq("id", clientId)
         .single();
 
       if (client?.phone) {
         const { data: settings } = await supabase
           .from("billing_settings")
-          .select("template_baixa, pix_key, pix_key_type, billing_mode, gateway_provider")
+          .select("template_baixa, pix_key, pix_key_type")
           .eq("organization_id", organization_id)
           .maybeSingle();
 
-        const amount = Number(invoice.amount).toLocaleString("pt-BR", {
+        const amount = Number(result.amount).toLocaleString("pt-BR", {
           style: "currency",
           currency: "BRL",
         });
@@ -144,19 +101,20 @@ Deno.serve(async (req) => {
           .in("key", ["api_host", "global_api_key", "default_instance_name"]);
 
         const gs: Record<string, string> = {};
-        (globalSettings || []).forEach((s: any) => {
+        (globalSettings || []).forEach((s: { key: string; value: string }) => {
           gs[s.key] = s.value;
         });
 
-        const VPS_FALLBACK = "http://161.97.181.130:8080";
-        const VPS_KEY_FALLBACK = "123456";
-        const apiUrl = (instance?.api_url || gs.api_host || VPS_FALLBACK).replace(/\/$/, "");
-        const apiKey = instance?.api_key || gs.global_api_key || VPS_KEY_FALLBACK;
+        const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
+        const apiKey = instance?.api_key || gs.global_api_key || "";
         const instanceName = instance?.name || gs.default_instance_name || "";
 
-        if (instanceName) {
+        if (instanceName && apiUrl && apiKey) {
           const cleanPhone = client.phone.replace(/\D/g, "");
           const sendUrl = `${apiUrl}/message/sendText/${instanceName}`;
+
+          const maskedKey = apiKey.length > 4 ? apiKey.slice(0, 2) + "***" + apiKey.slice(-2) : "***";
+          console.log(`[baixa-manual] Sending confirmation to ${cleanPhone.slice(0, 4)}**** (key: ${maskedKey})`);
 
           const response = await fetch(sendUrl, {
             method: "POST",
@@ -167,7 +125,7 @@ Deno.serve(async (req) => {
           whatsapp_sent = response.ok;
           if (!response.ok) {
             const errBody = await response.text();
-            console.error(`[baixa-manual] WhatsApp send error: ${response.status} - ${errBody.slice(0, 200)}`);
+            console.error(`[baixa-manual] WhatsApp error: ${response.status} - ${errBody.slice(0, 200)}`);
           }
 
           // Log sent message
@@ -180,6 +138,8 @@ Deno.serve(async (req) => {
             instance_id: instance?.id || null,
             sent_at: new Date().toISOString(),
           });
+        } else {
+          console.warn("[baixa-manual] WhatsApp not configured — skipping confirmation");
         }
       }
     } catch (e) {
