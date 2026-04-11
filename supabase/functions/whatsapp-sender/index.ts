@@ -248,14 +248,12 @@ Deno.serve(async (req) => {
           .limit(1)
           .maybeSingle();
 
-        const VPS_FALLBACK = "http://161.97.181.130:8080";
-        const VPS_KEY_FALLBACK = "123456";
-        const apiUrl = (instance?.api_url || gs.api_host || VPS_FALLBACK).replace(/\/$/, "");
-        const apiKey = instance?.api_key || gs.global_api_key || VPS_KEY_FALLBACK;
+        const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
+        const apiKey = instance?.api_key || gs.global_api_key || "";
         const instanceName = instance?.name || gs.default_instance_name || "";
 
-        if (!instanceName) {
-          throw new Error("Nenhuma instância WhatsApp conectada — configure o nome da instância");
+        if (!instanceName || !apiUrl || !apiKey) {
+          throw new Error("WhatsApp não configurado — verifique instância e configurações globais");
         }
 
         const phone = item.phone.replace(/\D/g, "");
