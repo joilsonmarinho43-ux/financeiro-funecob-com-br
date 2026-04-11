@@ -110,6 +110,8 @@ export default function Dashboard() {
       if (fnError) throw new Error("Falha na comunicação");
       if (result?.error) throw new Error(result.error);
 
+      queryClient.invalidateQueries({ queryKey: ["dashboard-overdue"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-financial"] });
       toast({ title: result?.already_paid ? "Fatura já estava paga." : "Pagamento confirmado! ✅" });
     } catch {
       toast({ title: "Erro ao confirmar pagamento", description: "Tente novamente.", variant: "destructive" });
