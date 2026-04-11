@@ -174,13 +174,18 @@ export default function Invoices() {
         console.warn("Portal token error");
       }
 
+      // Build portal section - clickable link, only when available
+      const portalSection = portalLink
+        ? `\n\n📋 *Acesse seu portal:*\n${portalLink}`
+        : "";
+
       const template = settings?.template_reminder || "Olá {nome}! Sua fatura de {valor} vence em {vencimento}. {link_ou_chave_pix}";
       const message = template
         .replace(/{nome}/g, client.name || "Cliente")
         .replace(/{valor}/g, amount)
         .replace(/{vencimento}/g, dueFormatted)
         .replace(/{link_ou_chave_pix}/g, pixOrLink)
-        .replace(/{link_portal}/g, portalLink || "");
+        .replace(/{link_portal}/g, portalSection);
 
       // Send immediately via Edge Function proxy (avoids mixed content)
       const { data: sendResult, error: sendError } = await supabase.functions.invoke("send-now", {
