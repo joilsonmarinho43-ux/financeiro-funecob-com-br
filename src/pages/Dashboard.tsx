@@ -181,11 +181,13 @@ export default function Dashboard() {
     queryKey: ["dashboard-overdue", organizationId],
     queryFn: async () => {
       if (!organizationId) return [];
+      const todayStr = new Date().toISOString().split("T")[0];
       const { data, error } = await supabase
         .from("invoices")
         .select("id, amount, due_date, status, clients(name, phone), plans(name)")
         .eq("organization_id", organizationId)
-        .eq("status", "vencido")
+        .eq("status", "aberto")
+        .lt("due_date", todayStr)
         .order("due_date", { ascending: true })
         .limit(20);
       if (error) throw error;
