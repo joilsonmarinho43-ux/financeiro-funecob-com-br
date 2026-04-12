@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     // Get billing settings for pix key
     const { data: billingSettings } = await supabase
       .from("billing_settings")
-      .select("pix_key, pix_key_type, billing_mode, gateway_provider")
+      .select("pix_key, pix_key_type, pix_holder_name, billing_mode, gateway_provider")
       .eq("organization_id", portalToken.organization_id)
       .maybeSingle();
 

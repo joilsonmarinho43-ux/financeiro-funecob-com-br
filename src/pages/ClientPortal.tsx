@@ -33,7 +33,7 @@ interface PortalData {
   client: { id: string; name: string; phone: string; email: string; document: string };
   organization: { name: string; logo_url: string | null; primary_color: string | null };
   invoices: Invoice[];
-  billing: { pix_key: string | null; pix_key_type: string | null; billing_mode: string } | null;
+  billing: { pix_key: string | null; pix_key_type: string | null; pix_holder_name: string | null; billing_mode: string } | null;
 }
 
 export default function ClientPortal() {
