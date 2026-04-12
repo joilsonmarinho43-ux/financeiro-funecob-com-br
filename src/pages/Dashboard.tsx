@@ -135,7 +135,66 @@ export default function Dashboard() {
     window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
   };
 
-  const { data: clientStats, isLoading: loadingClients } = useQuery({
+  // Generate invoice for a client using their plan's due date logic
+  const generateInvoice = async (inv: any) => {
+    const client = inv.clients as any;
+    if (!organizationId || !client) return;
+    setGeneratingId(inv.id);
+    try {
+      // Get client's plan
+      const plan = inv.plans as any;
+      if (!plan) throw new Error("Cliente sem plano associado");
+
+      // Calculate next due date based on client's existing due day
+      const existingDueDay = new Date(inv.due_date).getDate();
+      const now = new Date();
+      let dueMonth = now.getMonth();
+      let dueYear = now.getFullYear();
+      // If the day already passed this month, use next month
+      if (now.getDate() > existingDueDay) {
+        dueMonth++;
+        if (dueMonth > 11) { dueMonth = 0; dueYear++; }
+      }
+      const dueDate = new Date(dueYear, dueMonth, existingDueDay);
+      const dueDateStr = dueDate.toISOString().split("T")[0];
+
+      // Check idempotency: don't create duplicate for same month
+      const { data: existing } = await supabase
+        .from("invoices")
+        .select("id")
+        .eq("client_id", (inv as any).client_id || client?.id)
+        .eq("organization_id", organizationId)
+        .eq("due_date", dueDateStr)
+        .eq("status", "aberto")
+        .maybeSingle();
+
+      if (existing) {
+        toast({ title: "Fatura já existe", description: "Já existe uma fatura aberta para este período.", variant: "destructive" });
+        return;
+      }
+
+      const { error } = await supabase.from("invoices").insert({
+        client_id: (inv as any).client_id || client?.id,
+        organization_id: organizationId,
+        plan_id: (inv as any).plan_id || null,
+        amount: plan?.price || inv.amount,
+        due_date: dueDateStr,
+        status: "aberto",
+        description: `${plan?.name || "Mensalidade"} — ${dueDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`,
+      });
+      if (error) throw error;
+
+      queryClient.invalidateQueries({ queryKey: ["dashboard-overdue"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      toast({ title: "Fatura gerada com sucesso! ✅" });
+    } catch (e: any) {
+      toast({ title: "Erro ao gerar fatura", description: e.message || "Tente novamente.", variant: "destructive" });
+    } finally {
+      setGeneratingId(null);
+    }
+  };
+
+
     queryKey: ["dashboard-clients", organizationId],
     queryFn: async () => {
       if (!organizationId) return { active: 0, expired: 0, inactive: 0 };
