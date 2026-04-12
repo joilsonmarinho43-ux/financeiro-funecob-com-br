@@ -83,7 +83,8 @@ Deno.serve(async (req) => {
           const typeMap: Record<string, string> = {
             cpf: "CPF/CNPJ", email: "E-mail", telefone: "Telefone", aleatoria: "Chave Aleatória",
           };
-          return `📲 *Pix Manual:*\nTipo: ${typeMap[settings.pix_key_type] || settings.pix_key_type}\nChave: \`${settings.pix_key}\`\n\n_Após o pagamento, envie o comprovante para confirmação._`;
+          const holderLine = (settings as any).pix_holder_name ? `\nTitular: ${(settings as any).pix_holder_name}` : "";
+          return `📲 *Pix Manual:*\nTipo: ${typeMap[settings.pix_key_type] || settings.pix_key_type}\nChave: \`${settings.pix_key}\`${holderLine}\n\n_Após o pagamento, envie o comprovante para confirmação._`;
         }
         return "Entre em contato para informações de pagamento.";
       };
@@ -157,7 +158,8 @@ Deno.serve(async (req) => {
             .replace(/{valor}/g, amount)
             .replace(/{vencimento}/g, formattedDueDate)
             .replace(/{link_ou_chave_pix}/g, pixOrLink)
-            .replace(/{link_portal}/g, portalSection);
+            .replace(/{link_portal}/g, portalSection)
+            .replace(/{titular_pix}/g, (settings as any).pix_holder_name || "");
 
           // Use ON CONFLICT to enforce idempotency via unique index
           const { error: reminderErr } = await supabase.from("billing_reminders").insert({

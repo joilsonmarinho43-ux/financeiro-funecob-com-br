@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
       if (client?.phone) {
         const { data: settings } = await supabase
           .from("billing_settings")
-          .select("template_baixa, pix_key, pix_key_type")
+          .select("template_baixa, pix_key, pix_key_type, pix_holder_name")
           .eq("organization_id", organization_id)
           .maybeSingle();
 
@@ -84,7 +84,8 @@ Deno.serve(async (req) => {
         const message = template
           .replace(/{nome}/g, client.name || "Cliente")
           .replace(/{valor}/g, amount)
-          .replace(/{data_pagamento}/g, paid_date.split("-").reverse().join("/"));
+          .replace(/{data_pagamento}/g, paid_date.split("-").reverse().join("/"))
+          .replace(/{titular_pix}/g, (settings as any)?.pix_holder_name || "");
 
         // Get WhatsApp instance
         const { data: instance } = await supabase

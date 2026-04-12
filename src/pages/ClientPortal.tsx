@@ -16,7 +16,7 @@ import { ptBR } from "date-fns/locale";
 import {
   FileText, CheckCircle, AlertTriangle, Clock, CreditCard,
   Building2, User, Phone, Mail, Copy, Check, XCircle,
-  DollarSign, CalendarDays, TrendingUp,
+  DollarSign, CalendarDays, TrendingUp, PlusCircle,
 } from "lucide-react";
 
 interface Invoice {
@@ -33,7 +33,7 @@ interface PortalData {
   client: { id: string; name: string; phone: string; email: string; document: string };
   organization: { name: string; logo_url: string | null; primary_color: string | null };
   invoices: Invoice[];
-  billing: { pix_key: string | null; pix_key_type: string | null; billing_mode: string } | null;
+  billing: { pix_key: string | null; pix_key_type: string | null; pix_holder_name: string | null; billing_mode: string } | null;
 }
 
 export default function ClientPortal() {
@@ -44,6 +44,7 @@ export default function ClientPortal() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [copied, setCopied] = useState(false);
   const [filter, setFilter] = useState<"all" | "aberto" | "vencido" | "pago">("all");
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -208,7 +209,10 @@ export default function ClientPortal() {
                   <p className="text-xs text-slate-500 mb-1 flex items-center gap-1">
                     <CreditCard className="h-3 w-3" /> Chave Pix para pagamento
                   </p>
-                  <p className="font-mono text-sm text-slate-800 truncate">{data.billing.pix_key}</p>
+              <p className="font-mono text-sm text-slate-800 truncate">{data.billing.pix_key}</p>
+                  {data.billing.pix_holder_name && (
+                    <p className="text-xs text-slate-500 mt-0.5">Titular: {data.billing.pix_holder_name}</p>
+                  )}
                 </div>
                 <Button
                   size="sm"
@@ -223,6 +227,44 @@ export default function ClientPortal() {
             </CardContent>
           </Card>
         )}
+
+        {/* Generate Invoice Button */}
+        <Button
+          className="w-full"
+          style={{ background: primaryColor }}
+          disabled={generating}
+          onClick={async () => {
+            if (!data || !token) return;
+            setGenerating(true);
+            try {
+              // Find the latest open invoice to determine due day
+              const lastInvoice = data.invoices.find(i => i.status !== "pago");
+              const dueDay = lastInvoice ? new Date(lastInvoice.due_date).getDate() : new Date().getDate();
+              const now = new Date();
+              let month = now.getMonth();
+              let year = now.getFullYear();
+              if (now.getDate() > dueDay) { month++; if (month > 11) { month = 0; year++; } }
+              const dueDate = new Date(year, month, dueDay).toISOString().split("T")[0];
+
+              const { data: result, error: err } = await supabase.functions.invoke("client-portal", {
+                body: { token, action: "generate_invoice", due_date: dueDate },
+              });
+              if (err) throw err;
+              if (result?.error) throw new Error(result.error);
+              
+              // Reload portal data
+              await loadPortalData();
+            } catch (e: any) {
+              setError(null); // Don't show full error page
+              alert(e.message || "Erro ao gerar fatura. Tente novamente.");
+            } finally {
+              setGenerating(false);
+            }
+          }}
+        >
+          <PlusCircle className="h-4 w-4 mr-2" />
+          {generating ? "Gerando..." : "Gerar Mensalidade"}
+        </Button>
 
         {/* Invoices */}
         <Card className="border-0 shadow-md">

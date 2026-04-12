@@ -148,7 +148,8 @@ export default function Invoices() {
         const typeMap: Record<string, string> = {
           cpf: "CPF/CNPJ", email: "E-mail", telefone: "Telefone", aleatoria: "Chave Aleatória",
         };
-        pixOrLink = `📲 *Pix Manual:*\nTipo: ${typeMap[settings.pix_key_type || "aleatoria"] || settings.pix_key_type}\nChave: \`${settings.pix_key}\`\n\n_Após o pagamento, envie o comprovante para confirmação._`;
+        const holderLine = (settings as any).pix_holder_name ? `\nTitular: ${(settings as any).pix_holder_name}` : "";
+        pixOrLink = `📲 *Pix Manual:*\nTipo: ${typeMap[settings.pix_key_type || "aleatoria"] || settings.pix_key_type}\nChave: \`${settings.pix_key}\`${holderLine}\n\n_Após o pagamento, envie o comprovante para confirmação._`;
       }
 
       // Generate portal link
@@ -185,7 +186,8 @@ export default function Invoices() {
         .replace(/{valor}/g, amount)
         .replace(/{vencimento}/g, dueFormatted)
         .replace(/{link_ou_chave_pix}/g, pixOrLink)
-        .replace(/{link_portal}/g, portalSection);
+        .replace(/{link_portal}/g, portalSection)
+        .replace(/{titular_pix}/g, (settings as any)?.pix_holder_name || "");
 
       // Send immediately via Edge Function proxy (avoids mixed content)
       const { data: sendResult, error: sendError } = await supabase.functions.invoke("send-now", {

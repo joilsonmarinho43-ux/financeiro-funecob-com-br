@@ -62,6 +62,7 @@ const TEMPLATE_VARS = [
   { var: "{link_portal}", desc: "Link do portal do cliente" },
   { var: "{data_pagamento}", desc: "Data do pagamento" },
   { var: "{nova_data}", desc: "Nova data (remarcação)" },
+  { var: "{titular_pix}", desc: "Nome do titular da chave Pix" },
 ];
 
 const DEFAULT_TEMPLATES = {
@@ -81,6 +82,7 @@ export default function BillingSettings() {
   const [billingMode, setBillingMode] = useState<"pix_direto" | "gateway">("pix_direto");
   const [pixKey, setPixKey] = useState("");
   const [pixKeyType, setPixKeyType] = useState("aleatoria");
+  const [pixHolderName, setPixHolderName] = useState("");
   const [gatewayProvider, setGatewayProvider] = useState("");
   const [gatewayApiKey, setGatewayApiKey] = useState("");
   const [gatewayCredentials, setGatewayCredentials] = useState<Record<string, string>>({});
@@ -211,6 +213,7 @@ export default function BillingSettings() {
       setBillingMode(settings.billing_mode as "pix_direto" | "gateway");
       setPixKey(settings.pix_key || "");
       setPixKeyType(settings.pix_key_type || "aleatoria");
+      setPixHolderName((settings as any).pix_holder_name || "");
       setGatewayProvider(settings.gateway_provider || "");
       setGatewayApiKey(settings.gateway_api_key || "");
       // Parse stored credentials JSON
@@ -246,6 +249,7 @@ export default function BillingSettings() {
         billing_mode: billingMode,
         pix_key: pixKey || null,
         pix_key_type: pixKeyType,
+        pix_holder_name: pixHolderName || null,
         gateway_provider: gatewayProvider || null,
         gateway_api_key: billingMode === "gateway" && gatewayProvider
           ? JSON.stringify(gatewayCredentials)
@@ -637,6 +641,15 @@ export default function BillingSettings() {
                       value={pixKey}
                       onChange={(e) => setPixKey(e.target.value)}
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Nome do Titular do Pix</Label>
+                    <Input
+                      placeholder="Ex: João da Silva ou Empresa LTDA"
+                      value={pixHolderName}
+                      onChange={(e) => setPixHolderName(e.target.value)}
+                    />
+                    <p className="text-[11px] text-muted-foreground">Use a variável <code className="bg-muted px-1 rounded">{"{titular_pix}"}</code> nos templates para incluir este nome.</p>
                   </div>
                   <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-sm">
                     <p className="text-muted-foreground">
