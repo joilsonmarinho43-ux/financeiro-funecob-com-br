@@ -194,7 +194,7 @@ export default function Dashboard() {
     }
   };
 
-
+  const { data: clientStats, isLoading: loadingClients } = useQuery({
     queryKey: ["dashboard-clients", organizationId],
     queryFn: async () => {
       if (!organizationId) return { active: 0, expired: 0, inactive: 0 };
