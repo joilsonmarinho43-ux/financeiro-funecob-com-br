@@ -112,6 +112,7 @@ export type Database = {
           gateway_webhook_url: string | null
           id: string
           organization_id: string
+          pix_holder_name: string | null
           pix_key: string | null
           pix_key_type: string | null
           reminder_days_after: number
@@ -134,6 +135,7 @@ export type Database = {
           gateway_webhook_url?: string | null
           id?: string
           organization_id: string
+          pix_holder_name?: string | null
           pix_key?: string | null
           pix_key_type?: string | null
           reminder_days_after?: number
@@ -156,6 +158,7 @@ export type Database = {
           gateway_webhook_url?: string | null
           id?: string
           organization_id?: string
+          pix_holder_name?: string | null
           pix_key?: string | null
           pix_key_type?: string | null
           reminder_days_after?: number

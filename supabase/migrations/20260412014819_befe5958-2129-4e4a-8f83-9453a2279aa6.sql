@@ -1,0 +1,1 @@
+ALTER TABLE public.billing_settings ADD COLUMN IF NOT EXISTS pix_holder_name text DEFAULT NULL;
