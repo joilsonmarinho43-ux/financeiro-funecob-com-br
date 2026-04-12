@@ -527,6 +527,16 @@ export default function Dashboard() {
                           >
                             <MessageSquare className="h-3.5 w-3.5" />
                           </Button>
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
+                            className="h-7 w-7 text-primary hover:text-primary"
+                            onClick={() => generateInvoice(inv)}
+                            disabled={generatingId === inv.id}
+                            title="Gerar nova mensalidade"
+                          >
+                            {generatingId === inv.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlusCircle className="h-3.5 w-3.5" />}
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
