@@ -16,7 +16,7 @@ import { ptBR } from "date-fns/locale";
 import {
   FileText, CheckCircle, AlertTriangle, Clock, CreditCard,
   Building2, User, Phone, Mail, Copy, Check, XCircle,
-  DollarSign, CalendarDays, TrendingUp,
+  DollarSign, CalendarDays, TrendingUp, PlusCircle,
 } from "lucide-react";
 
 interface Invoice {
