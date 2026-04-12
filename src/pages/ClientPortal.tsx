@@ -228,6 +228,44 @@ export default function ClientPortal() {
           </Card>
         )}
 
+        {/* Generate Invoice Button */}
+        <Button
+          className="w-full"
+          style={{ background: primaryColor }}
+          disabled={generating}
+          onClick={async () => {
+            if (!data || !token) return;
+            setGenerating(true);
+            try {
+              // Find the latest open invoice to determine due day
+              const lastInvoice = data.invoices.find(i => i.status !== "pago");
+              const dueDay = lastInvoice ? new Date(lastInvoice.due_date).getDate() : new Date().getDate();
+              const now = new Date();
+              let month = now.getMonth();
+              let year = now.getFullYear();
+              if (now.getDate() > dueDay) { month++; if (month > 11) { month = 0; year++; } }
+              const dueDate = new Date(year, month, dueDay).toISOString().split("T")[0];
+
+              const { data: result, error: err } = await supabase.functions.invoke("client-portal", {
+                body: { token, action: "generate_invoice", due_date: dueDate },
+              });
+              if (err) throw err;
+              if (result?.error) throw new Error(result.error);
+              
+              // Reload portal data
+              await loadPortalData();
+            } catch (e: any) {
+              setError(null); // Don't show full error page
+              alert(e.message || "Erro ao gerar fatura. Tente novamente.");
+            } finally {
+              setGenerating(false);
+            }
+          }}
+        >
+          <PlusCircle className="h-4 w-4 mr-2" />
+          {generating ? "Gerando..." : "Gerar Mensalidade"}
+        </Button>
+
         {/* Invoices */}
         <Card className="border-0 shadow-md">
           <CardHeader className="pb-2">
