@@ -44,6 +44,7 @@ export default function ClientPortal() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [copied, setCopied] = useState(false);
   const [filter, setFilter] = useState<"all" | "aberto" | "vencido" | "pago">("all");
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -208,7 +209,10 @@ export default function ClientPortal() {
                   <p className="text-xs text-slate-500 mb-1 flex items-center gap-1">
                     <CreditCard className="h-3 w-3" /> Chave Pix para pagamento
                   </p>
-                  <p className="font-mono text-sm text-slate-800 truncate">{data.billing.pix_key}</p>
+              <p className="font-mono text-sm text-slate-800 truncate">{data.billing.pix_key}</p>
+                  {data.billing.pix_holder_name && (
+                    <p className="text-xs text-slate-500 mt-0.5">Titular: {data.billing.pix_holder_name}</p>
+                  )}
                 </div>
                 <Button
                   size="sm"
