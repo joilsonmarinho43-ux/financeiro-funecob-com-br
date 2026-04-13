@@ -141,30 +141,41 @@ export default function Dashboard() {
     window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
   };
 
-  // Generate invoice for a client using their plan's due date logic
-  const generateInvoice = async (inv: any) => {
+  // Generate invoice dialog state
+  const [generateDialog, setGenerateDialog] = useState<any>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [selectedYear, setSelectedYear] = useState<string>("");
+
+  const openGenerateDialog = (inv: any) => {
+    const now = new Date();
+    const existingDueDay = new Date(inv.due_date).getDate();
+    let defaultMonth = now.getMonth();
+    let defaultYear = now.getFullYear();
+    if (now.getDate() > existingDueDay) {
+      defaultMonth++;
+      if (defaultMonth > 11) { defaultMonth = 0; defaultYear++; }
+    }
+    setSelectedMonth(String(defaultMonth));
+    setSelectedYear(String(defaultYear));
+    setGenerateDialog(inv);
+  };
+
+  const confirmGenerateInvoice = async () => {
+    const inv = generateDialog;
+    if (!inv || !organizationId) return;
     const client = inv.clients as any;
-    if (!organizationId || !client) return;
     setGeneratingId(inv.id);
     try {
-      // Get client's plan
       const plan = inv.plans as any;
       if (!plan) throw new Error("Cliente sem plano associado");
 
-      // Calculate next due date based on client's existing due day
       const existingDueDay = new Date(inv.due_date).getDate();
-      const now = new Date();
-      let dueMonth = now.getMonth();
-      let dueYear = now.getFullYear();
-      // If the day already passed this month, use next month
-      if (now.getDate() > existingDueDay) {
-        dueMonth++;
-        if (dueMonth > 11) { dueMonth = 0; dueYear++; }
-      }
-      const dueDate = new Date(dueYear, dueMonth, existingDueDay);
+      const month = parseInt(selectedMonth);
+      const year = parseInt(selectedYear);
+      const dueDate = new Date(year, month, existingDueDay);
       const dueDateStr = dueDate.toISOString().split("T")[0];
 
-      // Check idempotency: don't create duplicate for same month
+      // Idempotency check
       const { data: existing } = await supabase
         .from("invoices")
         .select("id")
@@ -193,6 +204,7 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ["dashboard-overdue"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       toast({ title: "Fatura gerada com sucesso! ✅" });
+      setGenerateDialog(null);
     } catch (e: any) {
       toast({ title: "Erro ao gerar fatura", description: e.message || "Tente novamente.", variant: "destructive" });
     } finally {
