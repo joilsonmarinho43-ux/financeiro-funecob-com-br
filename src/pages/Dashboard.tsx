@@ -1,4 +1,4 @@
-import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, Bell, CheckCircle2, PlusCircle } from "lucide-react";
+import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, Bell, CheckCircle2, PlusCircle, CalendarIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
@@ -9,6 +9,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -135,30 +141,41 @@ export default function Dashboard() {
     window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
   };
 
-  // Generate invoice for a client using their plan's due date logic
-  const generateInvoice = async (inv: any) => {
+  // Generate invoice dialog state
+  const [generateDialog, setGenerateDialog] = useState<any>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [selectedYear, setSelectedYear] = useState<string>("");
+
+  const openGenerateDialog = (inv: any) => {
+    const now = new Date();
+    const existingDueDay = new Date(inv.due_date).getDate();
+    let defaultMonth = now.getMonth();
+    let defaultYear = now.getFullYear();
+    if (now.getDate() > existingDueDay) {
+      defaultMonth++;
+      if (defaultMonth > 11) { defaultMonth = 0; defaultYear++; }
+    }
+    setSelectedMonth(String(defaultMonth));
+    setSelectedYear(String(defaultYear));
+    setGenerateDialog(inv);
+  };
+
+  const confirmGenerateInvoice = async () => {
+    const inv = generateDialog;
+    if (!inv || !organizationId) return;
     const client = inv.clients as any;
-    if (!organizationId || !client) return;
     setGeneratingId(inv.id);
     try {
-      // Get client's plan
       const plan = inv.plans as any;
       if (!plan) throw new Error("Cliente sem plano associado");
 
-      // Calculate next due date based on client's existing due day
       const existingDueDay = new Date(inv.due_date).getDate();
-      const now = new Date();
-      let dueMonth = now.getMonth();
-      let dueYear = now.getFullYear();
-      // If the day already passed this month, use next month
-      if (now.getDate() > existingDueDay) {
-        dueMonth++;
-        if (dueMonth > 11) { dueMonth = 0; dueYear++; }
-      }
-      const dueDate = new Date(dueYear, dueMonth, existingDueDay);
+      const month = parseInt(selectedMonth);
+      const year = parseInt(selectedYear);
+      const dueDate = new Date(year, month, existingDueDay);
       const dueDateStr = dueDate.toISOString().split("T")[0];
 
-      // Check idempotency: don't create duplicate for same month
+      // Idempotency check
       const { data: existing } = await supabase
         .from("invoices")
         .select("id")
@@ -187,6 +204,7 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ["dashboard-overdue"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       toast({ title: "Fatura gerada com sucesso! ✅" });
+      setGenerateDialog(null);
     } catch (e: any) {
       toast({ title: "Erro ao gerar fatura", description: e.message || "Tente novamente.", variant: "destructive" });
     } finally {
@@ -531,7 +549,7 @@ export default function Dashboard() {
                             size="icon" 
                             variant="ghost" 
                             className="h-7 w-7 text-primary hover:text-primary"
-                            onClick={() => generateInvoice(inv)}
+                            onClick={() => openGenerateDialog(inv)}
                             disabled={generatingId === inv.id}
                             title="Gerar nova mensalidade"
                           >
@@ -547,6 +565,75 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Generate Invoice Dialog with Month/Year picker */}
+      <Dialog open={!!generateDialog} onOpenChange={(o) => !o && setGenerateDialog(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Gerar Mensalidade</DialogTitle>
+            <DialogDescription>
+              Escolha o mês e ano para a nova fatura. O dia de vencimento será mantido conforme o cadastro do cliente.
+            </DialogDescription>
+          </DialogHeader>
+          {generateDialog && (
+            <div className="space-y-4 mt-2">
+              <div className="rounded-lg bg-muted/50 border border-border p-3 text-sm space-y-1">
+                <p><span className="font-medium">Cliente:</span> {(generateDialog.clients as any)?.name}</p>
+                <p><span className="font-medium">Plano:</span> {(generateDialog.plans as any)?.name || "—"}</p>
+                <p><span className="font-medium">Valor:</span> {Number(generateDialog.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                <p><span className="font-medium">Dia de vencimento:</span> {new Date(generateDialog.due_date).getDate()}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Mês</label>
+                  <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"].map((m, i) => (
+                        <SelectItem key={i} value={String(i)}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Ano</label>
+                  <Select value={selectedYear} onValueChange={setSelectedYear}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() + i).map((y) => (
+                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-sm text-center">
+                <CalendarIcon className="h-4 w-4 inline mr-1.5 text-primary" />
+                <span className="font-medium">
+                  Vencimento: {new Date(generateDialog.due_date).getDate()}/{String(parseInt(selectedMonth) + 1).padStart(2, "0")}/{selectedYear}
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setGenerateDialog(null)}>Cancelar</Button>
+                <Button
+                  className="gradient-primary text-primary-foreground"
+                  disabled={generatingId === generateDialog.id}
+                  onClick={confirmGenerateInvoice}
+                >
+                  {generatingId === generateDialog.id ? "Gerando..." : "Gerar Fatura"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
