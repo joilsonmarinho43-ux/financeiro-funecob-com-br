@@ -82,14 +82,12 @@ function parseWebhookPayload(provider: string, body: any): { paid: boolean; exte
   }
 }
 
-const VPS_FALLBACK = "http://161.97.181.130:8080";
-const VPS_KEY_FALLBACK = "123456";
-
 async function trySendWhatsApp(instance: any, phone: string, message: string): Promise<boolean> {
   try {
+    if (!instance.api_url || !instance.api_key || !instance.name) return false;
     const cleanPhone = phone.replace(/\D/g, "");
-    const apiUrl = (instance.api_url || VPS_FALLBACK).replace(/\/$/, "");
-    const apiKey = instance.api_key || VPS_KEY_FALLBACK;
+    const apiUrl = instance.api_url.replace(/\/$/, "");
+    const apiKey = instance.api_key;
     const sendUrl = `${apiUrl}/message/sendText/${instance.name}`;
     const resp = await fetch(sendUrl, {
       method: "POST",
@@ -261,8 +259,8 @@ Deno.serve(async (req) => {
           const gs: Record<string, string> = {};
           (globalSettings || []).forEach((s: any) => { gs[s.key] = s.value; });
           const fallbackInstance = {
-            api_url: gs.api_host || VPS_FALLBACK,
-            api_key: gs.global_api_key || VPS_KEY_FALLBACK,
+            api_url: gs.api_host || "",
+            api_key: gs.global_api_key || "",
             name: gs.default_instance_name || "",
           };
           if (fallbackInstance.name) {
@@ -490,8 +488,8 @@ Deno.serve(async (req) => {
         const gs2: Record<string, string> = {};
         (globalSettings2 || []).forEach((s: any) => { gs2[s.key] = s.value; });
         const fallbackInstance2 = {
-          api_url: gs2.api_host || VPS_FALLBACK,
-          api_key: gs2.global_api_key || VPS_KEY_FALLBACK,
+          api_url: gs2.api_host || "",
+          api_key: gs2.global_api_key || "",
           name: gs2.default_instance_name || "",
         };
         if (fallbackInstance2.name) {
