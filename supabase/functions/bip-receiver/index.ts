@@ -82,14 +82,12 @@ function parseWebhookPayload(provider: string, body: any): { paid: boolean; exte
   }
 }
 
-const VPS_FALLBACK = "http://161.97.181.130:8080";
-const VPS_KEY_FALLBACK = "123456";
-
 async function trySendWhatsApp(instance: any, phone: string, message: string): Promise<boolean> {
   try {
+    if (!instance.api_url || !instance.api_key || !instance.name) return false;
     const cleanPhone = phone.replace(/\D/g, "");
-    const apiUrl = (instance.api_url || VPS_FALLBACK).replace(/\/$/, "");
-    const apiKey = instance.api_key || VPS_KEY_FALLBACK;
+    const apiUrl = instance.api_url.replace(/\/$/, "");
+    const apiKey = instance.api_key;
     const sendUrl = `${apiUrl}/message/sendText/${instance.name}`;
     const resp = await fetch(sendUrl, {
       method: "POST",
