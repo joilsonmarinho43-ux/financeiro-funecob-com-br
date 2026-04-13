@@ -565,6 +565,75 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Generate Invoice Dialog with Month/Year picker */}
+      <Dialog open={!!generateDialog} onOpenChange={(o) => !o && setGenerateDialog(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Gerar Mensalidade</DialogTitle>
+            <DialogDescription>
+              Escolha o mês e ano para a nova fatura. O dia de vencimento será mantido conforme o cadastro do cliente.
+            </DialogDescription>
+          </DialogHeader>
+          {generateDialog && (
+            <div className="space-y-4 mt-2">
+              <div className="rounded-lg bg-muted/50 border border-border p-3 text-sm space-y-1">
+                <p><span className="font-medium">Cliente:</span> {(generateDialog.clients as any)?.name}</p>
+                <p><span className="font-medium">Plano:</span> {(generateDialog.plans as any)?.name || "—"}</p>
+                <p><span className="font-medium">Valor:</span> {Number(generateDialog.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                <p><span className="font-medium">Dia de vencimento:</span> {new Date(generateDialog.due_date).getDate()}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Mês</label>
+                  <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"].map((m, i) => (
+                        <SelectItem key={i} value={String(i)}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Ano</label>
+                  <Select value={selectedYear} onValueChange={setSelectedYear}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() + i).map((y) => (
+                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-sm text-center">
+                <CalendarIcon className="h-4 w-4 inline mr-1.5 text-primary" />
+                <span className="font-medium">
+                  Vencimento: {new Date(generateDialog.due_date).getDate()}/{String(parseInt(selectedMonth) + 1).padStart(2, "0")}/{selectedYear}
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setGenerateDialog(null)}>Cancelar</Button>
+                <Button
+                  className="gradient-primary text-primary-foreground"
+                  disabled={generatingId === generateDialog.id}
+                  onClick={confirmGenerateInvoice}
+                >
+                  {generatingId === generateDialog.id ? "Gerando..." : "Gerar Fatura"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
