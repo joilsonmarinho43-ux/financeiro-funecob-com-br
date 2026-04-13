@@ -549,7 +549,7 @@ export default function Dashboard() {
                             size="icon" 
                             variant="ghost" 
                             className="h-7 w-7 text-primary hover:text-primary"
-                            onClick={() => generateInvoice(inv)}
+                            onClick={() => openGenerateDialog(inv)}
                             disabled={generatingId === inv.id}
                             title="Gerar nova mensalidade"
                           >
