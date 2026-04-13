@@ -488,8 +488,8 @@ Deno.serve(async (req) => {
         const gs2: Record<string, string> = {};
         (globalSettings2 || []).forEach((s: any) => { gs2[s.key] = s.value; });
         const fallbackInstance2 = {
-          api_url: gs2.api_host || VPS_FALLBACK,
-          api_key: gs2.global_api_key || VPS_KEY_FALLBACK,
+          api_url: gs2.api_host || "",
+          api_key: gs2.global_api_key || "",
           name: gs2.default_instance_name || "",
         };
         if (fallbackInstance2.name) {
