@@ -24,6 +24,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+// Parse date string "YYYY-MM-DD" without timezone shift
+const parseDateLocal = (d: string) => {
+  const [y, m, day] = d.split("-").map(Number);
+  return new Date(y, m - 1, day);
+};
+
 export default function Dashboard() {
   const [showValues, setShowValues] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -78,7 +84,7 @@ export default function Dashboard() {
     setSendingId(inv.id);
     try {
       const amount = Number(inv.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-      const dueFormatted = new Date(inv.due_date).toLocaleDateString("pt-BR");
+      const dueFormatted = parseDateLocal(inv.due_date).toLocaleDateString("pt-BR");
 
       // Build Pix/Link info
       let pixOrLink = "Entre em contato para informações de pagamento.";
@@ -176,7 +182,7 @@ export default function Dashboard() {
       toast({ title: "Erro", description: "Cliente sem telefone cadastrado.", variant: "destructive" });
       return;
     }
-    let message = `Olá ${client?.name}! Sua fatura no valor de ${inv.amount?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} venceu em ${new Date(inv.due_date).toLocaleDateString("pt-BR")}. Por favor, regularize o pagamento.`;
+    let message = `Olá ${client?.name}! Sua fatura no valor de ${inv.amount?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} venceu em ${parseDateLocal(inv.due_date).toLocaleDateString("pt-BR")}. Por favor, regularize o pagamento.`;
     if (billingSettings?.pix_key) message += ` Chave PIX: ${billingSettings.pix_key}`;
     window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
   };
@@ -188,7 +194,7 @@ export default function Dashboard() {
 
   const openGenerateDialog = (inv: any) => {
     const now = new Date();
-    const existingDueDay = new Date(inv.due_date).getDate();
+    const existingDueDay = parseDateLocal(inv.due_date).getDate();
     let defaultMonth = now.getMonth();
     let defaultYear = now.getFullYear();
     if (now.getDate() > existingDueDay) {
@@ -209,7 +215,7 @@ export default function Dashboard() {
       const plan = inv.plans as any;
       if (!plan) throw new Error("Cliente sem plano associado");
 
-      const existingDueDay = new Date(inv.due_date).getDate();
+      const existingDueDay = parseDateLocal(inv.due_date).getDate();
       const month = parseInt(selectedMonth);
       const year = parseInt(selectedYear);
       const dueDate = new Date(year, month, existingDueDay);
@@ -492,7 +498,7 @@ export default function Dashboard() {
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-[10px] border-warning/50 text-warning">
-                          {new Date(inv.due_date).toLocaleDateString("pt-BR")}
+                          {parseDateLocal(inv.due_date).toLocaleDateString("pt-BR")}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs font-medium">
@@ -543,7 +549,7 @@ export default function Dashboard() {
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-[10px] border-destructive/50 text-destructive">
-                          {new Date(inv.due_date).toLocaleDateString("pt-BR")}
+                          {parseDateLocal(inv.due_date).toLocaleDateString("pt-BR")}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -621,7 +627,7 @@ export default function Dashboard() {
                 <p><span className="font-medium">Cliente:</span> {(generateDialog.clients as any)?.name}</p>
                 <p><span className="font-medium">Plano:</span> {(generateDialog.plans as any)?.name || "—"}</p>
                 <p><span className="font-medium">Valor:</span> {Number(generateDialog.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
-                <p><span className="font-medium">Dia de vencimento:</span> {new Date(generateDialog.due_date).getDate()}</p>
+                <p><span className="font-medium">Dia de vencimento:</span> {parseDateLocal(generateDialog.due_date).getDate()}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -656,7 +662,7 @@ export default function Dashboard() {
               <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-sm text-center">
                 <CalendarIcon className="h-4 w-4 inline mr-1.5 text-primary" />
                 <span className="font-medium">
-                  Vencimento: {new Date(generateDialog.due_date).getDate()}/{String(parseInt(selectedMonth) + 1).padStart(2, "0")}/{selectedYear}
+                  Vencimento: {parseDateLocal(generateDialog.due_date).getDate()}/{String(parseInt(selectedMonth) + 1).padStart(2, "0")}/{selectedYear}
                 </span>
               </div>
 
