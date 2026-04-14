@@ -627,7 +627,7 @@ export default function Dashboard() {
                 <p><span className="font-medium">Cliente:</span> {(generateDialog.clients as any)?.name}</p>
                 <p><span className="font-medium">Plano:</span> {(generateDialog.plans as any)?.name || "—"}</p>
                 <p><span className="font-medium">Valor:</span> {Number(generateDialog.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
-                <p><span className="font-medium">Dia de vencimento:</span> {new Date(generateDialog.due_date).getDate()}</p>
+                <p><span className="font-medium">Dia de vencimento:</span> {parseDateLocal(generateDialog.due_date).getDate()}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -662,7 +662,7 @@ export default function Dashboard() {
               <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-sm text-center">
                 <CalendarIcon className="h-4 w-4 inline mr-1.5 text-primary" />
                 <span className="font-medium">
-                  Vencimento: {new Date(generateDialog.due_date).getDate()}/{String(parseInt(selectedMonth) + 1).padStart(2, "0")}/{selectedYear}
+                  Vencimento: {parseDateLocal(generateDialog.due_date).getDate()}/{String(parseInt(selectedMonth) + 1).padStart(2, "0")}/{selectedYear}
                 </span>
               </div>
 
