@@ -194,7 +194,7 @@ export default function Dashboard() {
 
   const openGenerateDialog = (inv: any) => {
     const now = new Date();
-    const existingDueDay = new Date(inv.due_date).getDate();
+    const existingDueDay = parseDateLocal(inv.due_date).getDate();
     let defaultMonth = now.getMonth();
     let defaultYear = now.getFullYear();
     if (now.getDate() > existingDueDay) {
@@ -215,7 +215,7 @@ export default function Dashboard() {
       const plan = inv.plans as any;
       if (!plan) throw new Error("Cliente sem plano associado");
 
-      const existingDueDay = new Date(inv.due_date).getDate();
+      const existingDueDay = parseDateLocal(inv.due_date).getDate();
       const month = parseInt(selectedMonth);
       const year = parseInt(selectedYear);
       const dueDate = new Date(year, month, existingDueDay);
@@ -498,7 +498,7 @@ export default function Dashboard() {
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-[10px] border-warning/50 text-warning">
-                          {new Date(inv.due_date).toLocaleDateString("pt-BR")}
+                          {parseDateLocal(inv.due_date).toLocaleDateString("pt-BR")}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs font-medium">
@@ -549,7 +549,7 @@ export default function Dashboard() {
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-[10px] border-destructive/50 text-destructive">
-                          {new Date(inv.due_date).toLocaleDateString("pt-BR")}
+                          {parseDateLocal(inv.due_date).toLocaleDateString("pt-BR")}
                         </Badge>
                       </TableCell>
                       <TableCell>
