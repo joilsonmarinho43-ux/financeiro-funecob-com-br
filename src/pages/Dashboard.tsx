@@ -56,7 +56,7 @@ export default function Dashboard() {
       if (!organizationId) return null;
       const { data } = await supabase
         .from("billing_settings")
-        .select("template_overdue, pix_key")
+        .select("*")
         .eq("organization_id", organizationId)
         .maybeSingle();
       return data;
@@ -77,15 +77,55 @@ export default function Dashboard() {
 
     setSendingId(inv.id);
     try {
-      let message = billingSettings?.template_overdue || 
-        "Olá {nome}! Sua fatura no valor de {valor} com vencimento em {vencimento} está em atraso. Por favor, regularize o pagamento.";
-      message = message
-        .replace("{nome}", client?.name || "")
-        .replace("{valor}", inv.amount?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) || "")
-        .replace("{vencimento}", new Date(inv.due_date).toLocaleDateString("pt-BR"))
-        .replace("{link_ou_chave_pix}", billingSettings?.pix_key ? `Chave PIX: ${billingSettings.pix_key}` : "");
+      const amount = Number(inv.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      const dueFormatted = new Date(inv.due_date).toLocaleDateString("pt-BR");
 
-      // Send immediately via Edge Function proxy
+      // Build Pix/Link info
+      let pixOrLink = "Entre em contato para informações de pagamento.";
+      if (billingSettings?.billing_mode === "gateway" && billingSettings?.gateway_provider) {
+        pixOrLink = "💳 *Pagamento automático:* Seu link/boleto de pagamento foi gerado automaticamente pelo sistema.";
+      } else if (billingSettings?.pix_key) {
+        const typeMap: Record<string, string> = { cpf: "CPF/CNPJ", email: "E-mail", telefone: "Telefone", aleatoria: "Chave Aleatória" };
+        const holderLine = billingSettings.pix_holder_name ? `\nTitular: ${billingSettings.pix_holder_name}` : "";
+        pixOrLink = `📲 *Pix Manual:*\nTipo: ${typeMap[billingSettings.pix_key_type || "aleatoria"] || billingSettings.pix_key_type}\nChave: \`${billingSettings.pix_key}\`${holderLine}\n\n_Após o pagamento, envie o comprovante para confirmação._`;
+      }
+
+      // Generate portal link
+      const PORTAL_BASE = window.location.origin;
+      let portalLink = "";
+      try {
+        const clientId = inv.client_id;
+        if (clientId) {
+          const { data: existingToken } = await supabase
+            .from("client_portal_tokens")
+            .select("token")
+            .eq("client_id", clientId)
+            .maybeSingle();
+          if (existingToken?.token) {
+            portalLink = `${PORTAL_BASE}/portal/${existingToken.token}`;
+          } else {
+            const { data: newToken } = await supabase
+              .from("client_portal_tokens")
+              .insert({ client_id: clientId, organization_id: organizationId! })
+              .select("token")
+              .single();
+            if (newToken?.token) portalLink = `${PORTAL_BASE}/portal/${newToken.token}`;
+          }
+        }
+      } catch { /* silent */ }
+
+      const portalSection = portalLink ? `\n\n📋 *Acesse seu portal:*\n${portalLink}` : "";
+
+      const template = billingSettings?.template_overdue ||
+        "Olá {nome}! Sua fatura no valor de {valor} com vencimento em {vencimento} está em atraso. Por favor, regularize o pagamento. {link_ou_chave_pix}";
+      const message = template
+        .replace(/{nome}/g, client?.name || "Cliente")
+        .replace(/{valor}/g, amount)
+        .replace(/{vencimento}/g, dueFormatted)
+        .replace(/{link_ou_chave_pix}/g, pixOrLink)
+        .replace(/{link_portal}/g, portalSection)
+        .replace(/{titular_pix}/g, billingSettings?.pix_holder_name || "");
+
       const { data: sendResult, error: sendError } = await supabase.functions.invoke("send-now", {
         body: { phone: phone.replace(/\D/g, ""), message, organization_id: organizationId },
       });
@@ -267,7 +307,7 @@ export default function Dashboard() {
       const todayStr = new Date().toISOString().split("T")[0];
       const { data, error } = await supabase
         .from("invoices")
-        .select("id, amount, due_date, status, clients(name, phone), plans(name)")
+        .select("id, amount, due_date, status, client_id, plan_id, clients(name, phone), plans(name, price)")
         .eq("organization_id", organizationId)
         .eq("status", "aberto")
         .lt("due_date", todayStr)
