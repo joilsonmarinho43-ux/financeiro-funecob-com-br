@@ -182,7 +182,7 @@ export default function Dashboard() {
       toast({ title: "Erro", description: "Cliente sem telefone cadastrado.", variant: "destructive" });
       return;
     }
-    let message = `Olá ${client?.name}! Sua fatura no valor de ${inv.amount?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} venceu em ${new Date(inv.due_date).toLocaleDateString("pt-BR")}. Por favor, regularize o pagamento.`;
+    let message = `Olá ${client?.name}! Sua fatura no valor de ${inv.amount?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} venceu em ${parseDateLocal(inv.due_date).toLocaleDateString("pt-BR")}. Por favor, regularize o pagamento.`;
     if (billingSettings?.pix_key) message += ` Chave PIX: ${billingSettings.pix_key}`;
     window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, "_blank");
   };
