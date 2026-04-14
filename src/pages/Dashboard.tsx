@@ -24,6 +24,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+// Parse date string "YYYY-MM-DD" without timezone shift
+const parseDateLocal = (d: string) => {
+  const [y, m, day] = d.split("-").map(Number);
+  return new Date(y, m - 1, day);
+};
+
 export default function Dashboard() {
   const [showValues, setShowValues] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -78,7 +84,7 @@ export default function Dashboard() {
     setSendingId(inv.id);
     try {
       const amount = Number(inv.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-      const dueFormatted = new Date(inv.due_date).toLocaleDateString("pt-BR");
+      const dueFormatted = parseDateLocal(inv.due_date).toLocaleDateString("pt-BR");
 
       // Build Pix/Link info
       let pixOrLink = "Entre em contato para informações de pagamento.";
