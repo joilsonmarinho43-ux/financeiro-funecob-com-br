@@ -12,6 +12,11 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { format } from "date-fns";
+
+const parseDateLocal = (d: string) => {
+  const [y, m, day] = d.split("-").map(Number);
+  return new Date(y, m - 1, day);
+};
 import { ptBR } from "date-fns/locale";
 import {
   FileText, CheckCircle, AlertTriangle, Clock, CreditCard,
