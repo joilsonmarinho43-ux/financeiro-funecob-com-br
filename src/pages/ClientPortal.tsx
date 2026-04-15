@@ -126,7 +126,7 @@ export default function ClientPortal() {
     .filter((i) => i.status === "pago")
     .reduce((s, i) => s + Number(i.amount), 0);
   const overdueCount = data.invoices.filter(
-    (i) => i.status !== "pago" && new Date(i.due_date) < new Date()
+    (i) => i.status !== "pago" && parseDateLocal(i.due_date) < new Date()
   ).length;
 
   const primaryColor = data.organization.primary_color || "#0ea5e9";
