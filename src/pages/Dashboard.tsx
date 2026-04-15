@@ -638,7 +638,7 @@ export default function Dashboard() {
               <div className="rounded-lg bg-muted/50 border border-border p-3 text-sm space-y-1">
                 <p><span className="font-medium">Cliente:</span> {(generateDialog.clients as any)?.name}</p>
                 <p><span className="font-medium">Plano:</span> {(generateDialog.plans as any)?.name || "—"}</p>
-                <p><span className="font-medium">Valor:</span> {Number(generateDialog.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                <p><span className="font-medium">Valor:</span> {Number((generateDialog.plans as any)?.price || generateDialog.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
                 <p><span className="font-medium">Dia de vencimento:</span> {parseDateLocal(generateDialog.due_date).getDate()}</p>
               </div>
 
