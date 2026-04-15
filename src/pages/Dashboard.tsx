@@ -213,7 +213,8 @@ export default function Dashboard() {
     setGeneratingId(inv.id);
     try {
       const plan = inv.plans as any;
-      if (!plan) throw new Error("Cliente sem plano associado");
+      const invoiceAmount = plan?.price || Number(inv.amount);
+      if (!invoiceAmount || invoiceAmount <= 0) throw new Error("Valor da fatura inválido");
 
       const existingDueDay = parseDateLocal(inv.due_date).getDate();
       const month = parseInt(selectedMonth);
@@ -240,7 +241,7 @@ export default function Dashboard() {
         client_id: (inv as any).client_id || client?.id,
         organization_id: organizationId,
         plan_id: (inv as any).plan_id || null,
-        amount: plan?.price || inv.amount,
+        amount: invoiceAmount,
         due_date: dueDateStr,
         status: "aberto",
         description: `${plan?.name || "Mensalidade"} — ${dueDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`,
@@ -268,8 +269,19 @@ export default function Dashboard() {
         .eq("organization_id", organizationId);
       if (error) throw error;
       const active = data.filter((c) => c.status === "ativo").length;
-      const expired = data.filter((c) => c.status === "vencido").length;
       const inactive = data.filter((c) => c.status === "inativo" || c.status === "desativado").length;
+
+      // Count distinct clients with overdue invoices (real metric)
+      const todayStr = new Date().toISOString().split("T")[0];
+      const { data: overdueInvoices } = await supabase
+        .from("invoices")
+        .select("client_id")
+        .eq("organization_id", organizationId)
+        .eq("status", "aberto")
+        .lt("due_date", todayStr);
+      const uniqueOverdueClients = new Set((overdueInvoices || []).map((i) => i.client_id));
+      const expired = uniqueOverdueClients.size;
+
       return { active, expired, inactive };
     },
     enabled: !!organizationId,
@@ -626,7 +638,7 @@ export default function Dashboard() {
               <div className="rounded-lg bg-muted/50 border border-border p-3 text-sm space-y-1">
                 <p><span className="font-medium">Cliente:</span> {(generateDialog.clients as any)?.name}</p>
                 <p><span className="font-medium">Plano:</span> {(generateDialog.plans as any)?.name || "—"}</p>
-                <p><span className="font-medium">Valor:</span> {Number(generateDialog.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                <p><span className="font-medium">Valor:</span> {Number((generateDialog.plans as any)?.price || generateDialog.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
                 <p><span className="font-medium">Dia de vencimento:</span> {parseDateLocal(generateDialog.due_date).getDate()}</p>
               </div>
 
