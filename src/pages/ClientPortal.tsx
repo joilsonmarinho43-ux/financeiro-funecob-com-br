@@ -115,7 +115,7 @@ export default function ClientPortal() {
 
   const filteredInvoices = data.invoices.filter((inv) => {
     if (filter === "all") return true;
-    if (filter === "vencido") return inv.status === "vencido" || (inv.status === "aberto" && new Date(inv.due_date) < new Date());
+    if (filter === "vencido") return inv.status === "vencido" || (inv.status === "aberto" && parseDateLocal(inv.due_date) < new Date());
     return inv.status === filter;
   });
 
