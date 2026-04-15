@@ -12,6 +12,11 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { format } from "date-fns";
+
+const parseDateLocal = (d: string) => {
+  const [y, m, day] = d.split("-").map(Number);
+  return new Date(y, m - 1, day);
+};
 import { ptBR } from "date-fns/locale";
 import {
   FileText, CheckCircle, AlertTriangle, Clock, CreditCard,
@@ -110,7 +115,7 @@ export default function ClientPortal() {
 
   const filteredInvoices = data.invoices.filter((inv) => {
     if (filter === "all") return true;
-    if (filter === "vencido") return inv.status === "vencido" || (inv.status === "aberto" && new Date(inv.due_date) < new Date());
+    if (filter === "vencido") return inv.status === "vencido" || (inv.status === "aberto" && parseDateLocal(inv.due_date) < new Date());
     return inv.status === filter;
   });
 
@@ -121,7 +126,7 @@ export default function ClientPortal() {
     .filter((i) => i.status === "pago")
     .reduce((s, i) => s + Number(i.amount), 0);
   const overdueCount = data.invoices.filter(
-    (i) => i.status !== "pago" && new Date(i.due_date) < new Date()
+    (i) => i.status !== "pago" && parseDateLocal(i.due_date) < new Date()
   ).length;
 
   const primaryColor = data.organization.primary_color || "#0ea5e9";
@@ -294,7 +299,7 @@ export default function ClientPortal() {
                 </div>
               ) : (
                 filteredInvoices.map((inv) => {
-                  const isOverdue = inv.status !== "pago" && new Date(inv.due_date) < new Date();
+                  const isOverdue = inv.status !== "pago" && parseDateLocal(inv.due_date) < new Date();
                   const statusLabel =
                     inv.status === "pago" ? "Pago" : isOverdue ? "Vencida" : "Em aberto";
                   const statusColor =
@@ -318,7 +323,7 @@ export default function ClientPortal() {
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-xs text-slate-400 flex items-center gap-1">
                               <CalendarDays className="h-3 w-3" />
-                              {format(new Date(inv.due_date), "dd/MM/yyyy")}
+                              {format(parseDateLocal(inv.due_date), "dd/MM/yyyy")}
                             </span>
                             <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${statusColor}`}>
                               {statusLabel}
@@ -365,7 +370,7 @@ export default function ClientPortal() {
                       selectedInvoice.status === "pago"
                         ? "default"
                         : selectedInvoice.status === "vencido" ||
-                          new Date(selectedInvoice.due_date) < new Date()
+                         parseDateLocal(selectedInvoice.due_date) < new Date()
                         ? "destructive"
                         : "secondary"
                     }
@@ -373,7 +378,7 @@ export default function ClientPortal() {
                   >
                     {selectedInvoice.status === "pago"
                       ? "Pago"
-                      : new Date(selectedInvoice.due_date) < new Date()
+                      : parseDateLocal(selectedInvoice.due_date) < new Date()
                       ? "Vencida"
                       : "Em aberto"}
                   </Badge>
@@ -381,7 +386,7 @@ export default function ClientPortal() {
                 <div>
                   <p className="text-xs text-slate-500">Vencimento</p>
                   <p className="text-sm font-medium">
-                    {format(new Date(selectedInvoice.due_date), "dd/MM/yyyy")}
+                    {format(parseDateLocal(selectedInvoice.due_date), "dd/MM/yyyy")}
                   </p>
                 </div>
                 {selectedInvoice.paid_date && (
