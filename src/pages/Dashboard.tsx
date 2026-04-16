@@ -120,7 +120,7 @@ export default function Dashboard() {
         }
       } catch { /* silent */ }
 
-      const portalSection = portalLink ? `\n\n📋 *Acesse seu portal:*\n${portalLink}` : "";
+      const portalSection = portalLink || "";
 
       const template = billingSettings?.template_overdue ||
         "Olá {nome}! Sua fatura no valor de {valor} com vencimento em {vencimento} está em atraso. Por favor, regularize o pagamento. {link_ou_chave_pix}";

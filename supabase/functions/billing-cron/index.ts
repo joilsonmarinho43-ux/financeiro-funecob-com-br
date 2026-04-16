@@ -148,10 +148,7 @@ Deno.serve(async (req) => {
             console.error("Error generating portal token:", e);
           }
 
-          // Build portal link section - only include if link exists and make it clickable
-          const portalSection = portalLink
-            ? `\n\n📋 *Acesse seu portal:*\n${portalLink}`
-            : "";
+          const portalSection = portalLink || "";
 
           const message = reminder.template
             .replace(/{nome}/g, client.name || "Cliente")
