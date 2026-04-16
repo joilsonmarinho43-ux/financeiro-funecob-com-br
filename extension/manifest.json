@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "FuneCob Bip",
+  "version": "1.2.0",
+  "description": "Extensão para leitura de código de barras e baixa/remarcação/retorno via FuneCob",
+  "permissions": ["storage", "activeTab"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "icons": {
+    "48": "icon.png",
+    "128": "icon.png"
+  }
+}
