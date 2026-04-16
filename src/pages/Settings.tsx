@@ -645,11 +645,35 @@ chrome.runtime.onInstalled.addListener((details) => {
       // popup.html
       zip.file("popup.html", `<!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><style>*{margin:0;padding:0;box-sizing:border-box}body{width:300px;font-family:system-ui,sans-serif;padding:16px;background:#fff}.header{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #e2e8f0}.logo{font-size:24px}.title{font-weight:700;color:#1e293b;font-size:15px}.status{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:8px}.connected{background:#f0fdf4;color:#16a34a}.info{background:#f1f5f9;color:#64748b;font-size:12px;padding:8px 12px;border-radius:8px;line-height:1.5}</style></head>
+<head><meta charset="UTF-8"><style>*{margin:0;padding:0;box-sizing:border-box}body{width:320px;font-family:system-ui,sans-serif;padding:16px;background:#fff}.header{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #e2e8f0}.logo{font-size:24px}.title{font-weight:700;color:#1e293b;font-size:15px}.status{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:10px}.connected{background:#f0fdf4;color:#16a34a}.tabs{display:flex;gap:4px;margin-bottom:10px;background:#f1f5f9;padding:3px;border-radius:8px}.tab{flex:1;padding:8px 4px;text-align:center;font-size:12px;font-weight:600;border:none;border-radius:6px;cursor:pointer;background:transparent;color:#64748b}.tab.active{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.1)}.tab.active.baixa{color:#16a34a}.tab.active.remarcacao{color:#d97706}.tab.active.retorno{color:#dc2626}.info{background:#f1f5f9;color:#64748b;font-size:12px;padding:8px 12px;border-radius:8px;line-height:1.5;margin-top:8px}</style></head>
 <body>
 <div class="header"><span class="logo">📡</span><span class="title">FuneCob</span></div>
 <div class="status connected">🟢 Conectado a: ${(orgName || "Empresa").replace(/</g, "&lt;")}</div>
-<div class="info">Bipe códigos de barras em qualquer aba. Os pagamentos serão registrados automaticamente no FuneCob.</div>
+<div class="tabs">
+  <button class="tab baixa active" data-action="baixa">✅ Baixa</button>
+  <button class="tab remarcacao" data-action="remarcacao">📅 Remarcar</button>
+  <button class="tab retorno" data-action="retorno">🔙 Retorno</button>
+</div>
+<div class="info" id="actionInfo">Bipe códigos em qualquer aba. Ação atual: <strong>Baixa</strong></div>
+<script>
+const tabs = document.querySelectorAll(".tab");
+const info = document.getElementById("actionInfo");
+const labels = {baixa:"Baixa",remarcacao:"Remarcação",retorno:"Retorno"};
+chrome.storage.local.get("bipAction", (d) => {
+  const a = d.bipAction || "baixa";
+  tabs.forEach(t => { t.classList.toggle("active", t.dataset.action === a); });
+  info.innerHTML = "Bipe códigos em qualquer aba. Ação atual: <strong>" + labels[a] + "</strong>";
+});
+tabs.forEach(tab => {
+  tab.addEventListener("click", () => {
+    tabs.forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    const a = tab.dataset.action;
+    chrome.storage.local.set({bipAction: a});
+    info.innerHTML = "Bipe códigos em qualquer aba. Ação atual: <strong>" + labels[a] + "</strong>";
+  });
+});
+</script>
 </body>
 </html>`);
 
