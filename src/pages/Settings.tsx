@@ -554,10 +554,17 @@ const FUNECOB_ORG_NAME = "${(orgName || "").replace(/"/g, '\\"')}";
 
 let barcodeBuffer = "";
 let barcodeTimeout = null;
+let currentAction = "baixa";
+
+// Listen for action changes from popup
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.bipAction) currentAction = changes.bipAction.newValue || "baixa";
+});
+chrome.storage.local.get("bipAction", (d) => { if (d.bipAction) currentAction = d.bipAction; });
 
 document.addEventListener("keypress", (e) => {
   if (e.target.tagName === "TEXTAREA" || (e.target.tagName === "INPUT" && e.target.type !== "hidden")) return;
-   if (e.key === "Enter" && barcodeBuffer.trim().length >= 8) {
+  if (e.key === "Enter" && barcodeBuffer.trim().length >= 8) {
     const barcode = barcodeBuffer.replace(/\\s+/g, "").trim();
     barcodeBuffer = "";
     clearTimeout(barcodeTimeout);
@@ -570,15 +577,26 @@ document.addEventListener("keypress", (e) => {
 });
 
 async function sendBip(barcode) {
+  const body = { barcode, action: currentAction };
+  if (currentAction === "remarcacao") {
+    const newDate = prompt("Nova data de vencimento (AAAA-MM-DD):");
+    if (!newDate) { showToast("⚠️ Remarcação cancelada — data não informada", true); return; }
+    body.new_due_date = newDate;
+  }
   try {
     const res = await fetch(FUNECOB_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": FUNECOB_API_KEY },
-      body: JSON.stringify({ barcode, action: "baixa" }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
+    const actionLabels = { baixa: "Baixa", remarcacao: "Remarcação", retorno: "Retorno" };
     if (data.success) {
-      showToast("✅ Bip processado: " + (data.client?.name || barcode));
+      if (data.duplicate) {
+        showToast("⚠️ Bip duplicado: " + (data.client?.name || barcode), true);
+      } else {
+        showToast("✅ " + actionLabels[currentAction] + ": " + (data.client?.name || barcode));
+      }
     } else {
       showToast("⚠️ " + (data.error || "Erro ao processar bip"), true);
     }
