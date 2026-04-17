@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
+import { sanitizeInstanceName } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import {
   MessageSquare, Send, Radio, Megaphone, Smartphone,
@@ -795,6 +796,11 @@ function PairTab({ organizationId }: { organizationId: string }) {
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      const sanitizedName = sanitizeInstanceName(form.name);
+      if (!sanitizedName) {
+        throw new Error("Use um nome com letras ou números para a instância.");
+      }
+
       const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
       const url = `https://${projectId}.supabase.co/functions/v1/whatsapp-manager`;
       const { data: { session } } = await supabase.auth.getSession();
@@ -807,7 +813,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
         },
         body: JSON.stringify({
           action: "create_instance",
-          instance_name: form.name.replace(/\s+/g, "_").trim(),
+          instance_name: sanitizedName,
           organization_id: organizationId,
         }),
       });
@@ -942,7 +948,10 @@ function PairTab({ organizationId }: { organizationId: string }) {
             <div className="space-y-2">
               <Label>Nome da Instância *</Label>
               <Input placeholder="Ex: Chip Principal" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-              <p className="text-xs text-muted-foreground">Será usado como identificador na API. Sem espaços ou caracteres especiais.</p>
+              <p className="text-xs text-muted-foreground">Será convertido automaticamente para letras, números, hífen e underline.</p>
+              {form.name && sanitizeInstanceName(form.name) && (
+                <p className="text-xs text-muted-foreground">Identificador gerado: <span className="font-mono text-foreground">{sanitizeInstanceName(form.name)}</span></p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Telefone (opcional)</Label>
