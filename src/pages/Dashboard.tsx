@@ -96,8 +96,7 @@ export default function Dashboard() {
         pixOrLink = `📲 *Pix Manual:*\nTipo: ${typeMap[billingSettings.pix_key_type || "aleatoria"] || billingSettings.pix_key_type}\nChave: \`${billingSettings.pix_key}\`${holderLine}\n\n_Após o pagamento, envie o comprovante para confirmação._`;
       }
 
-      // Generate portal link
-      const PORTAL_BASE = window.location.origin;
+      // Generate portal link (FIXED domain)
       let portalLink = "";
       try {
         const clientId = inv.client_id;
@@ -108,14 +107,14 @@ export default function Dashboard() {
             .eq("client_id", clientId)
             .maybeSingle();
           if (existingToken?.token) {
-            portalLink = `${PORTAL_BASE}/portal/${existingToken.token}`;
+            portalLink = buildPortalLink(existingToken.token);
           } else {
             const { data: newToken } = await supabase
               .from("client_portal_tokens")
               .insert({ client_id: clientId, organization_id: organizationId! })
               .select("token")
               .single();
-            if (newToken?.token) portalLink = `${PORTAL_BASE}/portal/${newToken.token}`;
+            if (newToken?.token) portalLink = buildPortalLink(newToken.token);
           }
         }
       } catch { /* silent */ }
