@@ -68,9 +68,21 @@ Deno.serve(async (req) => {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      console.error(`[send-now] API error: ${response.status} - ${errorBody.slice(0, 200)}`);
+      console.error(`[send-now] API error: ${response.status} - ${errorBody.slice(0, 300)}`);
+
+      // Detect common Evolution errors and return user-friendly messages
+      let userMsg = "Falha no envio. Verifique se seu WhatsApp está conectado.";
+      const lower = errorBody.toLowerCase();
+      if (lower.includes("connection closed") || lower.includes("not connected") || lower.includes("close")) {
+        userMsg = "WhatsApp desconectado. Reconecte sua instância em WhatsApp → Conectar.";
+      } else if (lower.includes("not exists") || lower.includes("number does not exist") || lower.includes("invalid number")) {
+        userMsg = "Número de WhatsApp inválido ou inexistente.";
+      } else if (response.status === 401 || response.status === 403) {
+        userMsg = "Credenciais do WhatsApp inválidas. Verifique a configuração da instância.";
+      }
+
       return new Response(
-        JSON.stringify({ error: "Falha no envio da mensagem. Tente novamente." }),
+        JSON.stringify({ error: userMsg, details: errorBody.slice(0, 200), status: response.status }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
