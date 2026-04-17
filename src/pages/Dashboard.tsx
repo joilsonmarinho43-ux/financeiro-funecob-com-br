@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
+import { buildPortalLink } from "@/lib/portalUrl";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
