@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Tables } from "@/integrations/supabase/types";
 import { AppLayout } from "@/components/AppLayout";
 import { auditLog } from "@/lib/auditLog";
+import { buildPortalLink } from "@/lib/portalUrl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -152,8 +153,7 @@ export default function Invoices() {
         pixOrLink = `📲 *Pix Manual:*\nTipo: ${typeMap[settings.pix_key_type || "aleatoria"] || settings.pix_key_type}\nChave: \`${settings.pix_key}\`${holderLine}\n\n_Após o pagamento, envie o comprovante para confirmação._`;
       }
 
-      // Generate portal link
-      const PORTAL_BASE = window.location.origin;
+      // Generate portal link (FIXED domain)
       let portalLink = "";
       try {
         const { data: existingToken } = await supabase
@@ -162,23 +162,21 @@ export default function Invoices() {
           .eq("client_id", inv.client_id)
           .maybeSingle();
         if (existingToken?.token) {
-          portalLink = `${PORTAL_BASE}/portal/${existingToken.token}`;
+          portalLink = buildPortalLink(existingToken.token);
         } else {
           const { data: newToken } = await supabase
             .from("client_portal_tokens")
             .insert({ client_id: inv.client_id, organization_id: organizationId })
             .select("token")
             .single();
-          if (newToken?.token) portalLink = `${PORTAL_BASE}/portal/${newToken.token}`;
+          if (newToken?.token) portalLink = buildPortalLink(newToken.token);
         }
       } catch (e) {
         console.warn("Portal token error");
       }
 
-      // Build portal section - clickable link, only when available
-      const portalSection = portalLink
-        ? `\n\n📋 *Acesse seu portal:*\n${portalLink}`
-        : "";
+      // Clean URL only — template já contém o label
+      const portalSection = portalLink || "";
 
       const template = settings?.template_reminder || "Olá {nome}! Sua fatura de {valor} vence em {vencimento}. {link_ou_chave_pix}";
       const message = template

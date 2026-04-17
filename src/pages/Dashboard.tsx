@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
+import { buildPortalLink } from "@/lib/portalUrl";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
@@ -96,8 +97,7 @@ export default function Dashboard() {
         pixOrLink = `📲 *Pix Manual:*\nTipo: ${typeMap[billingSettings.pix_key_type || "aleatoria"] || billingSettings.pix_key_type}\nChave: \`${billingSettings.pix_key}\`${holderLine}\n\n_Após o pagamento, envie o comprovante para confirmação._`;
       }
 
-      // Generate portal link
-      const PORTAL_BASE = window.location.origin;
+      // Generate portal link (FIXED domain)
       let portalLink = "";
       try {
         const clientId = inv.client_id;
@@ -108,14 +108,14 @@ export default function Dashboard() {
             .eq("client_id", clientId)
             .maybeSingle();
           if (existingToken?.token) {
-            portalLink = `${PORTAL_BASE}/portal/${existingToken.token}`;
+            portalLink = buildPortalLink(existingToken.token);
           } else {
             const { data: newToken } = await supabase
               .from("client_portal_tokens")
               .insert({ client_id: clientId, organization_id: organizationId! })
               .select("token")
               .single();
-            if (newToken?.token) portalLink = `${PORTAL_BASE}/portal/${newToken.token}`;
+            if (newToken?.token) portalLink = buildPortalLink(newToken.token);
           }
         }
       } catch { /* silent */ }
@@ -141,7 +141,11 @@ export default function Dashboard() {
 
       toast({ title: "Mensagem enviada! ✅", description: `Cobrança enviada para ${client?.name}.` });
     } catch (e: any) {
-      toast({ title: "Falha no envio", description: "Não foi possível enviar a mensagem. Tente novamente.", variant: "destructive" });
+      toast({
+        title: "Falha no envio",
+        description: e?.message || "Não foi possível enviar. Verifique se o WhatsApp está conectado.",
+        variant: "destructive",
+      });
     } finally {
       setSendingId(null);
     }

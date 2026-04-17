@@ -125,18 +125,18 @@ Deno.serve(async (req) => {
           });
           const formattedDueDate = dueDate.split("-").reverse().join("/");
 
-          // Portal link
+          // Portal link — domínio FIXO do FuneCob
           let portalLink = "";
-          const portalBaseUrl = Deno.env.get("PORTAL_BASE_URL") || "";
+          const portalBaseUrl = Deno.env.get("PORTAL_BASE_URL") || "https://financeiro.funecob.com.br";
           try {
             const { data: existingToken } = await supabase
               .from("client_portal_tokens")
               .select("token")
               .eq("client_id", invoice.client_id)
               .maybeSingle();
-            if (existingToken?.token && portalBaseUrl) {
+            if (existingToken?.token) {
               portalLink = `${portalBaseUrl}/portal/${existingToken.token}`;
-            } else if (portalBaseUrl) {
+            } else {
               const { data: newToken } = await supabase
                 .from("client_portal_tokens")
                 .insert({ client_id: invoice.client_id, organization_id: orgId })
