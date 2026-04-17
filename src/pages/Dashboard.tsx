@@ -141,7 +141,11 @@ export default function Dashboard() {
 
       toast({ title: "Mensagem enviada! ✅", description: `Cobrança enviada para ${client?.name}.` });
     } catch (e: any) {
-      toast({ title: "Falha no envio", description: "Não foi possível enviar a mensagem. Tente novamente.", variant: "destructive" });
+      toast({
+        title: "Falha no envio",
+        description: e?.message || "Não foi possível enviar. Verifique se o WhatsApp está conectado.",
+        variant: "destructive",
+      });
     } finally {
       setSendingId(null);
     }
