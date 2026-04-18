@@ -1,7 +1,13 @@
 // FuneCob Bip - Chrome Extension (Popup UI)
 (function () {
   let currentAction = "baixa";
-  let config = { apiUrl: "", apiKey: "", globalCapture: true };
+  let config = {
+    apiUrl: "",
+    apiKey: "",
+    globalCapture: true,
+    strictMode: true,
+    expectedLen: 13,
+  };
   let history = [];
 
   const $ = (id) => document.getElementById(id);
@@ -9,18 +15,21 @@
   // Load config + history
   chrome.storage.local.get(["bipConfig", "bipHistory"], (data) => {
     if (data.bipConfig) {
-      config = { globalCapture: true, ...data.bipConfig };
+      config = { globalCapture: true, strictMode: true, expectedLen: 13, ...data.bipConfig };
       $("apiUrl").value = config.apiUrl || "";
       $("apiKey").value = config.apiKey || "";
       const gc = $("globalCapture");
       if (gc) gc.checked = config.globalCapture !== false;
+      const sm = $("strictMode");
+      if (sm) sm.checked = config.strictMode !== false;
+      const el = $("expectedLen");
+      if (el) el.value = String(config.expectedLen ?? 13);
       updateStatus();
     }
     if (data.bipHistory) {
       history = data.bipHistory;
       renderHistory();
     }
-    // Notify background of latest config (for global capture across tabs)
     chrome.runtime.sendMessage({ type: "BIP_CONFIG_UPDATED", config }).catch(() => {});
   });
 
@@ -29,9 +38,10 @@
     const text = $("statusText");
     if (config.apiUrl && config.apiKey) {
       bar.className = "status-bar connected";
-      text.textContent = config.globalCapture !== false
-        ? "Conectado · captura global ativa"
-        : "Conectado";
+      const parts = [];
+      if (config.globalCapture !== false) parts.push("captura global");
+      if (config.strictMode !== false) parts.push(`estrito ${config.expectedLen || 13}d`);
+      text.textContent = "Conectado" + (parts.length ? " · " + parts.join(" · ") : "");
     } else {
       bar.className = "status-bar disconnected";
       text.textContent = "Não configurado";
@@ -47,6 +57,11 @@
     config.apiKey = $("apiKey").value.trim();
     const gc = $("globalCapture");
     config.globalCapture = gc ? gc.checked : true;
+    const sm = $("strictMode");
+    config.strictMode = sm ? sm.checked : true;
+    const el = $("expectedLen");
+    const n = el ? parseInt(el.value, 10) : 13;
+    config.expectedLen = isNaN(n) || n < 0 ? 13 : n;
     chrome.storage.local.set({ bipConfig: config });
     chrome.runtime.sendMessage({ type: "BIP_CONFIG_UPDATED", config }).catch(() => {});
     updateStatus();

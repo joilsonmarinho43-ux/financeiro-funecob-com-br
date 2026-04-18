@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FuneCob Bip",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Captura silenciosa de código de barras (leitor externo) e envia ações de baixa/remarcação/retorno para o FuneCob.",
   "permissions": ["storage"],
   "host_permissions": ["<all_urls>"],
