@@ -326,12 +326,21 @@ Deno.serve(async (req) => {
       });
     }
 
-    const body = await req.json();
-    const { barcode, action = "baixa", new_due_date } = body;
+    const body = await req.json().catch(() => ({}));
+    const { barcode, action, new_due_date } = body || {};
 
+    // Golden rule: if no barcode OR no explicit action — act as if it never happened.
     if (!barcode) {
-      return new Response(JSON.stringify({ error: "barcode is required" }), {
-        status: 400,
+      console.log(`[bip-receiver] silent_ignore no_barcode`);
+      return new Response(JSON.stringify({ success: true, ignored: true, reason: "no_barcode" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!action || !["baixa", "remarcacao", "retorno"].includes(String(action))) {
+      console.log(`[bip-receiver] silent_ignore no_action_or_invalid action=${action}`);
+      return new Response(JSON.stringify({ success: true, ignored: true, reason: "no_action" }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -343,11 +352,11 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     const config = barcodeConfig || { client_id_length: 7, year_length: 4, month_length: 2 };
-    const clean = barcode.replace(/\D/g, "");
+    const clean = String(barcode).replace(/\D/g, "");
     const totalLen = config.client_id_length + config.year_length + config.month_length;
 
+    // Use ONLY the org's configured pattern length — no generic floors.
     if (clean.length < totalLen) {
-      // Silent ignore: barcode too short to match this org's pattern
       console.log(`[bip-receiver] silent_ignore short_barcode len=${clean.length} required=${totalLen}`);
       return new Response(JSON.stringify({ success: true, ignored: true, reason: "short_barcode" }), {
         status: 200,

@@ -13,11 +13,12 @@
 
 (function () {
   // ===== Defaults (overridable via bipConfig in chrome.storage.local) =====
+  // Single source of truth = expectedLen configured in the SaaS.
+  // No generic length floors — backend is the only authority on what's a Funecob code.
   const DEFAULTS = {
-    expectedLen: 13,        // exact length required (set 0 to disable strict length)
+    expectedLen: 13,        // exact length required (must be > 0)
     fastKeyMs: 50,          // max ms between keys to count as scanner
     idleMs: 300,            // ms of silence to flush
-    minLen: 8,              // hard floor — anything shorter is never sent
     dedupMs: 2500,          // ignore same barcode within this window
     strictMode: true,       // reject anything that doesn't match expectedLen exactly
     patternEnabled: false,  // if true, validate clientLen+yearLen+monthLen
@@ -75,16 +76,17 @@
     resetBuffer();
     if (cfg.globalCapture === false) return;
 
-    // ─── Length validation ───
-    if (candidate.length < cfg.minLen) {
-      silentLog("ignored_too_short", candidate);
+    // ─── Length validation (uses ONLY expectedLen — no generic floors) ───
+    const expected = Number(cfg.expectedLen) || 0;
+    if (expected <= 0) {
+      silentLog("ignored_no_expected_len", candidate);
       return;
     }
-    if (cfg.strictMode && cfg.expectedLen > 0 && candidate.length !== cfg.expectedLen) {
+    if (cfg.strictMode && candidate.length !== expected) {
       silentLog("ignored_wrong_length", candidate);
       return;
     }
-    if (!cfg.strictMode && cfg.expectedLen > 0 && candidate.length < cfg.expectedLen) {
+    if (!cfg.strictMode && candidate.length < expected) {
       silentLog("ignored_below_expected", candidate);
       return;
     }
@@ -118,9 +120,11 @@
     const delta = now - lastKeyTime;
     lastKeyTime = now;
 
-    // Enter ends the scan
+    const expected = Number(cfg.expectedLen) || 0;
+
+    // Enter ends the scan — only flush if buffer reached expected length
     if (e.key === "Enter") {
-      if (buffer.length >= cfg.minLen) flush();
+      if (expected > 0 && buffer.length >= expected) flush();
       else resetBuffer();
       return;
     }
@@ -128,7 +132,6 @@
     // Only digits are part of a barcode
     if (/^\d$/.test(e.key)) {
       // Anti-human-typing: if previous key was too slow, drop the buffer.
-      // Allow the first 2 keys with any delay (scanner warm-up), then enforce.
       if (buffer.length >= 1 && delta > cfg.fastKeyMs) {
         silentLog("buffer_reset_slow_key", buffer);
         buffer = "";
@@ -140,8 +143,8 @@
       return;
     }
 
-    // Any other key: if buffer was scanner-grade, flush; else drop
-    if (buffer.length >= cfg.minLen) {
+    // Any other key: if buffer reached expected length, flush; else drop silently
+    if (expected > 0 && buffer.length >= expected) {
       flush();
     } else if (buffer.length > 0) {
       silentLog("buffer_reset_non_digit", buffer);
