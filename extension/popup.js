@@ -1,23 +1,27 @@
-// FuneCob Bip - Chrome Extension
+// FuneCob Bip - Chrome Extension (Popup UI)
 (function () {
   let currentAction = "baixa";
-  let config = { apiUrl: "", apiKey: "" };
+  let config = { apiUrl: "", apiKey: "", globalCapture: true };
   let history = [];
 
   const $ = (id) => document.getElementById(id);
 
-  // Load config
+  // Load config + history
   chrome.storage.local.get(["bipConfig", "bipHistory"], (data) => {
     if (data.bipConfig) {
-      config = data.bipConfig;
+      config = { globalCapture: true, ...data.bipConfig };
       $("apiUrl").value = config.apiUrl || "";
       $("apiKey").value = config.apiKey || "";
+      const gc = $("globalCapture");
+      if (gc) gc.checked = config.globalCapture !== false;
       updateStatus();
     }
     if (data.bipHistory) {
       history = data.bipHistory;
       renderHistory();
     }
+    // Notify background of latest config (for global capture across tabs)
+    chrome.runtime.sendMessage({ type: "BIP_CONFIG_UPDATED", config }).catch(() => {});
   });
 
   function updateStatus() {
@@ -25,23 +29,26 @@
     const text = $("statusText");
     if (config.apiUrl && config.apiKey) {
       bar.className = "status-bar connected";
-      text.textContent = "Conectado";
+      text.textContent = config.globalCapture !== false
+        ? "Conectado · captura global ativa"
+        : "Conectado";
     } else {
       bar.className = "status-bar disconnected";
       text.textContent = "Não configurado";
     }
   }
 
-  // Toggle config
   $("toggleConfig").addEventListener("click", () => {
     $("configSection").classList.toggle("hidden");
   });
 
-  // Save config
   $("saveConfig").addEventListener("click", () => {
     config.apiUrl = $("apiUrl").value.trim();
     config.apiKey = $("apiKey").value.trim();
+    const gc = $("globalCapture");
+    config.globalCapture = gc ? gc.checked : true;
     chrome.storage.local.set({ bipConfig: config });
+    chrome.runtime.sendMessage({ type: "BIP_CONFIG_UPDATED", config }).catch(() => {});
     updateStatus();
     $("configSection").classList.add("hidden");
   });
@@ -52,12 +59,12 @@
       document.querySelectorAll(".action-tab").forEach((t) => t.classList.remove("active"));
       tab.classList.add("active");
       currentAction = tab.dataset.action;
+      chrome.storage.local.set({ bipCurrentAction: currentAction });
 
       const btn = $("bipBtn");
       btn.className = "bip-btn " + currentAction;
       updateBtnText();
 
-      // Show/hide due date field
       const df = $("dueDateField");
       if (currentAction === "remarcacao") {
         df.classList.add("visible");
@@ -67,28 +74,34 @@
     });
   });
 
-  // Barcode input
+  // Restore last action
+  chrome.storage.local.get(["bipCurrentAction"], (d) => {
+    if (d.bipCurrentAction) {
+      const tab = document.querySelector(`.action-tab[data-action="${d.bipCurrentAction}"]`);
+      if (tab) tab.click();
+    }
+  });
+
   const barcodeInput = $("barcodeInput");
   barcodeInput.addEventListener("input", () => {
     const val = barcodeInput.value.replace(/\D/g, "");
     barcodeInput.value = val;
     const btn = $("bipBtn");
-    btn.disabled = val.length < 10;
+    btn.disabled = val.length < 8;
     updateBtnText();
   });
 
-  // Auto-submit on 13+ digits (barcode scanner usually types fast)
   let scanTimeout;
   barcodeInput.addEventListener("keydown", (e) => {
     clearTimeout(scanTimeout);
     if (e.key === "Enter") {
       e.preventDefault();
-      sendBip();
+      sendBip(barcodeInput.value.trim(), currentAction);
       return;
     }
     scanTimeout = setTimeout(() => {
-      if (barcodeInput.value.length >= 13) {
-        sendBip();
+      if (barcodeInput.value.length >= 8) {
+        sendBip(barcodeInput.value.trim(), currentAction);
       }
     }, 300);
   });
@@ -97,7 +110,7 @@
     const val = barcodeInput.value;
     const icon = $("bipBtnIcon");
     const text = $("bipBtnText");
-    if (val.length < 10) {
+    if (val.length < 8) {
       icon.textContent = "📷";
       text.textContent = "Aguardando código...";
     } else {
@@ -108,12 +121,10 @@
     }
   }
 
-  // Send bip
-  $("bipBtn").addEventListener("click", sendBip);
+  $("bipBtn").addEventListener("click", () => sendBip(barcodeInput.value.trim(), currentAction));
 
-  async function sendBip() {
-    const barcode = barcodeInput.value.trim();
-    if (barcode.length < 10) return;
+  async function sendBip(barcode, action) {
+    if (!barcode || barcode.length < 8) return;
     if (!config.apiUrl || !config.apiKey) {
       showResult("error", "Configuração necessária", "Clique na engrenagem ⚙️ para configurar a API.");
       return;
@@ -125,8 +136,8 @@
     $("bipBtnIcon").textContent = "⏳";
     barcodeInput.className = "";
 
-    const body = { barcode, action: currentAction };
-    if (currentAction === "remarcacao") {
+    const body = { barcode, action };
+    if (action === "remarcacao") {
       const newDate = $("newDueDate").value;
       if (!newDate) {
         showResult("error", "Data obrigatória", "Selecione a nova data de vencimento para remarcação.");
@@ -140,37 +151,28 @@
     try {
       const resp = await fetch(config.apiUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": config.apiKey,
-        },
+        headers: { "Content-Type": "application/json", "x-api-key": config.apiKey },
         body: JSON.stringify(body),
       });
-
-      const data = await resp.json();
+      const data = await resp.json().catch(() => ({}));
 
       if (!resp.ok) {
         barcodeInput.className = "error";
         showResult("error", "Erro " + resp.status, data.error || "Falha no processamento.");
+      } else if (data.ignored) {
+        // Silent: barcode not recognized — show subtle hint, no alarming UI
+        barcodeInput.className = "";
+        showResult("duplicate", "Código ignorado", "Não pertence a nenhum cliente cadastrado.");
       } else if (data.duplicate) {
         barcodeInput.className = "success";
         showResult("duplicate", "Bip Duplicado", "Este código já foi processado anteriormente.");
+        addToHistory({ barcode, action, client: "—", time: timeNow(), status: "duplicate" });
       } else {
         barcodeInput.className = "success";
         const actionLabels = { baixa: "Baixa confirmada", remarcacao: "Remarcação confirmada", retorno: "Retorno registrado" };
-        const detail = data.client ? `Cliente: ${data.client.name}` : "";
-        showResult("success", actionLabels[currentAction] + " ✅", detail);
-
-        // Add to history
-        history.unshift({
-          barcode,
-          action: currentAction,
-          client: data.client?.name || "—",
-          time: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-        });
-        if (history.length > 10) history = history.slice(0, 10);
-        chrome.storage.local.set({ bipHistory: history });
-        renderHistory();
+        const detail = data.client?.name ? `Cliente: ${data.client.name}` : "";
+        showResult("success", actionLabels[action] + " ✅", detail);
+        addToHistory({ barcode, action, client: data.client?.name || "—", time: timeNow(), status: "success" });
       }
     } catch (err) {
       barcodeInput.className = "error";
@@ -181,6 +183,17 @@
     barcodeInput.value = "";
     updateBtnText();
     setTimeout(() => barcodeInput.focus(), 100);
+  }
+
+  function timeNow() {
+    return new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function addToHistory(entry) {
+    history.unshift(entry);
+    if (history.length > 10) history = history.slice(0, 10);
+    chrome.storage.local.set({ bipHistory: history });
+    renderHistory();
   }
 
   function showResult(type, title, detail) {
@@ -199,10 +212,18 @@
     }
     list.innerHTML = history.map((h) => `
       <div class="history-item">
-        <span>${h.client}</span>
+        <span>${h.client || "—"}</span>
         <span class="badge ${h.action}">${h.action === "baixa" ? "✅ Baixa" : h.action === "remarcacao" ? "📅 Remarcar" : "🔙 Retorno"}</span>
         <span style="color:#94a3b8">${h.time}</span>
       </div>
     `).join("");
   }
+
+  // Listen for background-captured bips and refresh history
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.bipHistory) {
+      history = changes.bipHistory.newValue || [];
+      renderHistory();
+    }
+  });
 })();
