@@ -98,11 +98,18 @@
   });
 
   const barcodeInput = $("barcodeInput");
+
+  function getMinLen() {
+    // Single source of truth = expectedLen configured in the SaaS.
+    const n = Number(config.expectedLen) || 0;
+    return n > 0 ? n : 1;
+  }
+
   barcodeInput.addEventListener("input", () => {
     const val = barcodeInput.value.replace(/\D/g, "");
     barcodeInput.value = val;
     const btn = $("bipBtn");
-    btn.disabled = val.length < 8;
+    btn.disabled = val.length < getMinLen();
     updateBtnText();
   });
 
@@ -115,7 +122,7 @@
       return;
     }
     scanTimeout = setTimeout(() => {
-      if (barcodeInput.value.length >= 8) {
+      if (barcodeInput.value.length >= getMinLen()) {
         sendBip(barcodeInput.value.trim(), currentAction);
       }
     }, 300);
@@ -125,7 +132,7 @@
     const val = barcodeInput.value;
     const icon = $("bipBtnIcon");
     const text = $("bipBtnText");
-    if (val.length < 8) {
+    if (val.length < getMinLen()) {
       icon.textContent = "📷";
       text.textContent = "Aguardando código...";
     } else {
@@ -139,7 +146,8 @@
   $("bipBtn").addEventListener("click", () => sendBip(barcodeInput.value.trim(), currentAction));
 
   async function sendBip(barcode, action) {
-    if (!barcode || barcode.length < 8) return;
+    if (!barcode || barcode.length < getMinLen()) return;
+    if (!action || !["baixa", "remarcacao", "retorno"].includes(action)) return; // require explicit action
     if (!config.apiUrl || !config.apiKey) {
       showResult("error", "Configuração necessária", "Clique na engrenagem ⚙️ para configurar a API.");
       return;

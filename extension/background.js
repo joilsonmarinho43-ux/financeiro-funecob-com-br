@@ -1,23 +1,37 @@
 // FuneCob Bip - Background Service Worker
 // Receives barcodes captured globally by content scripts and forwards them to the API silently.
+//
+// RULES (must mirror content.js exactly):
+// - Length validation uses ONLY expectedLen (no generic floors like "< 8")
+// - Strict mode requires exact length match
+// - Action MUST be explicit — no automatic "baixa" default
+// - Backend is the single source of truth for whether a code belongs to Funecob
 
-let config = { apiUrl: "", apiKey: "", globalCapture: true };
-let currentAction = "baixa";
+const DEFAULTS = {
+  apiUrl: "",
+  apiKey: "",
+  expectedLen: 13,
+  strictMode: true,
+  globalCapture: true,
+};
+
+let config = { ...DEFAULTS };
+let currentAction = null; // No default — must be set explicitly by the user
 
 chrome.storage.local.get(["bipConfig", "bipCurrentAction"], (data) => {
-  if (data.bipConfig) config = { globalCapture: true, ...data.bipConfig };
+  if (data.bipConfig) config = { ...DEFAULTS, ...data.bipConfig };
   if (data.bipCurrentAction) currentAction = data.bipCurrentAction;
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  if (changes.bipConfig) config = { globalCapture: true, ...changes.bipConfig.newValue };
-  if (changes.bipCurrentAction) currentAction = changes.bipCurrentAction.newValue;
+  if (changes.bipConfig) config = { ...DEFAULTS, ...(changes.bipConfig.newValue || {}) };
+  if (changes.bipCurrentAction) currentAction = changes.bipCurrentAction.newValue || null;
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "BIP_CONFIG_UPDATED" && msg.config) {
-    config = { globalCapture: true, ...msg.config };
+    config = { ...DEFAULTS, ...msg.config };
     sendResponse({ ok: true });
     return true;
   }
@@ -33,38 +47,61 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 const recentCache = new Map(); // barcode -> timestamp
 const BG_DEDUP_MS = 3000;
 
-async function handleCapturedBarcode(barcode) {
-  if (!config.apiUrl || !config.apiKey) return; // not configured — ignore silently
-  if (config.globalCapture === false) return;
-  const clean = String(barcode).replace(/\D/g, "");
-  if (clean.length < 8) return;
+function silentLog(reason, extra) {
+  try { console.debug("[FuneCob Bip bg]", reason, extra ?? ""); } catch {}
+}
 
-  // Strict-length re-check at background layer
-  const expected = Number(config.expectedLen) || 0;
-  const strict = config.strictMode !== false;
-  if (strict && expected > 0 && clean.length !== expected) {
-    console.debug("[FuneCob Bip] bg ignore wrong length:", clean.length, "expected", expected);
+async function handleCapturedBarcode(barcode) {
+  // Not configured — silent
+  if (!config.apiUrl || !config.apiKey) {
+    silentLog("not_configured");
+    return;
+  }
+  if (config.globalCapture === false) {
+    silentLog("global_capture_off");
     return;
   }
 
-  // Background-level dedup
+  const clean = String(barcode).replace(/\D/g, "");
+
+  // ─── Length validation (mirrors content.js — uses ONLY expectedLen) ───
+  const expected = Number(config.expectedLen) || 0;
+  if (expected <= 0) {
+    silentLog("no_expected_len");
+    return;
+  }
+  const strict = config.strictMode !== false;
+  if (strict && clean.length !== expected) {
+    silentLog("ignored_wrong_length", `${clean.length} !== ${expected}`);
+    return;
+  }
+  if (!strict && clean.length < expected) {
+    silentLog("ignored_below_expected", `${clean.length} < ${expected}`);
+    return;
+  }
+
+  // ─── Action validation: must be explicit ───
+  // Global capture only supports baixa/retorno (remarcacao requires a date from the popup)
+  const action = currentAction;
+  if (!action || !["baixa", "retorno"].includes(action)) {
+    silentLog("ignored_no_explicit_action", action);
+    return;
+  }
+
+  // ─── Background-level dedup ───
   const now = Date.now();
   const last = recentCache.get(clean);
   if (last && (now - last) < BG_DEDUP_MS) {
-    console.debug("[FuneCob Bip] bg ignore duplicate within", BG_DEDUP_MS, "ms");
+    silentLog("ignored_duplicate_bg");
     return;
   }
   recentCache.set(clean, now);
-  // Trim cache
   if (recentCache.size > 50) {
     const cutoff = now - BG_DEDUP_MS;
     for (const [k, t] of recentCache) if (t < cutoff) recentCache.delete(k);
   }
 
-  const action = currentAction || "baixa";
-  // Skip remarcacao for global capture (needs date selection in popup)
-  if (action === "remarcacao") return;
-
+  // ─── Send to backend (single source of truth) ───
   try {
     const resp = await fetch(config.apiUrl, {
       method: "POST",
@@ -73,8 +110,8 @@ async function handleCapturedBarcode(barcode) {
     });
     const data = await resp.json().catch(() => ({}));
 
+    // Only treat as success if backend explicitly says so AND did not ignore
     if (resp.ok && data.success && !data.ignored) {
-      // Update history for popup
       chrome.storage.local.get(["bipHistory"], (d) => {
         const history = Array.isArray(d.bipHistory) ? d.bipHistory : [];
         history.unshift({
@@ -86,17 +123,16 @@ async function handleCapturedBarcode(barcode) {
         });
         chrome.storage.local.set({ bipHistory: history.slice(0, 10) });
       });
-      // Subtle badge feedback
       try {
         chrome.action.setBadgeBackgroundColor({ color: data.duplicate ? "#d97706" : "#16a34a" });
         chrome.action.setBadgeText({ text: data.duplicate ? "·" : "✓" });
         setTimeout(() => chrome.action.setBadgeText({ text: "" }), 2500);
       } catch {}
     } else {
-      // Silent log only — no UI alarm for unknown codes
-      console.log("[FuneCob Bip] silent ignore:", data?.reason || resp.status);
+      // ignored=true OR error — silent, no UI alarm.
+      silentLog("backend_ignored_or_error", data?.reason || resp.status);
     }
   } catch (err) {
-    console.log("[FuneCob Bip] capture error (silent):", err?.message);
+    silentLog("network_error", err?.message);
   }
 }
