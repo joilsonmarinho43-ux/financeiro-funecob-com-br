@@ -1,79 +1,155 @@
-// FuneCob Bip - Content Script
-// Captures fast keyboard sequences (barcode scanners typing as keyboard) on any page.
-// - Buffers digit keystrokes typed in rapid succession
-// - On Enter or 300ms idle, if buffer has >= 8 digits, sends to background
-// - Does NOT prevent default — the legacy system continues to receive the keystrokes normally
-// - Operates silently: never shows alerts, never modifies the host page DOM
+// FuneCob Bip - Content Script (HARDENED)
+// Captures fast keyboard sequences (barcode scanner emulating keyboard input).
+// Validates length, speed, pattern, and dedupes — silent on every failure.
+//
+// RULES:
+// - Inter-key delay must be < FAST_KEY_MS (50ms) — anything slower is treated as human typing
+// - Buffer must reach exactly EXPECTED_LEN digits (configurable, default 13)
+// - Optional pattern check (client_code + year + month) before sending
+// - Recent-cache (DEDUP_MS) drops duplicates
+// - Strict mode rejects any deviation
+// - Never blocks legacy app keystrokes (capture phase, no preventDefault)
+// - Never shows UI errors
 
 (function () {
-  const MIN_LEN = 8;
-  const IDLE_MS = 300;
-  const FAST_KEY_MS = 50; // typical scanner inter-key delay is < 30ms; humans > 80ms
+  // ===== Defaults (overridable via bipConfig in chrome.storage.local) =====
+  const DEFAULTS = {
+    expectedLen: 13,        // exact length required (set 0 to disable strict length)
+    fastKeyMs: 50,          // max ms between keys to count as scanner
+    idleMs: 300,            // ms of silence to flush
+    minLen: 8,              // hard floor — anything shorter is never sent
+    dedupMs: 2500,          // ignore same barcode within this window
+    strictMode: true,       // reject anything that doesn't match expectedLen exactly
+    patternEnabled: false,  // if true, validate clientLen+yearLen+monthLen
+    clientIdLength: 7,
+    yearLength: 4,
+    monthLength: 2,
+    globalCapture: true,
+  };
 
+  let cfg = { ...DEFAULTS };
   let buffer = "";
   let lastKeyTime = 0;
   let idleTimer = null;
-  let enabled = true;
+  let lastSent = { barcode: "", time: 0 };
 
-  // Allow popup/background to disable globally
+  // ===== Load + watch config =====
   try {
     chrome.storage.local.get(["bipConfig"], (data) => {
-      if (data?.bipConfig?.globalCapture === false) enabled = false;
+      if (data?.bipConfig) cfg = { ...DEFAULTS, ...data.bipConfig };
     });
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === "local" && changes.bipConfig) {
-        enabled = changes.bipConfig.newValue?.globalCapture !== false;
+        cfg = { ...DEFAULTS, ...(changes.bipConfig.newValue || {}) };
       }
     });
   } catch {}
 
-  function flush() {
-    const candidate = buffer;
+  function silentLog(reason, code) {
+    // Internal-only — never surfaces to the user
+    try { console.debug("[FuneCob Bip]", reason, code?.slice(0, 4) + "***"); } catch {}
+  }
+
+  function resetBuffer() {
     buffer = "";
     if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-    if (!enabled) return;
-    if (candidate.length < MIN_LEN) return;
+  }
+
+  function validatePattern(code) {
+    if (!cfg.patternEnabled) return true;
+    const required = (cfg.clientIdLength || 0) + (cfg.yearLength || 0) + (cfg.monthLength || 0);
+    if (code.length < required) return false;
+    // Sanity: year must be 4 digits starting with 19/20, month 01-12
+    if (cfg.yearLength === 4 && cfg.monthLength === 2) {
+      const year = code.substring(cfg.clientIdLength, cfg.clientIdLength + 4);
+      const month = code.substring(cfg.clientIdLength + 4, cfg.clientIdLength + 6);
+      if (!/^(19|20)\d{2}$/.test(year)) return false;
+      const m = parseInt(month, 10);
+      if (isNaN(m) || m < 1 || m > 12) return false;
+    }
+    return true;
+  }
+
+  function flush() {
+    const candidate = buffer;
+    resetBuffer();
+    if (cfg.globalCapture === false) return;
+
+    // ─── Length validation ───
+    if (candidate.length < cfg.minLen) {
+      silentLog("ignored_too_short", candidate);
+      return;
+    }
+    if (cfg.strictMode && cfg.expectedLen > 0 && candidate.length !== cfg.expectedLen) {
+      silentLog("ignored_wrong_length", candidate);
+      return;
+    }
+    if (!cfg.strictMode && cfg.expectedLen > 0 && candidate.length < cfg.expectedLen) {
+      silentLog("ignored_below_expected", candidate);
+      return;
+    }
+
+    // ─── Pattern validation ───
+    if (!validatePattern(candidate)) {
+      silentLog("ignored_pattern_mismatch", candidate);
+      return;
+    }
+
+    // ─── Dedup window ───
+    const now = Date.now();
+    if (lastSent.barcode === candidate && (now - lastSent.time) < cfg.dedupMs) {
+      silentLog("ignored_duplicate_recent", candidate);
+      return;
+    }
+    lastSent = { barcode: candidate, time: now };
+
+    // ─── Forward to background ───
     try {
       chrome.runtime.sendMessage({ type: "BIP_CAPTURED", barcode: candidate });
     } catch {
-      // Service worker may be asleep — silent
+      // Service worker asleep — silent
     }
   }
 
   function onKeyDown(e) {
-    if (!enabled) return;
+    if (cfg.globalCapture === false) return;
+
     const now = Date.now();
     const delta = now - lastKeyTime;
     lastKeyTime = now;
 
     // Enter ends the scan
     if (e.key === "Enter") {
-      if (buffer.length >= MIN_LEN) flush();
-      else buffer = "";
+      if (buffer.length >= cfg.minLen) flush();
+      else resetBuffer();
       return;
     }
 
     // Only digits are part of a barcode
     if (/^\d$/.test(e.key)) {
-      // Reset buffer if previous key was too slow (likely human typing)
-      if (delta > FAST_KEY_MS && buffer.length < 4) {
+      // Anti-human-typing: if previous key was too slow, drop the buffer.
+      // Allow the first 2 keys with any delay (scanner warm-up), then enforce.
+      if (buffer.length >= 1 && delta > cfg.fastKeyMs) {
+        silentLog("buffer_reset_slow_key", buffer);
         buffer = "";
       }
       buffer += e.key;
 
       if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = setTimeout(flush, IDLE_MS);
+      idleTimer = setTimeout(flush, cfg.idleMs);
       return;
     }
 
-    // Any other key: if buffer is small, drop it (human typing); if large, treat as boundary
-    if (buffer.length >= MIN_LEN) {
+    // Any other key: if buffer was scanner-grade, flush; else drop
+    if (buffer.length >= cfg.minLen) {
       flush();
-    } else {
-      buffer = "";
+    } else if (buffer.length > 0) {
+      silentLog("buffer_reset_non_digit", buffer);
+      resetBuffer();
     }
   }
 
-  // Capture phase = true, so we observe but do not block the legacy app's listeners
+  // Capture phase = true so we observe but never block legacy app listeners.
+  // No preventDefault anywhere — operator's normal flow continues untouched.
   window.addEventListener("keydown", onKeyDown, true);
 })();
