@@ -29,11 +29,37 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return false;
 });
 
+// Background-level dedup cache (extra safety beyond content.js)
+const recentCache = new Map(); // barcode -> timestamp
+const BG_DEDUP_MS = 3000;
+
 async function handleCapturedBarcode(barcode) {
   if (!config.apiUrl || !config.apiKey) return; // not configured — ignore silently
   if (config.globalCapture === false) return;
   const clean = String(barcode).replace(/\D/g, "");
   if (clean.length < 8) return;
+
+  // Strict-length re-check at background layer
+  const expected = Number(config.expectedLen) || 0;
+  const strict = config.strictMode !== false;
+  if (strict && expected > 0 && clean.length !== expected) {
+    console.debug("[FuneCob Bip] bg ignore wrong length:", clean.length, "expected", expected);
+    return;
+  }
+
+  // Background-level dedup
+  const now = Date.now();
+  const last = recentCache.get(clean);
+  if (last && (now - last) < BG_DEDUP_MS) {
+    console.debug("[FuneCob Bip] bg ignore duplicate within", BG_DEDUP_MS, "ms");
+    return;
+  }
+  recentCache.set(clean, now);
+  // Trim cache
+  if (recentCache.size > 50) {
+    const cutoff = now - BG_DEDUP_MS;
+    for (const [k, t] of recentCache) if (t < cutoff) recentCache.delete(k);
+  }
 
   const action = currentAction || "baixa";
   // Skip remarcacao for global capture (needs date selection in popup)
