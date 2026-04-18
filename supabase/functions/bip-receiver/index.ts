@@ -347,8 +347,10 @@ Deno.serve(async (req) => {
     const totalLen = config.client_id_length + config.year_length + config.month_length;
 
     if (clean.length < totalLen) {
-      return new Response(JSON.stringify({ error: "Invalid barcode format" }), {
-        status: 400,
+      // Silent ignore: barcode too short to match this org's pattern
+      console.log(`[bip-receiver] silent_ignore short_barcode len=${clean.length} required=${totalLen}`);
+      return new Response(JSON.stringify({ success: true, ignored: true, reason: "short_barcode" }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -365,8 +367,10 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!client) {
-      return new Response(JSON.stringify({ error: "Client not found", clientCode }), {
-        status: 404,
+      // Silent ignore: barcode does not match any client in this org
+      console.log(`[bip-receiver] silent_ignore client_not_found code=${clientCode}`);
+      return new Response(JSON.stringify({ success: true, ignored: true, reason: "client_not_found" }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
