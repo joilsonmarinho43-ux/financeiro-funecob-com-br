@@ -51,8 +51,10 @@ test.describe("REAL ENDPOINT — bip-receiver de produção", () => {
   });
 
   test("✅ Cenário REAL 4: SEM action — backend deve retornar ignored", async () => {
+    // Use a unique unknown barcode to bypass idempotency cache from previous tests
+    const uniqueBarcode = "8888888202604";
     // @ts-ignore
-    const r = await postBip(VALID_BARCODE, undefined as any);
+    const r = await postBip(uniqueBarcode, undefined as any);
     console.log("\n[REAL 4] NO action →", JSON.stringify(r, null, 2));
     expect(r.status).toBe(200);
     expect(r.body?.ignored).toBe(true);
