@@ -68,19 +68,22 @@ test.beforeAll(async () => {
   }
   console.log("✓ Extension service worker loaded:", serviceWorker.url());
 
-  // Pre-configure the extension storage with a known endpoint + expectedLen
+  // Pre-configure the extension storage with the EXACT shape expected by the extension:
+  //   - bipConfig:        { apiUrl, apiKey, expectedLen, strictMode, globalCapture }
+  //   - bipCurrentAction: "baixa" | "retorno" | "remarcacao"
   await serviceWorker.evaluate(async () => {
     await new Promise<void>((res) =>
       // @ts-ignore
       chrome.storage.local.set(
         {
-          endpoint: "https://mock-funecob.test/functions/v1/bip-receiver",
-          apiKey: "test-api-key",
-          action: "baixa",
-          enabled: true,
-          globalCapture: true,
-          strictMode: true,
-          expectedLen: 13,
+          bipConfig: {
+            apiUrl: "https://mock-funecob.test/functions/v1/bip-receiver",
+            apiKey: "test-api-key",
+            expectedLen: 13,
+            strictMode: true,
+            globalCapture: true,
+          },
+          bipCurrentAction: "baixa",
         },
         () => res()
       )
