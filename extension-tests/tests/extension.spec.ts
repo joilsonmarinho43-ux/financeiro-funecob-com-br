@@ -222,12 +222,12 @@ test.describe("FuneCob Bip — Extension E2E", () => {
     clearRequests();
     mockMode = "success";
 
-    // Limpa a ação no storage
+    // Limpa a ação no storage (chave correta usada pelo background.js)
     const sw = context.serviceWorkers()[0];
     await sw.evaluate(async () => {
       await new Promise<void>((res) =>
         // @ts-ignore
-        chrome.storage.local.set({ action: "" }, () => res())
+        chrome.storage.local.set({ bipCurrentAction: null }, () => res())
       );
     });
 
@@ -241,7 +241,7 @@ test.describe("FuneCob Bip — Extension E2E", () => {
     await sw.evaluate(async () => {
       await new Promise<void>((res) =>
         // @ts-ignore
-        chrome.storage.local.set({ action: "baixa" }, () => res())
+        chrome.storage.local.set({ bipCurrentAction: "baixa" }, () => res())
       );
     });
   });
