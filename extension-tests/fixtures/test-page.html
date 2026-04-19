@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Página de teste — FuneCob Bip</title>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 24px; max-width: 720px; margin: 0 auto; }
+      input, textarea { width: 100%; padding: 8px; font-size: 16px; }
+      .log { background: #111; color: #0f0; padding: 12px; height: 200px; overflow: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+      h2 { margin-top: 24px; }
+    </style>
+  </head>
+  <body>
+    <h1>Sistema legado simulado</h1>
+    <p>Esta página simula o sistema antigo onde o operador usa o leitor de código de barras.</p>
+
+    <h2>Campo de input (sistema legado)</h2>
+    <input id="legacy-input" placeholder="O leitor escreve aqui (sistema antigo)" autofocus />
+
+    <h2>Log do test harness</h2>
+    <div id="log" class="log"></div>
+
+    <script>
+      const log = (msg) => {
+        const el = document.getElementById("log");
+        el.textContent += `[${new Date().toISOString()}] ${msg}\n`;
+        el.scrollTop = el.scrollHeight;
+      };
+      window.__testLog = log;
+      log("Página de teste pronta.");
+    </script>
+  </body>
+</html>
