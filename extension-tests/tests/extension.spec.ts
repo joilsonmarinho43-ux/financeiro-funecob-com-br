@@ -47,8 +47,12 @@ test.beforeAll(async () => {
   baseUrl = await startServer();
 
   // Persistent context REQUIRED for Chrome extensions
+  // Allow overriding the chromium binary via env (useful in sandboxed envs where Playwright's
+  // bundled chromium is missing system libs like libglib).
+  const executablePath = process.env.CHROMIUM_PATH || undefined;
   context = await chromium.launchPersistentContext("", {
     headless: false,
+    executablePath,
     args: [
       `--disable-extensions-except=${EXTENSION_PATH}`,
       `--load-extension=${EXTENSION_PATH}`,
@@ -64,19 +68,22 @@ test.beforeAll(async () => {
   }
   console.log("✓ Extension service worker loaded:", serviceWorker.url());
 
-  // Pre-configure the extension storage with a known endpoint + expectedLen
+  // Pre-configure the extension storage with the EXACT shape expected by the extension:
+  //   - bipConfig:        { apiUrl, apiKey, expectedLen, strictMode, globalCapture }
+  //   - bipCurrentAction: "baixa" | "retorno" | "remarcacao"
   await serviceWorker.evaluate(async () => {
     await new Promise<void>((res) =>
       // @ts-ignore
       chrome.storage.local.set(
         {
-          endpoint: "https://mock-funecob.test/functions/v1/bip-receiver",
-          apiKey: "test-api-key",
-          action: "baixa",
-          enabled: true,
-          globalCapture: true,
-          strictMode: true,
-          expectedLen: 13,
+          bipConfig: {
+            apiUrl: "https://mock-funecob.test/functions/v1/bip-receiver",
+            apiKey: "test-api-key",
+            expectedLen: 13,
+            strictMode: true,
+            globalCapture: true,
+          },
+          bipCurrentAction: "baixa",
         },
         () => res()
       )
@@ -215,12 +222,12 @@ test.describe("FuneCob Bip — Extension E2E", () => {
     clearRequests();
     mockMode = "success";
 
-    // Limpa a ação no storage
+    // Limpa a ação no storage (chave correta usada pelo background.js)
     const sw = context.serviceWorkers()[0];
     await sw.evaluate(async () => {
       await new Promise<void>((res) =>
         // @ts-ignore
-        chrome.storage.local.set({ action: "" }, () => res())
+        chrome.storage.local.set({ bipCurrentAction: null }, () => res())
       );
     });
 
@@ -234,7 +241,7 @@ test.describe("FuneCob Bip — Extension E2E", () => {
     await sw.evaluate(async () => {
       await new Promise<void>((res) =>
         // @ts-ignore
-        chrome.storage.local.set({ action: "baixa" }, () => res())
+        chrome.storage.local.set({ bipCurrentAction: "baixa" }, () => res())
       );
     });
   });
