@@ -47,8 +47,12 @@ test.beforeAll(async () => {
   baseUrl = await startServer();
 
   // Persistent context REQUIRED for Chrome extensions
+  // Allow overriding the chromium binary via env (useful in sandboxed envs where Playwright's
+  // bundled chromium is missing system libs like libglib).
+  const executablePath = process.env.CHROMIUM_PATH || undefined;
   context = await chromium.launchPersistentContext("", {
     headless: false,
+    executablePath,
     args: [
       `--disable-extensions-except=${EXTENSION_PATH}`,
       `--load-extension=${EXTENSION_PATH}`,
