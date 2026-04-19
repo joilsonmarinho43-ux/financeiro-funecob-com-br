@@ -5,7 +5,8 @@
   "scripts": {
     "test": "playwright test",
     "test:headed": "playwright test --headed",
-    "test:debug": "PWDEBUG=1 playwright test"
+    "test:debug": "PWDEBUG=1 playwright test",
+    "test:nix": "nix run nixpkgs#xvfb-run -- -a --server-args=\"-screen 0 1280x800x24\" npx playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.47.0",
