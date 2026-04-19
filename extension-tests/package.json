@@ -1,0 +1,14 @@
+{
+  "name": "funecob-bip-extension-tests",
+  "version": "1.0.0",
+  "description": "Testes E2E reais para a extensão FuneCob Bip",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "PWDEBUG=1 playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0",
+    "playwright": "^1.47.0"
+  }
+}
