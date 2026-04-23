@@ -223,10 +223,12 @@ Deno.serve(async (req) => {
       if (client?.phone) {
         const tpl = billingSettings.template_baixa ||
           "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏";
+        const portalLink = await getOrCreatePortalLink(supabase, client.id, orgParam);
         const message = tpl
           .replace(/{nome}/g, client.name || "Cliente")
           .replace(/{valor}/g, Number(invoice.amount).toFixed(2))
-          .replace(/{data_pagamento}/g, paidDate.split("-").reverse().join("/"));
+          .replace(/{data_pagamento}/g, paidDate.split("-").reverse().join("/"))
+          .replace(/{link_portal}/g, portalLink);
 
         let directSent = false;
         if (client.collector_id) {
