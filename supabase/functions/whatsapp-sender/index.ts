@@ -25,7 +25,25 @@ const fillers = [
   " Para seu conhecimento,",
 ];
 
+// Normaliza URLs malformadas (domínios sem protocolo / com hífens em vez de pontos)
+// Garante que links do portal apareçam clicáveis no WhatsApp.
+function normalizeLinks(msg: string): string {
+  let out = msg;
+  // Caso 1: "financeiro-funecob-com-br/..." -> "https://financeiro.funecob.com.br/..."
+  out = out.replace(
+    /\b(?:https?:\/\/)?financeiro[-.]funecob[-.]com[-.]br(\/[^\s]*)?/gi,
+    (_m, path) => `https://financeiro.funecob.com.br${path || ""}`
+  );
+  // Caso 2: domínio funecob.com.br nu (sem protocolo)
+  out = out.replace(
+    /(^|[\s(])funecob\.com\.br(\/[^\s]*)?/gi,
+    (_m, pre, path) => `${pre}https://funecob.com.br${path || ""}`
+  );
+  return out;
+}
+
 function varyMessage(msg: string, level: string): string {
+  msg = normalizeLinks(msg);
   if (level === "low") return msg;
 
   const pool = greetingPools[Math.floor(Math.random() * greetingPools.length)];
