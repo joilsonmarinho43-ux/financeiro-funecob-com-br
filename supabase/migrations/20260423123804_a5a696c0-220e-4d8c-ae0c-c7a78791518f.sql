@@ -1,0 +1,1 @@
+UPDATE whatsapp_queue SET message = regexp_replace(message, 'financeiro-funecob-com-br', 'https://financeiro.funecob.com.br', 'gi') WHERE status IN ('queued','retry') AND message LIKE '%financeiro-funecob-com-br%';
