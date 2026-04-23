@@ -463,15 +463,26 @@ Deno.serve(async (req) => {
 
       let message = "";
       const paidDate = new Date().toISOString().split("T")[0];
+      const portalLink = await getOrCreatePortalLink(supabase, client.id, organizationId);
       if (action === "baixa") {
         const tpl = billingSettings?.template_baixa || "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏";
-        message = tpl.replace(/{nome}/g, client.name).replace(/{valor}/g, Number(invoice?.amount || 0).toFixed(2)).replace(/{data_pagamento}/g, paidDate);
+        message = tpl
+          .replace(/{nome}/g, client.name)
+          .replace(/{valor}/g, Number(invoice?.amount || 0).toFixed(2))
+          .replace(/{data_pagamento}/g, paidDate.split("-").reverse().join("/"))
+          .replace(/{link_portal}/g, portalLink);
       } else if (action === "remarcacao") {
         const tpl = billingSettings?.template_remarcar || "Olá {nome}! 📅\n\nSua fatura no valor de R$ {valor} foi remarcada.\nNova data de vencimento: {nova_data}\n\nQualquer dúvida, estamos à disposição!";
-        message = tpl.replace(/{nome}/g, client.name).replace(/{valor}/g, Number(invoice?.amount || 0).toFixed(2)).replace(/{nova_data}/g, new_due_date || "");
+        message = tpl
+          .replace(/{nome}/g, client.name)
+          .replace(/{valor}/g, Number(invoice?.amount || 0).toFixed(2))
+          .replace(/{nova_data}/g, new_due_date ? new_due_date.split("-").reverse().join("/") : "")
+          .replace(/{link_portal}/g, portalLink);
       } else {
         const tpl = billingSettings?.template_retorno || "Olá {nome}! 👋\n\nNosso cobrador esteve no endereço cadastrado e não encontrou ninguém.\nPor favor, entre em contato para agendar uma nova visita.";
-        message = tpl.replace(/{nome}/g, client.name);
+        message = tpl
+          .replace(/{nome}/g, client.name)
+          .replace(/{link_portal}/g, portalLink);
       }
 
       let directSent = false;
