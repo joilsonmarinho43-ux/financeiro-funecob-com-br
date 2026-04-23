@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getOrCreatePortalLink } from "../_shared/portalLink.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -125,33 +126,7 @@ Deno.serve(async (req) => {
           });
           const formattedDueDate = dueDate.split("-").reverse().join("/");
 
-          // Portal link — domínio FIXO do FuneCob.
-          // Defensivo: ignora PORTAL_BASE_URL se não for uma URL válida (http/https).
-          let portalLink = "";
-          const envPortalUrl = Deno.env.get("PORTAL_BASE_URL") || "";
-          const portalBaseUrl = /^https?:\/\//i.test(envPortalUrl)
-            ? envPortalUrl.replace(/\/+$/, "")
-            : "https://financeiro.funecob.com.br";
-          try {
-            const { data: existingToken } = await supabase
-              .from("client_portal_tokens")
-              .select("token")
-              .eq("client_id", invoice.client_id)
-              .maybeSingle();
-            if (existingToken?.token) {
-              portalLink = `${portalBaseUrl}/portal/${existingToken.token}`;
-            } else {
-              const { data: newToken } = await supabase
-                .from("client_portal_tokens")
-                .insert({ client_id: invoice.client_id, organization_id: orgId })
-                .select("token")
-                .single();
-              if (newToken?.token) portalLink = `${portalBaseUrl}/portal/${newToken.token}`;
-            }
-          } catch (e) {
-            console.error("Error generating portal token:", e);
-          }
-
+          const portalLink = await getOrCreatePortalLink(supabase, invoice.client_id, orgId);
           const portalSection = portalLink || "";
 
           const message = reminder.template

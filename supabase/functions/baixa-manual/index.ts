@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getOrCreatePortalLink } from "../_shared/portalLink.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -81,11 +82,13 @@ Deno.serve(async (req) => {
         const template =
           settings?.template_baixa ||
           "Pagamento confirmado! ✅\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}";
+        const portalLink = await getOrCreatePortalLink(supabase, clientId, organization_id);
         const message = template
           .replace(/{nome}/g, client.name || "Cliente")
           .replace(/{valor}/g, amount)
           .replace(/{data_pagamento}/g, paid_date.split("-").reverse().join("/"))
-          .replace(/{titular_pix}/g, (settings as any)?.pix_holder_name || "");
+          .replace(/{titular_pix}/g, (settings as any)?.pix_holder_name || "")
+          .replace(/{link_portal}/g, portalLink);
 
         // Get WhatsApp instance
         const { data: instance } = await supabase
