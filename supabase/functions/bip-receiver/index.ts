@@ -128,6 +128,21 @@ Deno.serve(async (req) => {
       const body = await req.json();
       console.log(`[bip-receiver] Webhook from ${providerParam} for org ${orgParam.slice(0, 8)}***`);
 
+      // Persistent log of every webhook received (audit trail)
+      const logWebhook = async (event: string, status: number, responseBody: any) => {
+        try {
+          await supabase.from("webhook_logs").insert({
+            organization_id: orgParam,
+            event: `${providerParam}.${event}`,
+            payload: body,
+            response_status: status,
+            response_body: typeof responseBody === "string" ? responseBody : JSON.stringify(responseBody),
+          });
+        } catch (e) {
+          console.error("[bip-receiver] failed to persist webhook_log:", (e as Error).message);
+        }
+      };
+
       // Verify org exists and is active
       const { data: org } = await supabase
         .from("organizations")
@@ -136,6 +151,7 @@ Deno.serve(async (req) => {
         .single();
 
       if (!org?.active) {
+        await logWebhook("rejected_inactive_org", 403, { error: "Organization not found or inactive" });
         return new Response(JSON.stringify({ error: "Organization not found or inactive" }), {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -151,6 +167,7 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (!billingSettings) {
+        await logWebhook("rejected_provider_not_configured", 400, { error: "Provider not configured" });
         return new Response(JSON.stringify({ error: "Provider not configured for this organization" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -161,6 +178,7 @@ Deno.serve(async (req) => {
       const parsed = parseWebhookPayload(providerParam, body);
       if (!parsed || !parsed.paid) {
         // Not a payment confirmation — acknowledge but do nothing
+        await logWebhook("ignored_not_payment", 200, { received: true, action: "ignored" });
         return new Response(JSON.stringify({ received: true, action: "ignored", reason: "Not a payment confirmation" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -194,6 +212,7 @@ Deno.serve(async (req) => {
 
       if (!invoice) {
         console.log(`[bip-receiver] No matching invoice found for ref=${parsed.externalId} amount=${parsed.amount}`);
+        await logWebhook("no_match", 200, { externalId: parsed.externalId, amount: parsed.amount });
         return new Response(JSON.stringify({
           received: true, action: "no_match",
           message: "Payment received but no matching open invoice found",
@@ -281,6 +300,7 @@ Deno.serve(async (req) => {
         }
       }
 
+      await logWebhook("baixa_automatica", 200, { invoice_id: invoice.id, client: client?.name, amount: invoice.amount });
       return new Response(JSON.stringify({
         success: true,
         provider: providerParam,
