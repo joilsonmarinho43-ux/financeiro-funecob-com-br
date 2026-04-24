@@ -128,6 +128,21 @@ Deno.serve(async (req) => {
       const body = await req.json();
       console.log(`[bip-receiver] Webhook from ${providerParam} for org ${orgParam.slice(0, 8)}***`);
 
+      // Persistent log of every webhook received (audit trail)
+      const logWebhook = async (event: string, status: number, responseBody: any) => {
+        try {
+          await supabase.from("webhook_logs").insert({
+            organization_id: orgParam,
+            event: `${providerParam}.${event}`,
+            payload: body,
+            response_status: status,
+            response_body: typeof responseBody === "string" ? responseBody : JSON.stringify(responseBody),
+          });
+        } catch (e) {
+          console.error("[bip-receiver] failed to persist webhook_log:", (e as Error).message);
+        }
+      };
+
       // Verify org exists and is active
       const { data: org } = await supabase
         .from("organizations")
