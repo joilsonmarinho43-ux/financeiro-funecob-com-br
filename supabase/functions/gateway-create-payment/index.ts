@@ -26,23 +26,44 @@ async function createMercadoPagoPayment(opts: {
   payerEmail?: string;
   payerName?: string;
 }): Promise<CreatePaymentResult> {
-  const body = {
+  // MP exige valor mínimo de R$ 0,50 para checkout
+  const amount = Math.max(Number(opts.amount), 0.5);
+
+  // Validar email - MP rejeita emails de teste tipo "test@test.com" ou inválidos
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const validEmail = opts.payerEmail && emailRegex.test(opts.payerEmail) && !opts.payerEmail.includes("test@") ? opts.payerEmail : undefined;
+
+  // Sanitizar título (MP limita a 256 chars e rejeita caracteres especiais excessivos)
+  const title = (opts.description || "Pagamento de fatura").slice(0, 250);
+
+  const payerObj: Record<string, string> = {};
+  if (validEmail) payerObj.email = validEmail;
+  if (opts.payerName) {
+    const parts = opts.payerName.trim().split(/\s+/);
+    payerObj.name = parts[0] || "Cliente";
+    if (parts.length > 1) payerObj.surname = parts.slice(1).join(" ");
+  }
+
+  const body: any = {
     items: [
       {
         id: opts.invoiceId,
-        title: opts.description || "Pagamento de fatura",
+        title,
         quantity: 1,
-        unit_price: Number(opts.amount),
+        unit_price: amount,
         currency_id: "BRL",
       },
     ],
     external_reference: opts.invoiceId,
-    payer: opts.payerEmail || opts.payerName ? {
-      email: opts.payerEmail || undefined,
-      name: opts.payerName || undefined,
-    } : undefined,
     metadata: { invoice_id: opts.invoiceId },
+    payment_methods: {
+      installments: 12,
+    },
   };
+
+  if (Object.keys(payerObj).length > 0) {
+    body.payer = payerObj;
+  }
 
   const res = await fetch("https://api.mercadopago.com/checkout/preferences", {
     method: "POST",
