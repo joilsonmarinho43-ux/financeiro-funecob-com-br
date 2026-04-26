@@ -75,10 +75,10 @@ Deno.serve(async (req) => {
         (sentToday || []).map((s: any) => `${s.invoice_id}:${s.reminder_type}`)
       );
 
-      // Build pix/link info
-      const buildPixOrLink = () => {
+      // Build pix/link info — gateway returns null so we generate per-invoice link below
+      const buildPixOrLinkStatic = (): string | null => {
         if (settings.billing_mode === "gateway" && settings.gateway_provider) {
-          return "💳 *Pagamento automático:* Seu link/boleto de pagamento foi gerado automaticamente pelo sistema. Caso não tenha recebido, entre em contato.";
+          return null; // gerado dinamicamente por fatura
         }
         if (settings.billing_mode === "pix_direto" && settings.pix_key) {
           const typeMap: Record<string, string> = {
@@ -90,7 +90,30 @@ Deno.serve(async (req) => {
         return "Entre em contato para informações de pagamento.";
       };
 
-      const pixOrLink = buildPixOrLink();
+      const staticPixOrLink = buildPixOrLinkStatic();
+
+      // Generate real gateway payment link for an invoice (with cache)
+      const getGatewayLink = async (invoiceId: string): Promise<string> => {
+        try {
+          const res = await fetch(`${supabaseUrl}/functions/v1/gateway-create-payment`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${serviceRoleKey}`,
+            },
+            body: JSON.stringify({ invoice_id: invoiceId, organization_id: orgId }),
+          });
+          const data = await res.json();
+          if (data?.success && data?.payment_url) {
+            return `💳 *Pague aqui:* ${data.payment_url}`;
+          }
+          console.error(`[billing-cron] gateway link failed for invoice ${invoiceId}:`, data?.error);
+          return "💳 Link de pagamento será enviado em instantes. Em caso de urgência, entre em contato.";
+        } catch (e) {
+          console.error(`[billing-cron] gateway fetch error:`, e);
+          return "💳 Link de pagamento indisponível no momento. Entre em contato.";
+        }
+      };
 
       for (const invoice of invoices) {
         const client = invoice.clients as any;
@@ -128,6 +151,9 @@ Deno.serve(async (req) => {
 
           const portalLink = await getOrCreatePortalLink(supabase, invoice.client_id, orgId);
           const portalSection = portalLink || "";
+
+          // Resolve payment link: gateway dynamic OR static pix
+          const pixOrLink = staticPixOrLink ?? await getGatewayLink(invoice.id);
 
           const message = reminder.template
             .replace(/{nome}/g, client.name || "Cliente")
