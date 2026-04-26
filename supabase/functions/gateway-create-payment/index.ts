@@ -151,10 +151,19 @@ Deno.serve(async (req) => {
     const client = (invoice as any).clients;
     let result: CreatePaymentResult;
 
+    // Normalize API key: accept raw token OR JSON like {"access_token":"..."}
+    let apiKey = String(settings.gateway_api_key).trim();
+    if (apiKey.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(apiKey);
+        apiKey = parsed.access_token || parsed.token || parsed.api_key || apiKey;
+      } catch { /* keep original */ }
+    }
+
     switch (settings.gateway_provider) {
       case "mercadopago":
         result = await createMercadoPagoPayment({
-          accessToken: settings.gateway_api_key,
+          accessToken: apiKey,
           invoiceId: invoice.id,
           amount: Number(invoice.amount),
           description: invoice.description || "Pagamento de fatura",
