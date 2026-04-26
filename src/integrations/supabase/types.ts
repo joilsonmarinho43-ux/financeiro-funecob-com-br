@@ -391,6 +391,9 @@ export type Database = {
           id: string
           organization_id: string | null
           paid_date: string | null
+          payment_link: string | null
+          payment_link_external_id: string | null
+          payment_link_provider: string | null
           plan_id: string | null
           status: string
           updated_at: string
@@ -404,6 +407,9 @@ export type Database = {
           id?: string
           organization_id?: string | null
           paid_date?: string | null
+          payment_link?: string | null
+          payment_link_external_id?: string | null
+          payment_link_provider?: string | null
           plan_id?: string | null
           status?: string
           updated_at?: string
@@ -417,6 +423,9 @@ export type Database = {
           id?: string
           organization_id?: string | null
           paid_date?: string | null
+          payment_link?: string | null
+          payment_link_external_id?: string | null
+          payment_link_provider?: string | null
           plan_id?: string | null
           status?: string
           updated_at?: string
