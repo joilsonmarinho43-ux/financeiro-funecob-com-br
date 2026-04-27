@@ -310,6 +310,7 @@ export default function AdminPanel() {
                 <SelectContent>
                   <SelectItem value="funeraria">Funerária</SelectItem>
                   <SelectItem value="crediario">Crediário</SelectItem>
+                  <SelectItem value="loja">Loja</SelectItem>
                 </SelectContent>
               </Select>
             </div>
