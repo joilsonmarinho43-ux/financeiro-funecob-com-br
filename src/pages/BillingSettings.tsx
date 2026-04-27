@@ -91,19 +91,31 @@ export default function BillingSettings() {
   const [reminderDaysBefore, setReminderDaysBefore] = useState(2);
   const [reminderDaysBefore2, setReminderDaysBefore2] = useState(1);
   const [reminderDaysAfter, setReminderDaysAfter] = useState(1);
+  const [reminderDaysCritical, setReminderDaysCritical] = useState(7);
   const [robotScheduleTime, setRobotScheduleTime] = useState("08:00");
   const [robotSendInterval, setRobotSendInterval] = useState("2");
   const [templateReminder, setTemplateReminder] = useState(DEFAULT_TEMPLATES.reminder);
   const [templateDueDate, setTemplateDueDate] = useState(DEFAULT_TEMPLATES.due_date);
   const [templateOverdue, setTemplateOverdue] = useState(DEFAULT_TEMPLATES.overdue);
+  const [templateCritical, setTemplateCritical] = useState(TONE_PRESETS.critical.profissional);
   const [templateBaixa, setTemplateBaixa] = useState(DEFAULT_TEMPLATES.baixa);
   const [templateRetorno, setTemplateRetorno] = useState(DEFAULT_TEMPLATES.retorno);
   const [templateRemarcar, setTemplateRemarcar] = useState(DEFAULT_TEMPLATES.remarcar);
+
+  const applyTone = (kind: TemplateKind, tone: ToneKind) => {
+    const text = TONE_PRESETS[kind][tone];
+    if (kind === "reminder") setTemplateReminder(text);
+    else if (kind === "due_date") setTemplateDueDate(text);
+    else if (kind === "overdue") setTemplateOverdue(text);
+    else if (kind === "critical") setTemplateCritical(text);
+    toast({ title: `Tom "${TONE_LABELS[tone].label}" aplicado`, description: "Lembre de salvar para confirmar." });
+  };
 
   const resetTemplates = () => {
     setTemplateReminder(DEFAULT_TEMPLATES.reminder);
     setTemplateDueDate(DEFAULT_TEMPLATES.due_date);
     setTemplateOverdue(DEFAULT_TEMPLATES.overdue);
+    setTemplateCritical(TONE_PRESETS.critical.profissional);
     setTemplateBaixa(DEFAULT_TEMPLATES.baixa);
     setTemplateRetorno(DEFAULT_TEMPLATES.retorno);
     setTemplateRemarcar(DEFAULT_TEMPLATES.remarcar);
