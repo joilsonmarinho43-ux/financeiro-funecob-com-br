@@ -23,8 +23,9 @@ import {
   Save, Zap, Key, MessageSquare, Clock, Bell, BellRing,
   AlertTriangle, CheckCircle2, XCircle, Loader2, CreditCard,
   QrCode, Settings2, FileText, Activity, TrendingUp, RefreshCw,
-  Send, BarChart3, Link2, Copy, ExternalLink, Shield,
+  Send, BarChart3, Link2, Copy, ExternalLink, Shield, Flame, Sparkles,
 } from "lucide-react";
+import { TONE_PRESETS, TONE_LABELS, detectTone, type TemplateKind, type ToneKind } from "@/lib/templateTones";
 
 const GATEWAY_PROVIDERS = [
   { id: "asaas", name: "Asaas", desc: "Boleto, PIX e cartão", fields: ["api_key"] },
