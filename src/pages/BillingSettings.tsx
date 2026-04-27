@@ -244,9 +244,11 @@ export default function BillingSettings() {
       setReminderDaysBefore(settings.reminder_days_before);
       setReminderDaysBefore2((settings as any).reminder_days_before_2 ?? 1);
       setReminderDaysAfter((settings as any).reminder_days_after ?? 1);
+      setReminderDaysCritical((settings as any).reminder_days_critical ?? 7);
       setTemplateReminder(settings.template_reminder);
       setTemplateDueDate(settings.template_due_date);
       setTemplateOverdue(settings.template_overdue);
+      if ((settings as any).template_critical) setTemplateCritical((settings as any).template_critical);
       if ((settings as any).template_baixa) setTemplateBaixa((settings as any).template_baixa);
       if ((settings as any).template_retorno) setTemplateRetorno((settings as any).template_retorno);
       if ((settings as any).template_remarcar) setTemplateRemarcar((settings as any).template_remarcar);
