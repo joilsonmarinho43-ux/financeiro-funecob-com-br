@@ -23,8 +23,9 @@ import {
   Save, Zap, Key, MessageSquare, Clock, Bell, BellRing,
   AlertTriangle, CheckCircle2, XCircle, Loader2, CreditCard,
   QrCode, Settings2, FileText, Activity, TrendingUp, RefreshCw,
-  Send, BarChart3, Link2, Copy, ExternalLink, Shield,
+  Send, BarChart3, Link2, Copy, ExternalLink, Shield, Flame, Sparkles,
 } from "lucide-react";
+import { TONE_PRESETS, TONE_LABELS, detectTone, type TemplateKind, type ToneKind } from "@/lib/templateTones";
 
 const GATEWAY_PROVIDERS = [
   { id: "asaas", name: "Asaas", desc: "Boleto, PIX e cartão", fields: ["api_key"] },
@@ -90,19 +91,31 @@ export default function BillingSettings() {
   const [reminderDaysBefore, setReminderDaysBefore] = useState(2);
   const [reminderDaysBefore2, setReminderDaysBefore2] = useState(1);
   const [reminderDaysAfter, setReminderDaysAfter] = useState(1);
+  const [reminderDaysCritical, setReminderDaysCritical] = useState(7);
   const [robotScheduleTime, setRobotScheduleTime] = useState("08:00");
   const [robotSendInterval, setRobotSendInterval] = useState("2");
   const [templateReminder, setTemplateReminder] = useState(DEFAULT_TEMPLATES.reminder);
   const [templateDueDate, setTemplateDueDate] = useState(DEFAULT_TEMPLATES.due_date);
   const [templateOverdue, setTemplateOverdue] = useState(DEFAULT_TEMPLATES.overdue);
+  const [templateCritical, setTemplateCritical] = useState(TONE_PRESETS.critical.profissional);
   const [templateBaixa, setTemplateBaixa] = useState(DEFAULT_TEMPLATES.baixa);
   const [templateRetorno, setTemplateRetorno] = useState(DEFAULT_TEMPLATES.retorno);
   const [templateRemarcar, setTemplateRemarcar] = useState(DEFAULT_TEMPLATES.remarcar);
+
+  const applyTone = (kind: TemplateKind, tone: ToneKind) => {
+    const text = TONE_PRESETS[kind][tone];
+    if (kind === "reminder") setTemplateReminder(text);
+    else if (kind === "due_date") setTemplateDueDate(text);
+    else if (kind === "overdue") setTemplateOverdue(text);
+    else if (kind === "critical") setTemplateCritical(text);
+    toast({ title: `Tom "${TONE_LABELS[tone].label}" aplicado`, description: "Lembre de salvar para confirmar." });
+  };
 
   const resetTemplates = () => {
     setTemplateReminder(DEFAULT_TEMPLATES.reminder);
     setTemplateDueDate(DEFAULT_TEMPLATES.due_date);
     setTemplateOverdue(DEFAULT_TEMPLATES.overdue);
+    setTemplateCritical(TONE_PRESETS.critical.profissional);
     setTemplateBaixa(DEFAULT_TEMPLATES.baixa);
     setTemplateRetorno(DEFAULT_TEMPLATES.retorno);
     setTemplateRemarcar(DEFAULT_TEMPLATES.remarcar);
@@ -231,9 +244,11 @@ export default function BillingSettings() {
       setReminderDaysBefore(settings.reminder_days_before);
       setReminderDaysBefore2((settings as any).reminder_days_before_2 ?? 1);
       setReminderDaysAfter((settings as any).reminder_days_after ?? 1);
+      setReminderDaysCritical((settings as any).reminder_days_critical ?? 7);
       setTemplateReminder(settings.template_reminder);
       setTemplateDueDate(settings.template_due_date);
       setTemplateOverdue(settings.template_overdue);
+      if ((settings as any).template_critical) setTemplateCritical((settings as any).template_critical);
       if ((settings as any).template_baixa) setTemplateBaixa((settings as any).template_baixa);
       if ((settings as any).template_retorno) setTemplateRetorno((settings as any).template_retorno);
       if ((settings as any).template_remarcar) setTemplateRemarcar((settings as any).template_remarcar);
@@ -261,9 +276,11 @@ export default function BillingSettings() {
         reminder_days_before: reminderDaysBefore,
         reminder_days_before_2: reminderDaysBefore2,
         reminder_days_after: reminderDaysAfter,
+        reminder_days_critical: reminderDaysCritical,
         template_reminder: templateReminder,
         template_due_date: templateDueDate,
         template_overdue: templateOverdue,
+        template_critical: templateCritical,
         template_baixa: templateBaixa,
         template_retorno: templateRetorno,
         template_remarcar: templateRemarcar,
@@ -297,8 +314,10 @@ export default function BillingSettings() {
   const reminderTypeBadge = (type: string) => {
     const map: Record<string, { cls: string; label: string }> = {
       reminder: { cls: "bg-primary/10 text-primary border-0", label: "Lembrete" },
+      reminder_2: { cls: "bg-primary/10 text-primary border-0", label: "Lembrete 2" },
       due_date: { cls: "bg-warning/10 text-warning border-0", label: "Vencimento" },
       overdue: { cls: "bg-destructive/10 text-destructive border-0", label: "Atraso" },
+      critical: { cls: "bg-destructive/20 text-destructive border-0 font-semibold", label: "Crítico" },
     };
     const s = map[type] || { cls: "bg-muted text-muted-foreground border-0", label: type };
     return <Badge className={s.cls}>{s.label}</Badge>;
@@ -998,6 +1017,7 @@ export default function BillingSettings() {
                 setter: setTemplateReminder,
                 desc: `Enviado ${reminderDaysBefore} dia(s) antes do vencimento`,
                 cls: "text-primary",
+                kind: "reminder" as TemplateKind,
               },
               {
                 label: "Vencimento (no dia)",
@@ -1006,14 +1026,26 @@ export default function BillingSettings() {
                 setter: setTemplateDueDate,
                 desc: "Enviado no dia do vencimento com link/chave Pix",
                 cls: "text-warning",
+                kind: "due_date" as TemplateKind,
               },
               {
                 label: "Atraso (após vencimento)",
                 icon: XCircle,
                 value: templateOverdue,
                 setter: setTemplateOverdue,
-                desc: "Enviado quando a fatura está vencida",
+                desc: `Enviado ${reminderDaysAfter} dia(s) após o vencimento`,
                 cls: "text-destructive",
+                kind: "overdue" as TemplateKind,
+              },
+              {
+                label: "Atraso Crítico",
+                icon: Flame,
+                value: templateCritical,
+                setter: setTemplateCritical,
+                desc: `Enviado ${reminderDaysCritical} dia(s) após o vencimento — última cobrança automática`,
+                cls: "text-destructive",
+                kind: "critical" as TemplateKind,
+                showCriticalDays: true,
               },
               {
                 label: "Baixa (pagamento confirmado)",
@@ -1039,24 +1071,78 @@ export default function BillingSettings() {
                 desc: "Enviado quando a fatura é remarcada para nova data",
                 cls: "text-primary",
               },
-            ].map((t) => (
-              <Card key={t.label} className="border-0 shadow-sm">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <t.icon className={`h-4 w-4 ${t.cls}`} /> {t.label}
-                  </CardTitle>
-                  <CardDescription className="text-xs">{t.desc}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Textarea
-                    value={t.value}
-                    onChange={(e) => t.setter(e.target.value)}
-                    rows={3}
-                    className="font-mono text-sm"
-                  />
-                </CardContent>
-              </Card>
-            ))}
+            ].map((t) => {
+              const currentTone = t.kind ? detectTone(t.value, t.kind) : null;
+              return (
+                <Card key={t.label} className="border-0 shadow-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <t.icon className={`h-4 w-4 ${t.cls}`} /> {t.label}
+                    </CardTitle>
+                    <CardDescription className="text-xs">{t.desc}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {t.showCriticalDays && (
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs whitespace-nowrap">Disparar após:</Label>
+                        <Select
+                          value={String(reminderDaysCritical)}
+                          onValueChange={(v) => setReminderDaysCritical(parseInt(v))}
+                        >
+                          <SelectTrigger className="h-8 w-[140px] text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[3, 5, 7, 10, 15, 20, 30].map((d) => (
+                              <SelectItem key={d} value={String(d)}>
+                                {d} dias após venc.
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {t.kind && (
+                      <div className="rounded-md border border-border bg-muted/30 p-2.5">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Sparkles className="h-3.5 w-3.5 text-primary" />
+                          <span className="text-xs font-medium text-foreground">
+                            Tom da mensagem
+                          </span>
+                          {currentTone && (
+                            <Badge variant="outline" className="text-[10px] py-0 h-4">
+                              atual: {TONE_LABELS[currentTone].label}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {(Object.keys(TONE_LABELS) as ToneKind[]).map((tone) => (
+                            <Button
+                              key={tone}
+                              type="button"
+                              size="sm"
+                              variant={currentTone === tone ? "default" : "outline"}
+                              className="h-8 text-xs"
+                              onClick={() => applyTone(t.kind!, tone)}
+                              title={TONE_LABELS[tone].desc}
+                            >
+                              <span className="mr-1">{TONE_LABELS[tone].emoji}</span>
+                              {TONE_LABELS[tone].label}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <Textarea
+                      value={t.value}
+                      onChange={(e) => t.setter(e.target.value)}
+                      rows={6}
+                      className="font-mono text-sm"
+                    />
+                  </CardContent>
+                </Card>
+              );
+            })}
 
             <div className="flex justify-between">
               <Button

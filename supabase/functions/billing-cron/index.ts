@@ -51,6 +51,10 @@ Deno.serve(async (req) => {
       overdueDate.setDate(overdueDate.getDate() - (settings.reminder_days_after || 1));
       const overdueDateStr = overdueDate.toISOString().split("T")[0];
 
+      const criticalDate = new Date(today);
+      criticalDate.setDate(criticalDate.getDate() - (settings.reminder_days_critical || 7));
+      const criticalDateStr = criticalDate.toISOString().split("T")[0];
+
       // Get open invoices
       const { data: invoices, error: invErr } = await supabase
         .from("invoices")
@@ -137,6 +141,10 @@ Deno.serve(async (req) => {
         // Overdue — send if due_date matches the overdue threshold
         if (dueDate === overdueDateStr) {
           remindersToSend.push({ type: "overdue", template: settings.template_overdue });
+        }
+        // Critical — last automatic reminder, sent N days after due date
+        if (dueDate === criticalDateStr && criticalDateStr !== overdueDateStr) {
+          remindersToSend.push({ type: "critical", template: settings.template_critical || settings.template_overdue });
         }
 
         for (const reminder of remindersToSend) {

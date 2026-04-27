@@ -118,8 +118,10 @@ export type Database = {
           reminder_days_after: number
           reminder_days_before: number
           reminder_days_before_2: number
+          reminder_days_critical: number
           reminder_enabled: boolean
           template_baixa: string
+          template_critical: string
           template_due_date: string
           template_overdue: string
           template_remarcar: string
@@ -141,8 +143,10 @@ export type Database = {
           reminder_days_after?: number
           reminder_days_before?: number
           reminder_days_before_2?: number
+          reminder_days_critical?: number
           reminder_enabled?: boolean
           template_baixa?: string
+          template_critical?: string
           template_due_date?: string
           template_overdue?: string
           template_remarcar?: string
@@ -164,8 +168,10 @@ export type Database = {
           reminder_days_after?: number
           reminder_days_before?: number
           reminder_days_before_2?: number
+          reminder_days_critical?: number
           reminder_enabled?: boolean
           template_baixa?: string
+          template_critical?: string
           template_due_date?: string
           template_overdue?: string
           template_remarcar?: string
