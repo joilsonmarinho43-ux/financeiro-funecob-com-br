@@ -30,10 +30,27 @@ const CREDIARIO_TERMS = {
   receipt: "Recibo",
 };
 
+const LOJA_TERMS = {
+  plan: "Plano de Pagamento",
+  plans: "Planos de Pagamento",
+  invoice: "Cobrança",
+  invoices: "Cobranças",
+  client: "Cliente",
+  clients: "Clientes",
+  dependent: "Contato",
+  dependents: "Contatos",
+  event: "Venda",
+  installment: "Parcela",
+  creditLimit: "Limite de Crédito",
+  receipt: "Recibo",
+};
+
 export type NicheTerms = typeof FUNERARIA_TERMS;
 
 export function useNicheTerms(): NicheTerms {
   const { organization } = useOrganization();
   const niche = (organization as any)?.niche || "funeraria";
-  return niche === "crediario" ? CREDIARIO_TERMS : FUNERARIA_TERMS;
+  if (niche === "crediario") return CREDIARIO_TERMS;
+  if (niche === "loja") return LOJA_TERMS;
+  return FUNERARIA_TERMS;
 }
