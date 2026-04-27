@@ -314,8 +314,10 @@ export default function BillingSettings() {
   const reminderTypeBadge = (type: string) => {
     const map: Record<string, { cls: string; label: string }> = {
       reminder: { cls: "bg-primary/10 text-primary border-0", label: "Lembrete" },
+      reminder_2: { cls: "bg-primary/10 text-primary border-0", label: "Lembrete 2" },
       due_date: { cls: "bg-warning/10 text-warning border-0", label: "Vencimento" },
       overdue: { cls: "bg-destructive/10 text-destructive border-0", label: "Atraso" },
+      critical: { cls: "bg-destructive/20 text-destructive border-0 font-semibold", label: "Crítico" },
     };
     const s = map[type] || { cls: "bg-muted text-muted-foreground border-0", label: type };
     return <Badge className={s.cls}>{s.label}</Badge>;
