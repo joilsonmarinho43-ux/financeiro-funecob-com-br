@@ -51,6 +51,10 @@ Deno.serve(async (req) => {
       overdueDate.setDate(overdueDate.getDate() - (settings.reminder_days_after || 1));
       const overdueDateStr = overdueDate.toISOString().split("T")[0];
 
+      const criticalDate = new Date(today);
+      criticalDate.setDate(criticalDate.getDate() - (settings.reminder_days_critical || 7));
+      const criticalDateStr = criticalDate.toISOString().split("T")[0];
+
       // Get open invoices
       const { data: invoices, error: invErr } = await supabase
         .from("invoices")
