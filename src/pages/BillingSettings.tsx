@@ -1015,6 +1015,7 @@ export default function BillingSettings() {
                 setter: setTemplateReminder,
                 desc: `Enviado ${reminderDaysBefore} dia(s) antes do vencimento`,
                 cls: "text-primary",
+                kind: "reminder" as TemplateKind,
               },
               {
                 label: "Vencimento (no dia)",
@@ -1023,14 +1024,26 @@ export default function BillingSettings() {
                 setter: setTemplateDueDate,
                 desc: "Enviado no dia do vencimento com link/chave Pix",
                 cls: "text-warning",
+                kind: "due_date" as TemplateKind,
               },
               {
                 label: "Atraso (após vencimento)",
                 icon: XCircle,
                 value: templateOverdue,
                 setter: setTemplateOverdue,
-                desc: "Enviado quando a fatura está vencida",
+                desc: `Enviado ${reminderDaysAfter} dia(s) após o vencimento`,
                 cls: "text-destructive",
+                kind: "overdue" as TemplateKind,
+              },
+              {
+                label: "Atraso Crítico",
+                icon: Flame,
+                value: templateCritical,
+                setter: setTemplateCritical,
+                desc: `Enviado ${reminderDaysCritical} dia(s) após o vencimento — última cobrança automática`,
+                cls: "text-destructive",
+                kind: "critical" as TemplateKind,
+                showCriticalDays: true,
               },
               {
                 label: "Baixa (pagamento confirmado)",
@@ -1056,24 +1069,78 @@ export default function BillingSettings() {
                 desc: "Enviado quando a fatura é remarcada para nova data",
                 cls: "text-primary",
               },
-            ].map((t) => (
-              <Card key={t.label} className="border-0 shadow-sm">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <t.icon className={`h-4 w-4 ${t.cls}`} /> {t.label}
-                  </CardTitle>
-                  <CardDescription className="text-xs">{t.desc}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Textarea
-                    value={t.value}
-                    onChange={(e) => t.setter(e.target.value)}
-                    rows={3}
-                    className="font-mono text-sm"
-                  />
-                </CardContent>
-              </Card>
-            ))}
+            ].map((t) => {
+              const currentTone = t.kind ? detectTone(t.value, t.kind) : null;
+              return (
+                <Card key={t.label} className="border-0 shadow-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <t.icon className={`h-4 w-4 ${t.cls}`} /> {t.label}
+                    </CardTitle>
+                    <CardDescription className="text-xs">{t.desc}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {t.showCriticalDays && (
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs whitespace-nowrap">Disparar após:</Label>
+                        <Select
+                          value={String(reminderDaysCritical)}
+                          onValueChange={(v) => setReminderDaysCritical(parseInt(v))}
+                        >
+                          <SelectTrigger className="h-8 w-[140px] text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[3, 5, 7, 10, 15, 20, 30].map((d) => (
+                              <SelectItem key={d} value={String(d)}>
+                                {d} dias após venc.
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {t.kind && (
+                      <div className="rounded-md border border-border bg-muted/30 p-2.5">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Sparkles className="h-3.5 w-3.5 text-primary" />
+                          <span className="text-xs font-medium text-foreground">
+                            Tom da mensagem
+                          </span>
+                          {currentTone && (
+                            <Badge variant="outline" className="text-[10px] py-0 h-4">
+                              atual: {TONE_LABELS[currentTone].label}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {(Object.keys(TONE_LABELS) as ToneKind[]).map((tone) => (
+                            <Button
+                              key={tone}
+                              type="button"
+                              size="sm"
+                              variant={currentTone === tone ? "default" : "outline"}
+                              className="h-8 text-xs"
+                              onClick={() => applyTone(t.kind!, tone)}
+                              title={TONE_LABELS[tone].desc}
+                            >
+                              <span className="mr-1">{TONE_LABELS[tone].emoji}</span>
+                              {TONE_LABELS[tone].label}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <Textarea
+                      value={t.value}
+                      onChange={(e) => t.setter(e.target.value)}
+                      rows={6}
+                      className="font-mono text-sm"
+                    />
+                  </CardContent>
+                </Card>
+              );
+            })}
 
             <div className="flex justify-between">
               <Button
