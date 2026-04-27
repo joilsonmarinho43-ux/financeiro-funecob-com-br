@@ -142,6 +142,10 @@ Deno.serve(async (req) => {
         if (dueDate === overdueDateStr) {
           remindersToSend.push({ type: "overdue", template: settings.template_overdue });
         }
+        // Critical — last automatic reminder, sent N days after due date
+        if (dueDate === criticalDateStr && criticalDateStr !== overdueDateStr) {
+          remindersToSend.push({ type: "critical", template: settings.template_critical || settings.template_overdue });
+        }
 
         for (const reminder of remindersToSend) {
           const key = `${invoice.id}:${reminder.type}`;
