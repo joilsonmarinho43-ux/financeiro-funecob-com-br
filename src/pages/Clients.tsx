@@ -126,6 +126,15 @@ export default function Clients() {
     enabled: !!editingClient,
   });
 
+  // Pré-preenche o plano da próxima fatura ao editar
+  useEffect(() => {
+    if (editingClient && editNextInvoice && !form.plan_id) {
+      const planId = (editNextInvoice as any).plan_id || "";
+      if (planId) setForm((f) => ({ ...f, plan_id: planId }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editNextInvoice?.id]);
+
   const selectedPlan = plans.find((p) => p.id === form.plan_id);
   const invoiceAmount = form.custom_value
     ? parseFloat(form.custom_value)
