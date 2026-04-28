@@ -232,42 +232,45 @@ export default function Settings() {
             <CardDescription>Personalize as cores do sistema da sua empresa</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label>Cor Primária</Label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={primaryColor}
-                    onChange={(e) => setPrimaryColor(e.target.value)}
-                    className="h-10 w-10 rounded-lg border border-border cursor-pointer"
-                  />
-                  <Input
-                    value={primaryColor}
-                    onChange={(e) => setPrimaryColor(e.target.value)}
-                    className="font-mono text-sm"
-                    maxLength={7}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Cor Secundária</Label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={secondaryColor}
-                    onChange={(e) => setSecondaryColor(e.target.value)}
-                    className="h-10 w-10 rounded-lg border border-border cursor-pointer"
-                  />
-                  <Input
-                    value={secondaryColor}
-                    onChange={(e) => setSecondaryColor(e.target.value)}
-                    className="font-mono text-sm"
-                    maxLength={7}
-                  />
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <ColorPickerField
+                label="Cor Primária"
+                value={primaryColor}
+                onChange={setPrimaryColor}
+                presets={PRIMARY_PRESETS}
+              />
+              <ColorPickerField
+                label="Cor Secundária"
+                value={secondaryColor}
+                onChange={setSecondaryColor}
+                presets={SECONDARY_PRESETS}
+              />
+            </div>
+
+            {/* Combos rápidos */}
+            <div className="mt-6">
+              <p className="text-xs font-medium text-muted-foreground mb-2">Combinações prontas</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {COLOR_COMBOS.map((combo) => {
+                  const active = primaryColor.toLowerCase() === combo.primary.toLowerCase() && secondaryColor.toLowerCase() === combo.secondary.toLowerCase();
+                  return (
+                    <button
+                      key={combo.name}
+                      type="button"
+                      onClick={() => { setPrimaryColor(combo.primary); setSecondaryColor(combo.secondary); }}
+                      className={`group flex flex-col items-stretch gap-1 p-2 rounded-lg border transition-all ${active ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-primary/50"}`}
+                    >
+                      <div className="flex h-8 rounded-md overflow-hidden">
+                        <div className="flex-1" style={{ background: combo.primary }} />
+                        <div className="flex-1" style={{ background: combo.secondary }} />
+                      </div>
+                      <span className="text-[11px] text-foreground/80 truncate">{combo.name}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
+
             {/* Preview */}
             <div className="mt-4 p-4 rounded-lg border border-border">
               <p className="text-xs text-muted-foreground mb-2">Pré-visualização</p>
@@ -736,5 +739,76 @@ tabs.forEach(tab => {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ===== Color presets & combos =====
+const PRIMARY_PRESETS = [
+  "#0ea5e9", "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#ec4899",
+  "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16", "#22c55e",
+  "#10b981", "#14b8a6", "#06b6d4", "#52a35f", "#0d9488", "#7c3aed",
+];
+
+const SECONDARY_PRESETS = [
+  "#0f172a", "#1e293b", "#334155", "#475569", "#1f2937", "#111827",
+  "#18181b", "#27272a", "#3f3f46", "#0c4a6e", "#1e3a8a", "#312e81",
+  "#581c87", "#831843", "#7f1d1d", "#78350f", "#365314", "#064e3b",
+];
+
+const COLOR_COMBOS: { name: string; primary: string; secondary: string }[] = [
+  { name: "Oceano", primary: "#0ea5e9", secondary: "#0f172a" },
+  { name: "Esmeralda", primary: "#10b981", secondary: "#064e3b" },
+  { name: "Sunset", primary: "#f97316", secondary: "#1f2937" },
+  { name: "Royal", primary: "#6366f1", secondary: "#1e1b4b" },
+  { name: "Rosé", primary: "#ec4899", secondary: "#831843" },
+  { name: "Floresta", primary: "#52a35f", secondary: "#1e293b" },
+  { name: "Rubi", primary: "#ef4444", secondary: "#111827" },
+  { name: "Dourado", primary: "#f59e0b", secondary: "#27272a" },
+];
+
+function ColorPickerField({
+  label,
+  value,
+  onChange,
+  presets,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  presets: string[];
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-10 w-12 rounded-lg border border-border cursor-pointer flex-shrink-0"
+        />
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="font-mono text-sm uppercase"
+          maxLength={7}
+        />
+      </div>
+      <div className="grid grid-cols-9 gap-1.5 pt-1">
+        {presets.map((c) => {
+          const active = value.toLowerCase() === c.toLowerCase();
+          return (
+            <button
+              key={c}
+              type="button"
+              title={c}
+              onClick={() => onChange(c)}
+              className={`h-7 w-full rounded-md border-2 transition-transform hover:scale-110 ${active ? "border-foreground ring-2 ring-primary/40 scale-110" : "border-border/50"}`}
+              style={{ background: c }}
+            />
+          );
+        })}
+      </div>
+    </div>
   );
 }
