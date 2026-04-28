@@ -22,6 +22,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Shield, Users, Calendar, Search, Edit2, Plus, Building2, Ban, CheckCircle } from "lucide-react";
+import { NichePreview } from "@/components/NichePreview";
 
 const PLAN_DURATIONS: Record<string, number> = {
   "3_dias": 3, "30_dias": 30, "90_dias": 90, "180_dias": 180, "365_dias": 365,
