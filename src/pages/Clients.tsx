@@ -159,12 +159,23 @@ export default function Clients() {
           .eq("id", editingClient.id);
         if (error) throw error;
 
-        // Update next invoice due date if changed
-        if (form.due_date_full && editNextInvoice?.id) {
-          await supabase
-            .from("invoices")
-            .update({ due_date: form.due_date_full })
-            .eq("id", editNextInvoice.id);
+        // Update next invoice (due date and/or plan/value) if changed
+        if (editNextInvoice?.id) {
+          const invUpdate: any = {};
+          if (form.due_date_full) invUpdate.due_date = form.due_date_full;
+          if (form.plan_id && form.plan_id !== editNextInvoice.plan_id) {
+            const newPlan = plans.find((p) => p.id === form.plan_id);
+            if (newPlan) {
+              invUpdate.plan_id = form.plan_id;
+              invUpdate.amount = Number(newPlan.price);
+              invUpdate.description = `${newPlan.name} - Mensalidade`;
+            }
+          } else if (!form.plan_id && editNextInvoice.plan_id) {
+            invUpdate.plan_id = null;
+          }
+          if (Object.keys(invUpdate).length > 0) {
+            await supabase.from("invoices").update(invUpdate).eq("id", editNextInvoice.id);
+          }
         }
       } else {
         const { data, error } = await supabase
