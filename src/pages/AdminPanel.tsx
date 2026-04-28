@@ -295,7 +295,7 @@ export default function AdminPanel() {
 
       {/* New Org Dialog */}
       <Dialog open={showNewOrg} onOpenChange={setShowNewOrg}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Cadastrar Nova Empresa</DialogTitle>
             <p className="text-sm text-muted-foreground">A empresa receberá automaticamente um período de teste.</p>
