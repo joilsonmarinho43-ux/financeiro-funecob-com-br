@@ -394,6 +394,29 @@ export default function Clients() {
                       </Select>
                     </div>
                   )}
+                  {/* Plano - visible when editing (atualiza próxima fatura em aberto) */}
+                  {editingClient && (
+                    <div className="space-y-2">
+                      <Label>Plano</Label>
+                      <Select
+                        value={form.plan_id || "none"}
+                        onValueChange={(v) => setForm({ ...form, plan_id: v === "none" ? "" : v })}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Sem plano" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sem plano</SelectItem>
+                          {plans.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name} — {formatCurrency(Number(p.price))}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Atualiza a próxima fatura em aberto com o valor do plano selecionado.
+                      </p>
+                    </div>
+                  )}
                   {/* Due date - visible when editing */}
                   {editingClient && (
                     <div className="space-y-2">
