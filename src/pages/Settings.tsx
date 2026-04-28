@@ -232,42 +232,45 @@ export default function Settings() {
             <CardDescription>Personalize as cores do sistema da sua empresa</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label>Cor Primária</Label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={primaryColor}
-                    onChange={(e) => setPrimaryColor(e.target.value)}
-                    className="h-10 w-10 rounded-lg border border-border cursor-pointer"
-                  />
-                  <Input
-                    value={primaryColor}
-                    onChange={(e) => setPrimaryColor(e.target.value)}
-                    className="font-mono text-sm"
-                    maxLength={7}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Cor Secundária</Label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={secondaryColor}
-                    onChange={(e) => setSecondaryColor(e.target.value)}
-                    className="h-10 w-10 rounded-lg border border-border cursor-pointer"
-                  />
-                  <Input
-                    value={secondaryColor}
-                    onChange={(e) => setSecondaryColor(e.target.value)}
-                    className="font-mono text-sm"
-                    maxLength={7}
-                  />
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <ColorPickerField
+                label="Cor Primária"
+                value={primaryColor}
+                onChange={setPrimaryColor}
+                presets={PRIMARY_PRESETS}
+              />
+              <ColorPickerField
+                label="Cor Secundária"
+                value={secondaryColor}
+                onChange={setSecondaryColor}
+                presets={SECONDARY_PRESETS}
+              />
+            </div>
+
+            {/* Combos rápidos */}
+            <div className="mt-6">
+              <p className="text-xs font-medium text-muted-foreground mb-2">Combinações prontas</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {COLOR_COMBOS.map((combo) => {
+                  const active = primaryColor.toLowerCase() === combo.primary.toLowerCase() && secondaryColor.toLowerCase() === combo.secondary.toLowerCase();
+                  return (
+                    <button
+                      key={combo.name}
+                      type="button"
+                      onClick={() => { setPrimaryColor(combo.primary); setSecondaryColor(combo.secondary); }}
+                      className={`group flex flex-col items-stretch gap-1 p-2 rounded-lg border transition-all ${active ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-primary/50"}`}
+                    >
+                      <div className="flex h-8 rounded-md overflow-hidden">
+                        <div className="flex-1" style={{ background: combo.primary }} />
+                        <div className="flex-1" style={{ background: combo.secondary }} />
+                      </div>
+                      <span className="text-[11px] text-foreground/80 truncate">{combo.name}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
+
             {/* Preview */}
             <div className="mt-4 p-4 rounded-lg border border-border">
               <p className="text-xs text-muted-foreground mb-2">Pré-visualização</p>
