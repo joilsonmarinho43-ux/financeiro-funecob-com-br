@@ -1096,6 +1096,7 @@ export default function BillingSettings() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="0">Nenhum</SelectItem>
                             {[3, 5, 7, 10, 15, 20, 30].map((d) => (
                               <SelectItem key={d} value={String(d)}>
                                 {d} dias após venc.
