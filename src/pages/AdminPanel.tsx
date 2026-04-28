@@ -316,6 +316,7 @@ export default function AdminPanel() {
                 </SelectContent>
               </Select>
             </div>
+            <NichePreview niche={newOrgNiche} />
             <p className="text-xs text-muted-foreground">A empresa receberá automaticamente um trial de 3 dias.</p>
             <Button className="w-full" onClick={() => createOrgMutation.mutate()} disabled={createOrgMutation.isPending}>
               {createOrgMutation.isPending ? "Criando..." : "Criar Empresa"}
