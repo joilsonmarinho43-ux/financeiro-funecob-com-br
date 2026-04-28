@@ -114,7 +114,7 @@ export default function Clients() {
       if (!editingClient) return null;
       const { data, error } = await supabase
         .from("invoices")
-        .select("id, due_date, amount, status")
+        .select("id, due_date, amount, status, plan_id")
         .eq("client_id", editingClient.id)
         .in("status", ["pendente", "atrasada"])
         .order("due_date", { ascending: true })
