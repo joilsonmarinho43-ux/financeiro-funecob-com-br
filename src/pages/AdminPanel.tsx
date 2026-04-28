@@ -22,6 +22,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Shield, Users, Calendar, Search, Edit2, Plus, Building2, Ban, CheckCircle } from "lucide-react";
+import { NichePreview } from "@/components/NichePreview";
 
 const PLAN_DURATIONS: Record<string, number> = {
   "3_dias": 3, "30_dias": 30, "90_dias": 90, "180_dias": 180, "365_dias": 365,
@@ -248,7 +249,7 @@ export default function AdminPanel() {
 
       {/* Edit License Dialog */}
       <Dialog open={!!editSub} onOpenChange={() => setEditSub(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Licença — {editSub?.name}</DialogTitle>
             <p className="text-sm text-muted-foreground">Altere o nicho e a duração do plano desta empresa.</p>
@@ -272,6 +273,7 @@ export default function AdminPanel() {
                 </SelectContent>
               </Select>
             </div>
+            <NichePreview niche={editSub?.niche || "funeraria"} />
             <div className="space-y-2">
               <Label>Duração do Plano</Label>
               <Select value={selectedPlan} onValueChange={setSelectedPlan}>
@@ -293,7 +295,7 @@ export default function AdminPanel() {
 
       {/* New Org Dialog */}
       <Dialog open={showNewOrg} onOpenChange={setShowNewOrg}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Cadastrar Nova Empresa</DialogTitle>
             <p className="text-sm text-muted-foreground">A empresa receberá automaticamente um período de teste.</p>
@@ -314,6 +316,7 @@ export default function AdminPanel() {
                 </SelectContent>
               </Select>
             </div>
+            <NichePreview niche={newOrgNiche} />
             <p className="text-xs text-muted-foreground">A empresa receberá automaticamente um trial de 3 dias.</p>
             <Button className="w-full" onClick={() => createOrgMutation.mutate()} disabled={createOrgMutation.isPending}>
               {createOrgMutation.isPending ? "Criando..." : "Criar Empresa"}
