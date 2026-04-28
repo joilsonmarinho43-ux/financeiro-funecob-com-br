@@ -249,7 +249,7 @@ export default function AdminPanel() {
 
       {/* Edit License Dialog */}
       <Dialog open={!!editSub} onOpenChange={() => setEditSub(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Licença — {editSub?.name}</DialogTitle>
             <p className="text-sm text-muted-foreground">Altere o nicho e a duração do plano desta empresa.</p>
