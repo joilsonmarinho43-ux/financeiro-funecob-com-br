@@ -273,6 +273,7 @@ export default function AdminPanel() {
                 </SelectContent>
               </Select>
             </div>
+            <NichePreview niche={editSub?.niche || "funeraria"} />
             <div className="space-y-2">
               <Label>Duração do Plano</Label>
               <Select value={selectedPlan} onValueChange={setSelectedPlan}>
