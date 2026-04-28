@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tables, TablesInsert } from "@/integrations/supabase/types";
@@ -114,7 +114,7 @@ export default function Clients() {
       if (!editingClient) return null;
       const { data, error } = await supabase
         .from("invoices")
-        .select("id, due_date, amount, status")
+        .select("id, due_date, amount, status, plan_id")
         .eq("client_id", editingClient.id)
         .in("status", ["pendente", "atrasada"])
         .order("due_date", { ascending: true })
@@ -125,6 +125,15 @@ export default function Clients() {
     },
     enabled: !!editingClient,
   });
+
+  // Pré-preenche o plano da próxima fatura ao editar
+  useEffect(() => {
+    if (editingClient && editNextInvoice && !form.plan_id) {
+      const planId = (editNextInvoice as any).plan_id || "";
+      if (planId) setForm((f) => ({ ...f, plan_id: planId }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editNextInvoice?.id]);
 
   const selectedPlan = plans.find((p) => p.id === form.plan_id);
   const invoiceAmount = form.custom_value
@@ -159,12 +168,23 @@ export default function Clients() {
           .eq("id", editingClient.id);
         if (error) throw error;
 
-        // Update next invoice due date if changed
-        if (form.due_date_full && editNextInvoice?.id) {
-          await supabase
-            .from("invoices")
-            .update({ due_date: form.due_date_full })
-            .eq("id", editNextInvoice.id);
+        // Update next invoice (due date and/or plan/value) if changed
+        if (editNextInvoice?.id) {
+          const invUpdate: any = {};
+          if (form.due_date_full) invUpdate.due_date = form.due_date_full;
+          if (form.plan_id && form.plan_id !== editNextInvoice.plan_id) {
+            const newPlan = plans.find((p) => p.id === form.plan_id);
+            if (newPlan) {
+              invUpdate.plan_id = form.plan_id;
+              invUpdate.amount = Number(newPlan.price);
+              invUpdate.description = `${newPlan.name} - Mensalidade`;
+            }
+          } else if (!form.plan_id && editNextInvoice.plan_id) {
+            invUpdate.plan_id = null;
+          }
+          if (Object.keys(invUpdate).length > 0) {
+            await supabase.from("invoices").update(invUpdate).eq("id", editNextInvoice.id);
+          }
         }
       } else {
         const { data, error } = await supabase
@@ -392,6 +412,29 @@ export default function Clients() {
                           <SelectItem value="inadimplente">Inadimplente</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+                  )}
+                  {/* Plano - visible when editing (atualiza próxima fatura em aberto) */}
+                  {editingClient && (
+                    <div className="space-y-2">
+                      <Label>Plano</Label>
+                      <Select
+                        value={form.plan_id || "none"}
+                        onValueChange={(v) => setForm({ ...form, plan_id: v === "none" ? "" : v })}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Sem plano" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sem plano</SelectItem>
+                          {plans.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name} — {formatCurrency(Number(p.price))}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Atualiza a próxima fatura em aberto com o valor do plano selecionado.
+                      </p>
                     </div>
                   )}
                   {/* Due date - visible when editing */}
