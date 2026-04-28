@@ -741,3 +741,74 @@ tabs.forEach(tab => {
     </Card>
   );
 }
+
+// ===== Color presets & combos =====
+const PRIMARY_PRESETS = [
+  "#0ea5e9", "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#ec4899",
+  "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16", "#22c55e",
+  "#10b981", "#14b8a6", "#06b6d4", "#52a35f", "#0d9488", "#7c3aed",
+];
+
+const SECONDARY_PRESETS = [
+  "#0f172a", "#1e293b", "#334155", "#475569", "#1f2937", "#111827",
+  "#18181b", "#27272a", "#3f3f46", "#0c4a6e", "#1e3a8a", "#312e81",
+  "#581c87", "#831843", "#7f1d1d", "#78350f", "#365314", "#064e3b",
+];
+
+const COLOR_COMBOS: { name: string; primary: string; secondary: string }[] = [
+  { name: "Oceano", primary: "#0ea5e9", secondary: "#0f172a" },
+  { name: "Esmeralda", primary: "#10b981", secondary: "#064e3b" },
+  { name: "Sunset", primary: "#f97316", secondary: "#1f2937" },
+  { name: "Royal", primary: "#6366f1", secondary: "#1e1b4b" },
+  { name: "Rosé", primary: "#ec4899", secondary: "#831843" },
+  { name: "Floresta", primary: "#52a35f", secondary: "#1e293b" },
+  { name: "Rubi", primary: "#ef4444", secondary: "#111827" },
+  { name: "Dourado", primary: "#f59e0b", secondary: "#27272a" },
+];
+
+function ColorPickerField({
+  label,
+  value,
+  onChange,
+  presets,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  presets: string[];
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-10 w-12 rounded-lg border border-border cursor-pointer flex-shrink-0"
+        />
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="font-mono text-sm uppercase"
+          maxLength={7}
+        />
+      </div>
+      <div className="grid grid-cols-9 gap-1.5 pt-1">
+        {presets.map((c) => {
+          const active = value.toLowerCase() === c.toLowerCase();
+          return (
+            <button
+              key={c}
+              type="button"
+              title={c}
+              onClick={() => onChange(c)}
+              className={`h-7 w-full rounded-md border-2 transition-transform hover:scale-110 ${active ? "border-foreground ring-2 ring-primary/40 scale-110" : "border-border/50"}`}
+              style={{ background: c }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
