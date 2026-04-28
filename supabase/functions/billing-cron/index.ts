@@ -126,24 +126,24 @@ Deno.serve(async (req) => {
         const dueDate = invoice.due_date;
         const remindersToSend: Array<{ type: string; template: string }> = [];
 
-        // 1st reminder
-        if (dueDate === reminder1Str) {
+        // 1st reminder (skip if disabled = 0)
+        if ((settings.reminder_days_before ?? 0) > 0 && dueDate === reminder1Str) {
           remindersToSend.push({ type: "reminder", template: settings.template_reminder });
         }
-        // 2nd reminder (only if different day from 1st)
-        if (dueDate === reminder2Str && reminder2Str !== reminder1Str) {
+        // 2nd reminder (only if enabled and different day from 1st)
+        if ((settings.reminder_days_before_2 ?? 0) > 0 && dueDate === reminder2Str && reminder2Str !== reminder1Str) {
           remindersToSend.push({ type: "reminder_2", template: settings.template_reminder });
         }
         // Due date
         if (dueDate === todayStr) {
           remindersToSend.push({ type: "due_date", template: settings.template_due_date });
         }
-        // Overdue — send if due_date matches the overdue threshold
-        if (dueDate === overdueDateStr) {
+        // Overdue — send if enabled and due_date matches the overdue threshold
+        if ((settings.reminder_days_after ?? 0) > 0 && dueDate === overdueDateStr) {
           remindersToSend.push({ type: "overdue", template: settings.template_overdue });
         }
-        // Critical — last automatic reminder, sent N days after due date
-        if (dueDate === criticalDateStr && criticalDateStr !== overdueDateStr) {
+        // Critical — last automatic reminder, sent N days after due date (skip if 0)
+        if ((settings.reminder_days_critical ?? 0) > 0 && dueDate === criticalDateStr && criticalDateStr !== overdueDateStr) {
           remindersToSend.push({ type: "critical", template: settings.template_critical || settings.template_overdue });
         }
 

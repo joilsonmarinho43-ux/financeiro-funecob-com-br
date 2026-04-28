@@ -819,6 +819,7 @@ export default function BillingSettings() {
                       <Select value={String(reminderDaysBefore)} onValueChange={(v) => setReminderDaysBefore(parseInt(v))}>
                         <SelectTrigger className="max-w-[160px]"><SelectValue /></SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="0">Nenhum</SelectItem>
                           {[1,2,3,4,5,7,10,14,15,20,25,30].map((d) => (
                             <SelectItem key={d} value={String(d)}>{d} dia{d > 1 ? "s" : ""}</SelectItem>
                           ))}
@@ -831,6 +832,7 @@ export default function BillingSettings() {
                       <Select value={String(reminderDaysBefore2)} onValueChange={(v) => setReminderDaysBefore2(parseInt(v))}>
                         <SelectTrigger className="max-w-[160px]"><SelectValue /></SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="0">Nenhum</SelectItem>
                           {[1,2,3,4,5,7,10,14,15,20,25,30].map((d) => (
                             <SelectItem key={d} value={String(d)}>{d} dia{d > 1 ? "s" : ""}</SelectItem>
                           ))}
@@ -843,6 +845,7 @@ export default function BillingSettings() {
                       <Select value={String(reminderDaysAfter)} onValueChange={(v) => setReminderDaysAfter(parseInt(v))}>
                         <SelectTrigger className="max-w-[160px]"><SelectValue /></SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="0">Nenhum</SelectItem>
                           {[1,2,3,5,7,10,14,15,20,25,30].map((d) => (
                             <SelectItem key={d} value={String(d)}>{d} dia{d > 1 ? "s" : ""}</SelectItem>
                           ))}
@@ -1093,6 +1096,7 @@ export default function BillingSettings() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="0">Nenhum</SelectItem>
                             {[3, 5, 7, 10, 15, 20, 30].map((d) => (
                               <SelectItem key={d} value={String(d)}>
                                 {d} dias após venc.
