@@ -88,8 +88,29 @@ Deno.serve(async (req) => {
           const typeMap: Record<string, string> = {
             cpf: "CPF/CNPJ", email: "E-mail", telefone: "Telefone", aleatoria: "Chave Aleatória",
           };
-          const holderLine = (settings as any).pix_holder_name ? `\nTitular: ${(settings as any).pix_holder_name}` : "";
-          return `📲 *Pix Manual:*\nTipo: ${typeMap[settings.pix_key_type] || settings.pix_key_type}\nChave: \`${settings.pix_key}\`${holderLine}\n\n_Após o pagamento, envie o comprovante para confirmação._`;
+          const holder = (settings as any).pix_holder_name || "";
+          const tipo = typeMap[settings.pix_key_type] || settings.pix_key_type || "Pix";
+          // Card-style block similar to bank app checkout (Pix copia-e-cola)
+          return [
+            "━━━━━━━━━━━━━━━━━━━",
+            "💳 *PAGAMENTO VIA PIX*",
+            "━━━━━━━━━━━━━━━━━━━",
+            `🏷️ *Tipo:* ${tipo}`,
+            holder ? `👤 *Titular:* ${holder}` : "",
+            "",
+            "📋 *Copie a chave abaixo:*",
+            "```",
+            settings.pix_key,
+            "```",
+            "",
+            "_1️⃣ Copie a chave acima_",
+            "_2️⃣ Abra o app do seu banco_",
+            "_3️⃣ Escolha Pix → Pagar com chave_",
+            "_4️⃣ Cole a chave e confirme o valor_",
+            "",
+            "✅ _Após o pagamento, envie o comprovante para confirmação._",
+            "━━━━━━━━━━━━━━━━━━━",
+          ].filter(Boolean).join("\n");
         }
         return "Entre em contato para informações de pagamento.";
       };
