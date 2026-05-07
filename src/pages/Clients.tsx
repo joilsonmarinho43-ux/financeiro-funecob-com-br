@@ -658,12 +658,32 @@ export default function Clients() {
                               </Button>
                             )}
                             <PortalLinkButton clientId={client.id} organizationId={organizationId} />
-                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Gerar fatura" onClick={() => {
-                              const cv = (client as any).custom_value;
-                              const planPrice = plans.find((p) => p.id === (client as any).plan_id)?.price;
-                              const amt = cv ? String(cv) : (planPrice ? String(planPrice) : "");
-                              setInvForm({ description: "Mensalidade", amount: amt, due_date: new Date() });
+                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Gerar fatura" onClick={async () => {
                               setInvoiceDialog(client);
+                              setInvForm({ description: "Mensalidade", amount: "", due_date: new Date() });
+                              // Fetch last invoice for this client to pre-fill amount
+                              const { data: lastInv } = await supabase
+                                .from("invoices")
+                                .select("amount, description, plan_id")
+                                .eq("organization_id", organizationId!)
+                                .eq("client_id", client.id)
+                                .order("created_at", { ascending: false })
+                                .limit(1)
+                                .maybeSingle();
+                              let amt = "";
+                              let desc = "Mensalidade";
+                              if (lastInv?.amount) {
+                                amt = String(lastInv.amount);
+                                if (lastInv.description) desc = lastInv.description;
+                              } else {
+                                // Fallback: try plan price from last invoice's plan_id (if any)
+                                const planId = lastInv?.plan_id;
+                                if (planId) {
+                                  const p = plans.find((pl) => pl.id === planId);
+                                  if (p?.price) amt = String(p.price);
+                                }
+                              }
+                              setInvForm({ description: desc, amount: amt, due_date: new Date() });
                             }}>
                               <Receipt className="h-4 w-4" />
                             </Button>
