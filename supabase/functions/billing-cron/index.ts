@@ -178,8 +178,10 @@ Deno.serve(async (req) => {
           const portalLink = await getOrCreatePortalLink(supabase, invoice.client_id, orgId);
           const portalSection = portalLink || "";
 
-          // Resolve payment link: gateway dynamic OR static pix
-          const pixOrLink = staticPixOrLink ?? await getGatewayLink(invoice.id);
+          // Resolve payment block: gateway dynamic OR pix block with item + amount
+          const itemDesc = (invoice as any).description || "Mensalidade";
+          const staticPix = buildPixBlock(itemDesc, amount);
+          const pixOrLink = staticPix ?? await getGatewayLink(invoice.id);
 
           const message = reminder.template
             .replace(/{nome}/g, client.name || "Cliente")
