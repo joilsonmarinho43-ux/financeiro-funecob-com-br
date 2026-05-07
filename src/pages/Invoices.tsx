@@ -671,6 +671,69 @@ export default function Invoices() {
         </DialogContent>
       </Dialog>
 
+      {/* New Invoice dialog */}
+      <Dialog open={newInvoiceOpen} onOpenChange={setNewInvoiceOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nova Fatura</DialogTitle>
+            <DialogDescription>Crie uma fatura avulsa para um cliente.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label>Cliente</Label>
+              <Select value={newInv.client_id} onValueChange={(v) => setNewInv({ ...newInv, client_id: v })}>
+                <SelectTrigger><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
+                <SelectContent>
+                  {clientsList.map((c: any) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Descrição</Label>
+              <Input
+                placeholder="Ex: Mensalidade Plano Prata Plus"
+                value={newInv.description}
+                onChange={(e) => setNewInv({ ...newInv, description: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Valor (R$)</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0,00"
+                  value={newInv.amount}
+                  onChange={(e) => setNewInv({ ...newInv, amount: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Vencimento</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {newInv.due_date ? format(newInv.due_date, "dd/MM/yyyy") : "Selecionar"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar mode="single" selected={newInv.due_date} onSelect={(d) => setNewInv({ ...newInv, due_date: d })} className="p-3 pointer-events-auto" locale={ptBR} />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setNewInvoiceOpen(false)} disabled={creatingInv}>Cancelar</Button>
+              <Button onClick={createInvoice} disabled={creatingInv}>
+                {creatingInv ? "Criando..." : "Criar Fatura"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Test Pix dialog */}
       <Dialog open={testPixOpen} onOpenChange={setTestPixOpen}>
         <DialogContent>
