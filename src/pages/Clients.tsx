@@ -908,7 +908,7 @@ export default function Clients() {
                       status: "aberto",
                     } as any);
                     if (error) throw error;
-                    await auditLog("invoice_created", { client_id: invoiceDialog.id, amount: amountNum });
+                    await auditLog({ action: "invoice_created", organizationId, details: { client_id: invoiceDialog.id, amount: amountNum } });
                     toast({ title: "Fatura criada com sucesso" });
                     queryClient.invalidateQueries({ queryKey: ["invoices"] });
                     setInvoiceDialog(null);
