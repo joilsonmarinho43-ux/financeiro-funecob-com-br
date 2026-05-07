@@ -52,6 +52,9 @@ export default function Invoices() {
   const [dateTo, setDateTo] = useState<Date | undefined>();
   const [payDialog, setPayDialog] = useState<Invoice | null>(null);
   const [paidDate, setPaidDate] = useState<Date | undefined>(new Date());
+  const [testPixOpen, setTestPixOpen] = useState(false);
+  const [testPhone, setTestPhone] = useState("");
+  const [testSending, setTestSending] = useState(false);
 
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ["invoices", organizationId],
@@ -260,6 +263,69 @@ export default function Invoices() {
     .filter((i) => i.status === "aberto" && isBefore(parseISO(i.due_date), today))
     .reduce((s, i) => s + Number(i.amount), 0);
 
+  const sendTestPix = async () => {
+    const phone = testPhone.replace(/\D/g, "");
+    if (phone.length < 10) {
+      toast({ title: "Telefone inválido", description: "Informe um número válido com DDD.", variant: "destructive" });
+      return;
+    }
+    setTestSending(true);
+    try {
+      const { data: settings } = await supabase
+        .from("billing_settings")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+
+      if (!settings?.pix_key) {
+        throw new Error("Nenhuma chave Pix configurada em Cobrança › Pix Direto.");
+      }
+
+      const amount = formatCurrency(48.5);
+      const pixBlock = [
+        "━━━━━━━━━━━━━━━━━━━",
+        "📦 *DETALHES DA COBRANÇA*",
+        "━━━━━━━━━━━━━━━━━━━",
+        "📝 *Item:* Mensalidade (TESTE)",
+        `💰 *Valor Total:* ${amount}`,
+        "━━━━━━━━━━━━━━━━━━━",
+        "",
+        "💳 *PAGAMENTO VIA PIX*",
+        "",
+        "📋 *Copie a chave abaixo:*",
+        "```",
+        settings.pix_key,
+        "```",
+        "",
+        "*Instruções de pagamento:*",
+        "1️⃣ Copie a chave acima (toque e segure sobre o código).",
+        "2️⃣ Abra o aplicativo do seu banco.",
+        "3️⃣ Escolha Pix → Pagar com Chave.",
+        `4️⃣ Cole a chave e confirme o valor de ${amount}.`,
+        "",
+        "✅ *Após o pagamento, envie o comprovante por aqui para ativação imediata.*",
+        "",
+        "━━━━━━━━━━━━━━━━━━━",
+        "",
+        "_⚠️ Esta é uma mensagem de teste enviada pelo painel._",
+      ].join("\n");
+
+      const { data: result, error } = await supabase.functions.invoke("send-now", {
+        body: { phone, message: pixBlock, organization_id: organizationId },
+      });
+      if (error) throw new Error(error.message);
+      if (result?.error) throw new Error(result.error);
+
+      toast({ title: "Mensagem de teste enviada! ✅", description: `Para ${phone}` });
+      setTestPixOpen(false);
+      setTestPhone("");
+    } catch (e: any) {
+      toast({ title: "Erro ao enviar teste", description: e.message, variant: "destructive" });
+    } finally {
+      setTestSending(false);
+    }
+  };
+
   const statusBadge = (inv: Invoice) => {
     const isOverdue = inv.status === "aberto" && isBefore(parseISO(inv.due_date), today);
     if (isOverdue)
@@ -385,6 +451,16 @@ export default function Invoices() {
                   >
                     <FileText className="h-3.5 w-3.5 mr-1" />
                     PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs border-primary/40 text-primary hover:bg-primary/10"
+                    onClick={() => setTestPixOpen(true)}
+                    title="Enviar uma mensagem de exemplo com o bloco Pix manual"
+                  >
+                    <Send className="h-3.5 w-3.5 mr-1" />
+                    Testar Pix manual
                   </Button>
                 </div>
               </div>
@@ -531,6 +607,37 @@ export default function Invoices() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Test Pix dialog */}
+      <Dialog open={testPixOpen} onOpenChange={setTestPixOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Testar Pix manual</DialogTitle>
+            <DialogDescription>
+              Envia uma mensagem de exemplo com o bloco Pix copia-e-cola para o número informado.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="test-phone">Telefone (com DDD)</Label>
+              <Input
+                id="test-phone"
+                placeholder="Ex: 11999999999"
+                value={testPhone}
+                onChange={(e) => setTestPhone(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setTestPixOpen(false)} disabled={testSending}>
+                Cancelar
+              </Button>
+              <Button onClick={sendTestPix} disabled={testSending}>
+                {testSending ? "Enviando..." : "Enviar teste"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </AppLayout>
