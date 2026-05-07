@@ -146,11 +146,32 @@ export default function Invoices() {
       if (settings?.billing_mode === "gateway" && settings?.gateway_provider) {
         pixOrLink = "💳 *Pagamento automático:* Seu link/boleto de pagamento foi gerado automaticamente pelo sistema. Caso não tenha recebido, entre em contato.";
       } else if (settings?.pix_key) {
-        const typeMap: Record<string, string> = {
-          cpf: "CPF/CNPJ", email: "E-mail", telefone: "Telefone", aleatoria: "Chave Aleatória",
-        };
-        const holderLine = (settings as any).pix_holder_name ? `\nTitular: ${(settings as any).pix_holder_name}` : "";
-        pixOrLink = `📲 *Pix Manual:*\nTipo: ${typeMap[settings.pix_key_type || "aleatoria"] || settings.pix_key_type}\nChave: \`${settings.pix_key}\`${holderLine}\n\n_Após o pagamento, envie o comprovante para confirmação._`;
+        const itemDesc = (inv as any).description || "Mensalidade";
+        pixOrLink = [
+          "━━━━━━━━━━━━━━━━━━━",
+          "📦 *DETALHES DA COBRANÇA*",
+          "━━━━━━━━━━━━━━━━━━━",
+          `📝 *Item:* ${itemDesc}`,
+          `💰 *Valor Total:* ${amount}`,
+          "━━━━━━━━━━━━━━━━━━━",
+          "",
+          "💳 *PAGAMENTO VIA PIX*",
+          "",
+          "📋 *Copie a chave abaixo:*",
+          "```",
+          settings.pix_key,
+          "```",
+          "",
+          "*Instruções de pagamento:*",
+          "1️⃣ Copie a chave acima (toque e segure sobre o código).",
+          "2️⃣ Abra o aplicativo do seu banco.",
+          "3️⃣ Escolha Pix → Pagar com Chave.",
+          `4️⃣ Cole a chave e confirme o valor de ${amount}.`,
+          "",
+          "✅ *Após o pagamento, envie o comprovante por aqui para ativação imediata.*",
+          "",
+          "━━━━━━━━━━━━━━━━━━━",
+        ].join("\n");
       }
 
       // Generate portal link (FIXED domain)
