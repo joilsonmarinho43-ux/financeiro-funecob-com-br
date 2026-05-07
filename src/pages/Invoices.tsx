@@ -55,6 +55,14 @@ export default function Invoices() {
   const [testPixOpen, setTestPixOpen] = useState(false);
   const [testPhone, setTestPhone] = useState("");
   const [testSending, setTestSending] = useState(false);
+  const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
+  const [newInv, setNewInv] = useState<{ client_id: string; description: string; amount: string; due_date: Date | undefined }>({
+    client_id: "",
+    description: "",
+    amount: "",
+    due_date: new Date(),
+  });
+  const [creatingInv, setCreatingInv] = useState(false);
 
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ["invoices", organizationId],
