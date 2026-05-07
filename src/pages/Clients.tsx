@@ -62,6 +62,9 @@ export default function Clients() {
   const [form, setForm] = useState(emptyForm);
   const [msgDialog, setMsgDialog] = useState<{ phone: string; name: string } | null>(null);
   const [manualMsg, setManualMsg] = useState("");
+  const [invoiceDialog, setInvoiceDialog] = useState<Client | null>(null);
+  const [invForm, setInvForm] = useState<{ description: string; amount: string; due_date: Date | undefined }>({ description: "Mensalidade", amount: "", due_date: new Date() });
+  const [creatingInvoice, setCreatingInvoice] = useState(false);
 
   const { data: clients = [], isLoading } = useQuery({
     queryKey: ["clients", organizationId],
