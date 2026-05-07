@@ -851,6 +851,80 @@ export default function Clients() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Generate Invoice Dialog */}
+      <Dialog open={!!invoiceDialog} onOpenChange={(open) => { if (!open) setInvoiceDialog(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Gerar fatura</DialogTitle>
+            <DialogDescription>Cliente: {invoiceDialog?.name}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label>Descrição</Label>
+              <Input value={invForm.description} onChange={(e) => setInvForm({ ...invForm, description: e.target.value })} placeholder="Ex: Mensalidade" />
+            </div>
+            <div className="space-y-2">
+              <Label>Valor (R$) *</Label>
+              <Input inputMode="decimal" value={invForm.amount} onChange={(e) => setInvForm({ ...invForm, amount: e.target.value })} placeholder="0,00" />
+            </div>
+            <div className="space-y-2">
+              <Label>Vencimento *</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !invForm.due_date && "text-muted-foreground")}>
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {invForm.due_date ? format(invForm.due_date, "dd/MM/yyyy", { locale: ptBR }) : "Selecione"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single" selected={invForm.due_date} onSelect={(d) => setInvForm({ ...invForm, due_date: d })} initialFocus />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setInvoiceDialog(null)}>Cancelar</Button>
+              <Button
+                disabled={creatingInvoice}
+                onClick={async () => {
+                  if (!invoiceDialog || !organizationId) return;
+                  const amountNum = parseFloat(invForm.amount.replace(",", "."));
+                  if (!invForm.amount || isNaN(amountNum) || amountNum <= 0) {
+                    toast({ title: "Valor inválido", variant: "destructive" });
+                    return;
+                  }
+                  if (!invForm.due_date) {
+                    toast({ title: "Selecione o vencimento", variant: "destructive" });
+                    return;
+                  }
+                  setCreatingInvoice(true);
+                  try {
+                    const { error } = await supabase.from("invoices").insert({
+                      organization_id: organizationId,
+                      client_id: invoiceDialog.id,
+                      description: invForm.description || "Mensalidade",
+                      amount: amountNum,
+                      due_date: format(invForm.due_date, "yyyy-MM-dd"),
+                      status: "aberto",
+                    } as any);
+                    if (error) throw error;
+                    await auditLog("invoice_created", { client_id: invoiceDialog.id, amount: amountNum });
+                    toast({ title: "Fatura criada com sucesso" });
+                    queryClient.invalidateQueries({ queryKey: ["invoices"] });
+                    setInvoiceDialog(null);
+                  } catch (e: any) {
+                    toast({ title: "Erro ao criar fatura", description: e.message, variant: "destructive" });
+                  } finally {
+                    setCreatingInvoice(false);
+                  }
+                }}
+              >
+                {creatingInvoice ? "Criando..." : "Criar fatura"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
