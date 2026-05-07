@@ -50,6 +50,8 @@ export default function ClientPortal() {
   const [copied, setCopied] = useState(false);
   const [filter, setFilter] = useState<"all" | "aberto" | "vencido" | "pago">("all");
   const [generating, setGenerating] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [preview, setPreview] = useState<{ dueDate: string; amount: number; description: string } | null>(null);
 
   useEffect(() => {
     if (!token) return;
