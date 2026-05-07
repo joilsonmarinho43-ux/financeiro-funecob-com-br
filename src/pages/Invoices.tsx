@@ -452,6 +452,16 @@ export default function Invoices() {
                     <FileText className="h-3.5 w-3.5 mr-1" />
                     PDF
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs border-primary/40 text-primary hover:bg-primary/10"
+                    onClick={() => setTestPixOpen(true)}
+                    title="Enviar uma mensagem de exemplo com o bloco Pix manual"
+                  >
+                    <Send className="h-3.5 w-3.5 mr-1" />
+                    Testar Pix manual
+                  </Button>
                 </div>
               </div>
             </div>
