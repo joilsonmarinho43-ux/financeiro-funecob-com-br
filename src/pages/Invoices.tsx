@@ -399,11 +399,16 @@ export default function Invoices() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Financeiro — Faturas</h1>
-          <p className="text-sm text-muted-foreground">
-            Gerencie todas as faturas da organização
-          </p>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Financeiro — Faturas</h1>
+            <p className="text-sm text-muted-foreground">
+              Gerencie todas as faturas da organização
+            </p>
+          </div>
+          <Button onClick={() => setNewInvoiceOpen(true)} className="gap-1">
+            <Plus className="h-4 w-4" /> Nova Fatura
+          </Button>
         </div>
 
         {/* Stats */}
