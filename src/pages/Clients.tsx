@@ -658,6 +658,9 @@ export default function Clients() {
                               </Button>
                             )}
                             <PortalLinkButton clientId={client.id} organizationId={organizationId} />
+                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Gerar fatura" onClick={() => { setInvForm({ description: "Mensalidade", amount: (client as any).custom_value ? String((client as any).custom_value) : "", due_date: new Date() }); setInvoiceDialog(client); }}>
+                              <Receipt className="h-4 w-4" />
+                            </Button>
                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(client)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
