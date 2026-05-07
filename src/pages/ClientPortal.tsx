@@ -243,13 +243,19 @@ export default function ClientPortal() {
             setGenerating(true);
             try {
               // Find the latest open invoice to determine due day
-              const lastInvoice = data.invoices.find(i => i.status !== "pago");
-              const dueDay = lastInvoice ? new Date(lastInvoice.due_date).getDate() : new Date().getDate();
+              // Use the most recent invoice (paid or open) to preserve original due day
+              const referenceInvoice = data.invoices[0] || null;
+              const dueDay = referenceInvoice
+                ? parseDateLocal(referenceInvoice.due_date).getDate()
+                : new Date().getDate();
               const now = new Date();
               let month = now.getMonth();
               let year = now.getFullYear();
+              // Advance to next month if today is already past the due day
               if (now.getDate() > dueDay) { month++; if (month > 11) { month = 0; year++; } }
-              const dueDate = new Date(year, month, dueDay).toISOString().split("T")[0];
+              const dd = String(dueDay).padStart(2, "0");
+              const mm = String(month + 1).padStart(2, "0");
+              const dueDate = `${year}-${mm}-${dd}`;
 
               const { data: result, error: err } = await supabase.functions.invoke("client-portal", {
                 body: { token, action: "generate_invoice", due_date: dueDate },
