@@ -263,6 +263,69 @@ export default function Invoices() {
     .filter((i) => i.status === "aberto" && isBefore(parseISO(i.due_date), today))
     .reduce((s, i) => s + Number(i.amount), 0);
 
+  const sendTestPix = async () => {
+    const phone = testPhone.replace(/\D/g, "");
+    if (phone.length < 10) {
+      toast({ title: "Telefone inválido", description: "Informe um número válido com DDD.", variant: "destructive" });
+      return;
+    }
+    setTestSending(true);
+    try {
+      const { data: settings } = await supabase
+        .from("billing_settings")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+
+      if (!settings?.pix_key) {
+        throw new Error("Nenhuma chave Pix configurada em Cobrança › Pix Direto.");
+      }
+
+      const amount = formatCurrency(48.5);
+      const pixBlock = [
+        "━━━━━━━━━━━━━━━━━━━",
+        "📦 *DETALHES DA COBRANÇA*",
+        "━━━━━━━━━━━━━━━━━━━",
+        "📝 *Item:* Mensalidade (TESTE)",
+        `💰 *Valor Total:* ${amount}`,
+        "━━━━━━━━━━━━━━━━━━━",
+        "",
+        "💳 *PAGAMENTO VIA PIX*",
+        "",
+        "📋 *Copie a chave abaixo:*",
+        "```",
+        settings.pix_key,
+        "```",
+        "",
+        "*Instruções de pagamento:*",
+        "1️⃣ Copie a chave acima (toque e segure sobre o código).",
+        "2️⃣ Abra o aplicativo do seu banco.",
+        "3️⃣ Escolha Pix → Pagar com Chave.",
+        `4️⃣ Cole a chave e confirme o valor de ${amount}.`,
+        "",
+        "✅ *Após o pagamento, envie o comprovante por aqui para ativação imediata.*",
+        "",
+        "━━━━━━━━━━━━━━━━━━━",
+        "",
+        "_⚠️ Esta é uma mensagem de teste enviada pelo painel._",
+      ].join("\n");
+
+      const { data: result, error } = await supabase.functions.invoke("send-now", {
+        body: { phone, message: pixBlock, organization_id: organizationId },
+      });
+      if (error) throw new Error(error.message);
+      if (result?.error) throw new Error(result.error);
+
+      toast({ title: "Mensagem de teste enviada! ✅", description: `Para ${phone}` });
+      setTestPixOpen(false);
+      setTestPhone("");
+    } catch (e: any) {
+      toast({ title: "Erro ao enviar teste", description: e.message, variant: "destructive" });
+    } finally {
+      setTestSending(false);
+    }
+  };
+
   const statusBadge = (inv: Invoice) => {
     const isOverdue = inv.status === "aberto" && isBefore(parseISO(inv.due_date), today);
     if (isOverdue)
