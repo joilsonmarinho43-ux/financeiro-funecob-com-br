@@ -31,7 +31,7 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import {
   Search, CalendarIcon, CheckCircle2, Receipt, DollarSign,
-  AlertTriangle, Clock, Download, FileSpreadsheet, FileText, Send,
+  AlertTriangle, Clock, Download, FileSpreadsheet, FileText, Send, Plus,
 } from "lucide-react";
 import { exportToExcel, exportToPDF } from "@/lib/exportInvoices";
 
@@ -55,6 +55,14 @@ export default function Invoices() {
   const [testPixOpen, setTestPixOpen] = useState(false);
   const [testPhone, setTestPhone] = useState("");
   const [testSending, setTestSending] = useState(false);
+  const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
+  const [newInv, setNewInv] = useState<{ client_id: string; description: string; amount: string; due_date: Date | undefined }>({
+    client_id: "",
+    description: "",
+    amount: "",
+    due_date: new Date(),
+  });
+  const [creatingInv, setCreatingInv] = useState(false);
 
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ["invoices", organizationId],
@@ -70,6 +78,54 @@ export default function Invoices() {
     },
     enabled: !!organizationId,
   });
+
+  const { data: clientsList = [] } = useQuery({
+    queryKey: ["clients-min", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      const { data } = await supabase
+        .from("clients")
+        .select("id, name")
+        .eq("organization_id", organizationId)
+        .eq("status", "ativo")
+        .order("name");
+      return data || [];
+    },
+    enabled: !!organizationId,
+  });
+
+  const createInvoice = async () => {
+    if (!newInv.client_id || !newInv.amount || !newInv.due_date) {
+      toast({ title: "Preencha cliente, valor e vencimento", variant: "destructive" });
+      return;
+    }
+    const amountNum = parseFloat(newInv.amount.replace(",", "."));
+    if (isNaN(amountNum) || amountNum <= 0) {
+      toast({ title: "Valor inválido", variant: "destructive" });
+      return;
+    }
+    setCreatingInv(true);
+    try {
+      const { error } = await supabase.from("invoices").insert({
+        organization_id: organizationId,
+        client_id: newInv.client_id,
+        description: newInv.description || "Mensalidade",
+        amount: amountNum,
+        due_date: format(newInv.due_date, "yyyy-MM-dd"),
+        status: "aberto",
+      });
+      if (error) throw error;
+      await auditLog({ action: "invoice_created", organizationId: organizationId!, details: { client_id: newInv.client_id, amount: amountNum } });
+      toast({ title: "Fatura criada com sucesso! ✅" });
+      setNewInvoiceOpen(false);
+      setNewInv({ client_id: "", description: "", amount: "", due_date: new Date() });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+    } catch (e: any) {
+      toast({ title: "Erro ao criar fatura", description: e.message, variant: "destructive" });
+    } finally {
+      setCreatingInv(false);
+    }
+  };
 
   const payMutation = useMutation({
     mutationFn: async ({ id, paid_date, invoice }: { id: string; paid_date: string; invoice: Invoice }) => {
@@ -343,11 +399,16 @@ export default function Invoices() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Financeiro — Faturas</h1>
-          <p className="text-sm text-muted-foreground">
-            Gerencie todas as faturas da organização
-          </p>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Financeiro — Faturas</h1>
+            <p className="text-sm text-muted-foreground">
+              Gerencie todas as faturas da organização
+            </p>
+          </div>
+          <Button onClick={() => setNewInvoiceOpen(true)} className="gap-1">
+            <Plus className="h-4 w-4" /> Nova Fatura
+          </Button>
         </div>
 
         {/* Stats */}
@@ -607,6 +668,69 @@ export default function Invoices() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* New Invoice dialog */}
+      <Dialog open={newInvoiceOpen} onOpenChange={setNewInvoiceOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nova Fatura</DialogTitle>
+            <DialogDescription>Crie uma fatura avulsa para um cliente.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label>Cliente</Label>
+              <Select value={newInv.client_id} onValueChange={(v) => setNewInv({ ...newInv, client_id: v })}>
+                <SelectTrigger><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
+                <SelectContent>
+                  {clientsList.map((c: any) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Descrição</Label>
+              <Input
+                placeholder="Ex: Mensalidade Plano Prata Plus"
+                value={newInv.description}
+                onChange={(e) => setNewInv({ ...newInv, description: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Valor (R$)</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0,00"
+                  value={newInv.amount}
+                  onChange={(e) => setNewInv({ ...newInv, amount: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Vencimento</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {newInv.due_date ? format(newInv.due_date, "dd/MM/yyyy") : "Selecionar"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar mode="single" selected={newInv.due_date} onSelect={(d) => setNewInv({ ...newInv, due_date: d })} className="p-3 pointer-events-auto" locale={ptBR} />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setNewInvoiceOpen(false)} disabled={creatingInv}>Cancelar</Button>
+              <Button onClick={createInvoice} disabled={creatingInv}>
+                {creatingInv ? "Criando..." : "Criar Fatura"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
