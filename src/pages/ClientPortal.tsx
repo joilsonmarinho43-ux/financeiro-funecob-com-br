@@ -50,6 +50,8 @@ export default function ClientPortal() {
   const [copied, setCopied] = useState(false);
   const [filter, setFilter] = useState<"all" | "aberto" | "vencido" | "pago">("all");
   const [generating, setGenerating] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [preview, setPreview] = useState<{ dueDate: string; amount: number; description: string } | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -238,44 +240,106 @@ export default function ClientPortal() {
           className="w-full"
           style={{ background: primaryColor }}
           disabled={generating}
-          onClick={async () => {
-            if (!data || !token) return;
-            setGenerating(true);
-            try {
-              // Find the latest open invoice to determine due day
-              // Use the most recent invoice (paid or open) to preserve original due day
-              const referenceInvoice = data.invoices[0] || null;
-              const dueDay = referenceInvoice
-                ? parseDateLocal(referenceInvoice.due_date).getDate()
-                : new Date().getDate();
-              const now = new Date();
-              let month = now.getMonth();
-              let year = now.getFullYear();
-              // Advance to next month if today is already past the due day
-              if (now.getDate() > dueDay) { month++; if (month > 11) { month = 0; year++; } }
-              const dd = String(dueDay).padStart(2, "0");
-              const mm = String(month + 1).padStart(2, "0");
-              const dueDate = `${year}-${mm}-${dd}`;
-
-              const { data: result, error: err } = await supabase.functions.invoke("client-portal", {
-                body: { token, action: "generate_invoice", due_date: dueDate },
-              });
-              if (err) throw err;
-              if (result?.error) throw new Error(result.error);
-              
-              // Reload portal data
-              await loadPortalData();
-            } catch (e: any) {
-              setError(null); // Don't show full error page
-              alert(e.message || "Erro ao gerar fatura. Tente novamente.");
-            } finally {
-              setGenerating(false);
-            }
+          onClick={() => {
+            if (!data) return;
+            const referenceInvoice = data.invoices[0] || null;
+            const dueDay = referenceInvoice
+              ? parseDateLocal(referenceInvoice.due_date).getDate()
+              : new Date().getDate();
+            const now = new Date();
+            let month = now.getMonth();
+            let year = now.getFullYear();
+            if (now.getDate() > dueDay) { month++; if (month > 11) { month = 0; year++; } }
+            const dd = String(dueDay).padStart(2, "0");
+            const mm = String(month + 1).padStart(2, "0");
+            const dueDate = `${year}-${mm}-${dd}`;
+            const amount = referenceInvoice ? Number(referenceInvoice.amount) : 0;
+            const monthName = parseDateLocal(dueDate).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+            setPreview({ dueDate, amount, description: `Mensalidade — ${monthName}` });
+            setPreviewOpen(true);
           }}
         >
           <PlusCircle className="h-4 w-4 mr-2" />
-          {generating ? "Gerando..." : "Gerar Mensalidade"}
+          Gerar Mensalidade
         </Button>
+
+        {/* Preview Dialog */}
+        <Dialog open={previewOpen} onOpenChange={(o) => !generating && setPreviewOpen(o)}>
+          <DialogContent className="max-w-md mx-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <PlusCircle className="h-4 w-4" /> Confirmar nova mensalidade
+              </DialogTitle>
+            </DialogHeader>
+            {preview && (
+              <div className="space-y-4">
+                <p className="text-sm text-slate-500">
+                  Confira os dados antes de confirmar a geração.
+                </p>
+                <div className="rounded-lg border bg-slate-50 p-4 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-slate-500">Descrição</span>
+                    <span className="text-sm font-medium text-slate-800 text-right">{preview.description}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-slate-500 flex items-center gap-1">
+                      <CalendarDays className="h-3 w-3" /> Vencimento
+                    </span>
+                    <span className="text-sm font-semibold text-slate-800">
+                      {format(parseDateLocal(preview.dueDate), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t">
+                    <span className="text-xs text-slate-500">Valor</span>
+                    <span className="text-lg font-bold" style={{ color: primaryColor }}>
+                      {formatCurrency(preview.amount)}
+                    </span>
+                  </div>
+                </div>
+                {preview.amount <= 0 && (
+                  <p className="text-xs text-red-600">
+                    Valor inválido. Não é possível gerar uma mensalidade com valor zero.
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setPreviewOpen(false)}
+                    disabled={generating}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    style={{ background: primaryColor }}
+                    disabled={generating || preview.amount <= 0}
+                    onClick={async () => {
+                      if (!token || !preview) return;
+                      setGenerating(true);
+                      try {
+                        const { data: result, error: err } = await supabase.functions.invoke("client-portal", {
+                          body: { token, action: "generate_invoice", due_date: preview.dueDate },
+                        });
+                        if (err) throw err;
+                        if (result?.error) throw new Error(result.error);
+                        setPreviewOpen(false);
+                        setPreview(null);
+                        await loadPortalData();
+                      } catch (e: any) {
+                        alert(e.message || "Erro ao gerar fatura. Tente novamente.");
+                      } finally {
+                        setGenerating(false);
+                      }
+                    }}
+                  >
+                    {generating ? "Gerando..." : "Confirmar"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Invoices */}
         <Card className="border-0 shadow-md">
