@@ -127,6 +127,7 @@ export default function Invoices() {
     }
   };
 
+  const payMutation = useMutation({
     mutationFn: async ({ id, paid_date, invoice }: { id: string; paid_date: string; invoice: Invoice }) => {
       const { data: result, error: fnError } = await supabase.functions.invoke("baixa-manual", {
         body: {
