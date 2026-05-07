@@ -115,7 +115,7 @@ export default function Invoices() {
         status: "aberto",
       });
       if (error) throw error;
-      await auditLog("invoice_created", { client_id: newInv.client_id, amount: amountNum });
+      await auditLog({ action: "invoice_created", organizationId: organizationId!, details: { client_id: newInv.client_id, amount: amountNum } });
       toast({ title: "Fatura criada com sucesso! ✅" });
       setNewInvoiceOpen(false);
       setNewInv({ client_id: "", description: "", amount: "", due_date: new Date() });
