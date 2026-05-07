@@ -79,7 +79,54 @@ export default function Invoices() {
     enabled: !!organizationId,
   });
 
-  const payMutation = useMutation({
+  const { data: clientsList = [] } = useQuery({
+    queryKey: ["clients-min", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      const { data } = await supabase
+        .from("clients")
+        .select("id, name")
+        .eq("organization_id", organizationId)
+        .eq("status", "ativo")
+        .order("name");
+      return data || [];
+    },
+    enabled: !!organizationId,
+  });
+
+  const createInvoice = async () => {
+    if (!newInv.client_id || !newInv.amount || !newInv.due_date) {
+      toast({ title: "Preencha cliente, valor e vencimento", variant: "destructive" });
+      return;
+    }
+    const amountNum = parseFloat(newInv.amount.replace(",", "."));
+    if (isNaN(amountNum) || amountNum <= 0) {
+      toast({ title: "Valor inválido", variant: "destructive" });
+      return;
+    }
+    setCreatingInv(true);
+    try {
+      const { error } = await supabase.from("invoices").insert({
+        organization_id: organizationId,
+        client_id: newInv.client_id,
+        description: newInv.description || "Mensalidade",
+        amount: amountNum,
+        due_date: format(newInv.due_date, "yyyy-MM-dd"),
+        status: "aberto",
+      });
+      if (error) throw error;
+      await auditLog("invoice_created", { client_id: newInv.client_id, amount: amountNum });
+      toast({ title: "Fatura criada com sucesso! ✅" });
+      setNewInvoiceOpen(false);
+      setNewInv({ client_id: "", description: "", amount: "", due_date: new Date() });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+    } catch (e: any) {
+      toast({ title: "Erro ao criar fatura", description: e.message, variant: "destructive" });
+    } finally {
+      setCreatingInv(false);
+    }
+  };
+
     mutationFn: async ({ id, paid_date, invoice }: { id: string; paid_date: string; invoice: Invoice }) => {
       const { data: result, error: fnError } = await supabase.functions.invoke("baixa-manual", {
         body: {
