@@ -79,43 +79,40 @@ Deno.serve(async (req) => {
         (sentToday || []).map((s: any) => `${s.invoice_id}:${s.reminder_type}`)
       );
 
-      // Build pix/link info — gateway returns null so we generate per-invoice link below
-      const buildPixOrLinkStatic = (): string | null => {
+      // Build Pix block per invoice (includes item description and total amount)
+      const buildPixBlock = (itemDesc: string, amountStr: string): string | null => {
         if (settings.billing_mode === "gateway" && settings.gateway_provider) {
           return null; // gerado dinamicamente por fatura
         }
         if (settings.billing_mode === "pix_direto" && settings.pix_key) {
-          const typeMap: Record<string, string> = {
-            cpf: "CPF/CNPJ", email: "E-mail", telefone: "Telefone", aleatoria: "Chave Aleatória",
-          };
-          const holder = (settings as any).pix_holder_name || "";
-          const tipo = typeMap[settings.pix_key_type] || settings.pix_key_type || "Pix";
-          // Card-style block similar to bank app checkout (Pix copia-e-cola)
           return [
             "━━━━━━━━━━━━━━━━━━━",
-            "💳 *PAGAMENTO VIA PIX*",
+            "📦 *DETALHES DA COBRANÇA*",
             "━━━━━━━━━━━━━━━━━━━",
-            `🏷️ *Tipo:* ${tipo}`,
-            holder ? `👤 *Titular:* ${holder}` : "",
+            `📝 *Item:* ${itemDesc}`,
+            `💰 *Valor Total:* ${amountStr}`,
+            "━━━━━━━━━━━━━━━━━━━",
+            "",
+            "💳 *PAGAMENTO VIA PIX*",
             "",
             "📋 *Copie a chave abaixo:*",
             "```",
             settings.pix_key,
             "```",
             "",
-            "_1️⃣ Copie a chave acima_",
-            "_2️⃣ Abra o app do seu banco_",
-            "_3️⃣ Escolha Pix → Pagar com chave_",
-            "_4️⃣ Cole a chave e confirme o valor_",
+            "*Instruções de pagamento:*",
+            "1️⃣ Copie a chave acima (toque e segure sobre o código).",
+            "2️⃣ Abra o aplicativo do seu banco.",
+            "3️⃣ Escolha Pix → Pagar com Chave.",
+            `4️⃣ Cole a chave e confirme o valor de ${amountStr}.`,
             "",
-            "✅ _Após o pagamento, envie o comprovante para confirmação._",
+            "✅ *Após o pagamento, envie o comprovante por aqui para ativação imediata.*",
+            "",
             "━━━━━━━━━━━━━━━━━━━",
-          ].filter(Boolean).join("\n");
+          ].join("\n");
         }
         return "Entre em contato para informações de pagamento.";
       };
-
-      const staticPixOrLink = buildPixOrLinkStatic();
 
       // Generate real gateway payment link for an invoice (with cache)
       const getGatewayLink = async (invoiceId: string): Promise<string> => {
