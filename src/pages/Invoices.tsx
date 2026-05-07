@@ -52,6 +52,9 @@ export default function Invoices() {
   const [dateTo, setDateTo] = useState<Date | undefined>();
   const [payDialog, setPayDialog] = useState<Invoice | null>(null);
   const [paidDate, setPaidDate] = useState<Date | undefined>(new Date());
+  const [testPixOpen, setTestPixOpen] = useState(false);
+  const [testPhone, setTestPhone] = useState("");
+  const [testSending, setTestSending] = useState(false);
 
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ["invoices", organizationId],
