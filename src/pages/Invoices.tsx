@@ -609,6 +609,37 @@ export default function Invoices() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Test Pix dialog */}
+      <Dialog open={testPixOpen} onOpenChange={setTestPixOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Testar Pix manual</DialogTitle>
+            <DialogDescription>
+              Envia uma mensagem de exemplo com o bloco Pix copia-e-cola para o número informado.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="test-phone">Telefone (com DDD)</Label>
+              <Input
+                id="test-phone"
+                placeholder="Ex: 11999999999"
+                value={testPhone}
+                onChange={(e) => setTestPhone(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setTestPixOpen(false)} disabled={testSending}>
+                Cancelar
+              </Button>
+              <Button onClick={sendTestPix} disabled={testSending}>
+                {testSending ? "Enviando..." : "Enviar teste"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
