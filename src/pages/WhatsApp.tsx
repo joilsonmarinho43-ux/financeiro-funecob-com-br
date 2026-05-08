@@ -927,7 +927,11 @@ function PairTab({ organizationId }: { organizationId: string }) {
                       <QrCode className="h-3.5 w-3.5 mr-1" /> Conectar
                     </Button>
                   )}
-                  <Button variant="ghost" size="sm" className="text-destructive h-8" onClick={() => deleteMutation.mutate(inst.id)}>
+                  <Button variant="ghost" size="sm" className="text-destructive h-8" onClick={() => {
+                    if (window.confirm(`Remover a instância "${inst.name}"? Esta ação não pode ser desfeita.`)) {
+                      deleteMutation.mutate(inst.id);
+                    }
+                  }}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
