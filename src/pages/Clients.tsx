@@ -802,7 +802,7 @@ export default function Clients() {
                                 {inv.status}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-sm">{inv.paid_date ? format(new Date(inv.paid_date), "dd/MM/yyyy") : "—"}</TableCell>
+                            <TableCell className="text-sm">{inv.paid_date ? format(new Date(inv.paid_date.includes("T") ? inv.paid_date : inv.paid_date + "T12:00:00"), "dd/MM/yyyy") : "—"}</TableCell>
                             <TableCell>
                               <Button
                                 variant="ghost"
