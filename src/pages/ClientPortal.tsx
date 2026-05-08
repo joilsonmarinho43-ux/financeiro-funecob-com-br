@@ -463,7 +463,7 @@ export default function ClientPortal() {
                   <div>
                     <p className="text-xs text-slate-500">Data do Pagamento</p>
                     <p className="text-sm font-medium">
-                      {format(new Date(selectedInvoice.paid_date), "dd/MM/yyyy")}
+                      {format(parseDateLocal(selectedInvoice.paid_date), "dd/MM/yyyy")}
                     </p>
                   </div>
                 )}

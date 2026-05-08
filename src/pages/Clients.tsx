@@ -795,14 +795,14 @@ export default function Clients() {
                       <TableBody>
                         {clientInvoices.map((inv: any) => (
                           <TableRow key={inv.id}>
-                            <TableCell className="text-sm">{format(new Date(inv.due_date), "dd/MM/yyyy")}</TableCell>
+                            <TableCell className="text-sm">{format(new Date(inv.due_date + "T12:00:00"), "dd/MM/yyyy")}</TableCell>
                             <TableCell className="font-medium">{formatCurrency(Number(inv.amount))}</TableCell>
                             <TableCell>
                               <Badge className={inv.status === "pago" ? "bg-success/10 text-success border-0" : inv.status === "aberto" ? "bg-warning/10 text-warning border-0" : "bg-destructive/10 text-destructive border-0"}>
                                 {inv.status}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-sm">{inv.paid_date ? format(new Date(inv.paid_date), "dd/MM/yyyy") : "—"}</TableCell>
+                            <TableCell className="text-sm">{inv.paid_date ? format(new Date(inv.paid_date.includes("T") ? inv.paid_date : inv.paid_date + "T12:00:00"), "dd/MM/yyyy") : "—"}</TableCell>
                             <TableCell>
                               <Button
                                 variant="ghost"
