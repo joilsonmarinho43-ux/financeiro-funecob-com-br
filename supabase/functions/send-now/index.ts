@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://esm.sh/zod@3.23.8";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,20 +7,27 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const BodySchema = z.object({
+  phone: z.string().min(8).max(20),
+  message: z.string().min(1).max(4096),
+  organization_id: z.string().uuid(),
+});
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { phone, message, organization_id } = await req.json();
-
-    if (!phone || !message || !organization_id) {
+    const raw = await req.json().catch(() => null);
+    const parsed = BodySchema.safeParse(raw);
+    if (!parsed.success) {
       return new Response(
-        JSON.stringify({ error: "phone, message e organization_id são obrigatórios" }),
+        JSON.stringify({ error: "Requisição inválida", details: parsed.error.flatten().fieldErrors }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    const { phone, message, organization_id } = parsed.data;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
