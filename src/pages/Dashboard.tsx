@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { buildPortalLink } from "@/lib/portalUrl";
+import { formatCurrency, parseDateLocal } from "@/lib/format";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
@@ -25,11 +26,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-// Parse date string "YYYY-MM-DD" without timezone shift
-const parseDateLocal = (d: string) => {
-  const [y, m, day] = d.split("-").map(Number);
-  return new Date(y, m - 1, day);
-};
 
 export default function Dashboard() {
   const [showValues, setShowValues] = useState(false);
@@ -393,8 +389,6 @@ export default function Dashboard() {
 
 
 
-  const formatCurrency = (value: number) =>
-    value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   const now = new Date();
   const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];

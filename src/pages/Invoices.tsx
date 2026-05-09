@@ -34,11 +34,9 @@ import {
   AlertTriangle, Clock, Download, FileSpreadsheet, FileText, Send, Plus,
 } from "lucide-react";
 import { exportToExcel, exportToPDF } from "@/lib/exportInvoices";
+import { formatCurrency } from "@/lib/format";
 
 type Invoice = Tables<"invoices"> & { clients?: { name: string } | null };
-
-const formatCurrency = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export default function Invoices() {
   const { organizationId } = useOrganization();

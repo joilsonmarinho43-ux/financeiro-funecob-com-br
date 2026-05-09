@@ -28,6 +28,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { ptBR } from "date-fns/locale";
+import { formatCurrency } from "@/lib/format";
 import { auditLog } from "@/lib/auditLog";
 
 type Client = Tables<"clients">;
@@ -353,8 +354,6 @@ export default function Clients() {
     }
   };
 
-  const formatCurrency = (v: number) =>
-    v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   return (
     <AppLayout>
