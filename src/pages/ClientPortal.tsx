@@ -12,12 +12,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { format } from "date-fns";
-
-const parseDateLocal = (d: string) => {
-  const [y, m, day] = d.split("-").map(Number);
-  return new Date(y, m - 1, day);
-};
 import { ptBR } from "date-fns/locale";
+import { parseDateLocal, formatCurrency } from "@/lib/format";
 import {
   FileText, CheckCircle, AlertTriangle, Clock, CreditCard,
   Building2, User, Phone, Mail, Copy, Check, XCircle,
@@ -82,9 +78,6 @@ export default function ClientPortal() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
-  const formatCurrency = (v: number) =>
-    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
   if (loading) {
     return (

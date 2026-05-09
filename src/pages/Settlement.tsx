@@ -35,7 +35,7 @@ function parseBarcode(raw: string, config: { client_id_length: number; year_leng
   };
 }
 
-const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+import { formatCurrency } from "@/lib/format";
 
 export default function Settlement() {
   const { user } = useAuth();

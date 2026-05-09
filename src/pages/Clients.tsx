@@ -353,8 +353,6 @@ export default function Clients() {
     }
   };
 
-  const formatCurrency = (v: number) =>
-    v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   return (
     <AppLayout>

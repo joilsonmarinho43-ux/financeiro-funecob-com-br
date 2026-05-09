@@ -146,8 +146,6 @@ export default function Plans() {
     upsertMutation.mutate();
   };
 
-  const formatCurrency = (v: number) =>
-    v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   return (
     <AppLayout>

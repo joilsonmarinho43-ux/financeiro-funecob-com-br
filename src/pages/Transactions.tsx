@@ -32,15 +32,13 @@ import { cn } from "@/lib/utils";
 import {
   Plus, Search, Trash2, TrendingUp, TrendingDown, CalendarIcon, DollarSign,
 } from "lucide-react";
+import { formatCurrency } from "@/lib/format";
 
 const CATEGORIES = [
   "Mensalidade", "Carnê", "Venda", "Serviço", "Comissão",
   "Aluguel", "Salário", "Fornecedor", "Servidor", "Marketing",
   "Manutenção", "Outros",
 ];
-
-const formatCurrency = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 const emptyForm = {
   description: "",

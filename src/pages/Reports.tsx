@@ -18,9 +18,7 @@ import {
   PieChart, Pie, Cell, Legend,
 } from "recharts";
 import { BarChart3, Download } from "lucide-react";
-
-const formatCurrency = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+import { formatCurrency } from "@/lib/format";
 
 const COLORS = [
   "hsl(199, 89%, 48%)",
