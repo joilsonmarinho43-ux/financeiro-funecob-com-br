@@ -58,16 +58,16 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Get client's plan
-      const { data: latestInvoice } = await supabase
+      // Get client's plan + ALL invoices to determine the original due_day
+      // RULE: never use paid_date as base for recurrence — always honour the original due_day.
+      const { data: allInvoices } = await supabase
         .from("invoices")
-        .select("plan_id, amount")
+        .select("plan_id, amount, due_date, created_at")
         .eq("client_id", portalToken.client_id)
         .eq("organization_id", portalToken.organization_id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .order("created_at", { ascending: false });
 
+      const latestInvoice = allInvoices?.[0];
       const planId = latestInvoice?.plan_id || null;
       const amount = latestInvoice?.amount || 0;
 
@@ -78,13 +78,30 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Determine original due_day = most frequent day across history (fallback: oldest)
+      let originalDueDay = parseInt(due_date.split("-")[2], 10);
+      if (allInvoices && allInvoices.length > 0) {
+        const counts: Record<number, number> = {};
+        for (const inv of allInvoices) {
+          const day = parseInt((inv.due_date as string).split("-")[2], 10);
+          counts[day] = (counts[day] || 0) + 1;
+        }
+        originalDueDay = Number(Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0]);
+      }
+
+      // Force due_date to original day (clamped to month length — handles Feb / 30 / 31 / leap years)
+      const [y, m] = due_date.split("-").map(Number);
+      const lastDayOfMonth = new Date(y, m, 0).getDate();
+      const safeDay = Math.min(originalDueDay, lastDayOfMonth);
+      const normalizedDueDate = `${y}-${String(m).padStart(2, "0")}-${String(safeDay).padStart(2, "0")}`;
+
       // Idempotency check
       const { data: existing } = await supabase
         .from("invoices")
         .select("id")
         .eq("client_id", portalToken.client_id)
         .eq("organization_id", portalToken.organization_id)
-        .eq("due_date", due_date)
+        .eq("due_date", normalizedDueDate)
         .eq("status", "aberto")
         .maybeSingle();
 
@@ -102,7 +119,7 @@ Deno.serve(async (req) => {
         if (plan) planName = plan.name;
       }
 
-      const dueDateObj = new Date(due_date + "T12:00:00Z");
+      const dueDateObj = new Date(normalizedDueDate + "T12:00:00Z");
       const desc = `${planName} — ${dueDateObj.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`;
 
       const { data: newInvoice, error: insertErr } = await supabase.from("invoices").insert({
@@ -110,7 +127,7 @@ Deno.serve(async (req) => {
         organization_id: portalToken.organization_id,
         plan_id: planId,
         amount,
-        due_date,
+        due_date: normalizedDueDate,
         status: "aberto",
         description: desc,
       }).select("id").single();
