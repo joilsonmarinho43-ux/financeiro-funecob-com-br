@@ -1,56 +1,57 @@
-## Diagnóstico inicial
+## Diagnóstico
 
-Rodei scanner de segurança e linter de DB. Mapa do código:
+Rodei a query e confirmei o problema. **11 clientes** estão com mensalidades em dias diferentes do dia original cadastrado. Exemplos reais do banco:
 
-- **9.564 linhas** só em `src/pages/` — arquivos gigantes: `WhatsApp.tsx` (1.442), `BillingSettings.tsx` (1.229), `Clients.tsx` (1.002), `Invoices.tsx` (769), `Dashboard.tsx` (724).
-- **18 findings de segurança** (todos `WARN`, nenhum crítico): bucket público lista arquivos, várias funções `SECURITY DEFINER` executáveis por anon/authenticated.
-- **12 issues no linter Supabase** sobrepostos com os de segurança.
-- 9 edge functions, 21 páginas.
+| Cliente | Total faturas | Dias de vencimento encontrados |
+|---|---|---|
+| julia marinho | 12 | 1 e 5 |
+| Vanessa | 2 | 6 e 27 |
+| Layane Moura | 2 | 7 e 20 |
+| Dalva Muniz | 2 | 7 e 25 |
 
-Não há erros runtime ativos. Os fluxos críticos (cobrança automática, baixa, WhatsApp, portal) estão funcionando.
+### Onde está o bug
 
-## Plano em 4 fases
+1. **`Dashboard.tsx`** já está correto — usa `parseDateLocal(inv.due_date).getDate()` (dia original da última fatura). ✅
+2. **`client-portal/index.ts`** (geração via portal) — recebe `due_date` do cliente livre, não força o dia original. ⚠️
+3. **`Invoices.tsx`** — criação manual usa data escolhida pelo usuário (ok, é manual).
+4. **Não existe cron/trigger gerando faturas automaticamente** — toda recorrência é gerada sob demanda. Logo o "vazamento" do dia veio de geração manual onde alguém escolheu data diferente, ou da geração a partir de `paid_date`.
 
-Faço fase por fase, te entrego, valido antes da próxima. Assim nada quebra.
+## Plano de correção
 
-### Fase 1 — Segurança (DB + Storage)
-1. Restringir `EXECUTE` das funções `SECURITY DEFINER` (`get_user_organization_id`, `is_collector`, `has_role`, `handle_new_user`, `update_updated_at`, `perform_baixa_manual`) — revogar de `anon`/`public`, manter só onde é usado em RLS.
-2. Bucket `logos`: manter público para leitura, mas restringir LIST (só arquivos individuais visíveis).
-3. Confirmar que toda query crítica filtra `organization_id` no client (já é regra do projeto, vou validar).
-4. Adicionar validação Zod nas edge functions que recebem input externo (`bip-receiver`, `client-portal`, `send-now`).
+### Fase 1 — Relatório (sem alterar nada)
+Gero CSV em `/mnt/documents/auditoria-mensalidades.csv` com:
+- Cliente, dia original (mais antigo), faturas em aberto desalinhadas, nova data proposta.
+- Você revisa antes de qualquer alteração.
 
-### Fase 2 — Bugs e estabilidade
-1. Varrer console/network logs em cada página principal.
-2. Validar fluxos de data (UTC-3 com `parseDateLocal`), filtros `.gte/.lt`, divisões por zero, `null`/`undefined` em valores monetários.
-3. Verificar memory leaks de polling (WhatsApp QR, robot monitor) — garantir `clearInterval` em unmount.
-4. Garantir `window.confirm` em todos os deletes (regra do projeto).
-5. Padronizar tratamento de erro: toast + log estruturado.
+### Fase 2 — Migração de correção (idempotente, transacional)
+Cria função `public.repair_client_due_dates(p_organization_id uuid, p_dry_run boolean)`:
 
-### Fase 3 — Organização do código
-1. Quebrar os 5 arquivos gigantes em componentes menores:
-   - `WhatsApp.tsx` → `InstancesList`, `QRPairing`, `MessageHistory`, `SendConfig`.
-   - `BillingSettings.tsx` → `ReminderTemplates`, `PixSettings`, `GatewaySettings`, `RobotConfig`.
-   - `Clients.tsx` → `ClientsTable`, `ClientForm`, `ClientDetailDialog`, `MessageDialog`, `InvoiceDialog`.
-   - `Invoices.tsx` → `InvoicesTable`, `InvoiceFilters`, `NewInvoiceDialog`, `TestPixDialog`, `PayDialog`.
-   - `Dashboard.tsx` → `KPICards`, `OverdueList`, `QuickActions`.
-2. Mover hooks de fetch repetidos para `src/hooks/` (já tem `useOrganization`, criar `useInvoices`, `useClients`, `useBillingSettings`).
-3. Centralizar formatadores (`formatCurrency`, `formatDate`, `formatPhone`) em `src/lib/format.ts`.
-4. Remover `as any` onde possível, tipar com `Tables<>` do Supabase.
+1. Para cada cliente, define **dia original** = `EXTRACT(DAY)` da fatura mais antiga (ordem `created_at`).
+2. Para cada fatura **`status = 'aberto'`** desse cliente:
+   - Calcula `nova_due_date = make_date(year, month, LEAST(dia_original, último_dia_do_mês))`.
+   - Trata fevereiro / 30 / 31 / bissexto via `LEAST(...)`.
+   - Se `nova_due_date <> due_date` **e** não existir outra fatura aberta do mesmo cliente nessa nova data → atualiza.
+   - Se existir colisão → registra em log e **não** mexe (evita duplicar).
+3. Faturas `pago`, `cancelado`, `vencido_pago` → **nunca tocadas**.
+4. `paid_date`, `amount`, `id`, `client_id` → **preservados**.
+5. Toda alteração registra em `system_logs` com `action = 'repair_due_date'` e `details = { invoice_id, old_due_date, new_due_date, reason }`.
+6. Modo `dry_run = true` → só conta o que faria, não escreve.
 
-### Fase 4 — UX/UI e mobile
-1. Padronizar headers de página (título + descrição + ações no mesmo molde).
-2. Revisar mobile (390px): tabelas com scroll horizontal, dialogs com `max-h-[90vh] overflow-y-auto`, botões grandes o suficiente.
-3. Estados de loading/empty/error consistentes em todas as listas.
-4. Acessibilidade: todo `DialogContent` precisa de `DialogTitle` (vi warnings disso no console).
-5. Skeleton loaders em vez de spinners em listas longas.
+Backup: como migração só faz `UPDATE invoices SET due_date = ...` em linhas `aberto`, o histórico em `system_logs` serve como trilha reversível.
 
-## Como prefiro executar
+### Fase 3 — Prevenção no código
 
-Fase 1 primeiro (segurança — são poucas linhas, alto impacto, sem risco visual). Depois te mostro e seguimos. Posso começar?
+1. **`client-portal/index.ts`**: ao gerar fatura via portal, ignora a `due_date` enviada e força `make_date(year, month, dia_original_do_cliente)`.
+2. **`Dashboard.tsx`** (`confirmGenerateInvoice`): já está correto, mantém.
+3. **`Clients.tsx`**: na criação inicial — já usa `due_day` do form. Manter.
+4. Adicionar comentário/contrato: "Nunca usar `paid_date` como base de recorrência".
 
-## Detalhes técnicos
+### Fase 4 — Validação final
+- Rodar a query de detecção novamente → resultado deve ser **0 clientes inconsistentes** (exceto colisões reportadas).
+- CSV de "antes/depois" em `/mnt/documents/`.
 
-- Nenhuma fase muda schema de tabela existente (só `GRANT`/`REVOKE` e políticas de storage).
-- Refatorações da Fase 3 mantêm 100% do comportamento atual — só dividem arquivos.
-- Tudo é feito com edits cirúrgicos para não invalidar `supabase/types.ts`.
-- Memórias do projeto (parseDateLocal, `.gte/.lt`, `entrada`, IP da Evolution, etc.) serão respeitadas.
+## Confirmação antes de executar
+
+Faço **Fase 1 (só relatório)** primeiro e te mostro. Depois você aprova as Fases 2-4.
+
+Posso seguir?

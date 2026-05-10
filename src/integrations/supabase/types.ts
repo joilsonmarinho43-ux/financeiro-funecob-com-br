@@ -1236,6 +1236,10 @@ export type Database = {
         }
         Returns: Json
       }
+      repair_client_due_dates: {
+        Args: { p_dry_run?: boolean; p_organization_id?: string }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin" | "user"
