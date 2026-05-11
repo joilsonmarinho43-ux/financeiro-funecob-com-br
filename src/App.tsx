@@ -26,6 +26,7 @@ import AdminPanel from "./pages/AdminPanel";
 import ClientPortal from "./pages/ClientPortal";
 import Settlement from "./pages/Settlement";
 import GlobalSettings from "./pages/GlobalSettings";
+import RecurrenceAudit from "./pages/RecurrenceAudit";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -131,6 +132,7 @@ const App = () => (
               <Route path="/logs" element={<ProtectedRoute><SystemLogs /></ProtectedRoute>} />
               <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
               <Route path="/admin/global-settings" element={<ProtectedRoute adminOnly><GlobalSettings /></ProtectedRoute>} />
+              <Route path="/admin/recurrence" element={<ProtectedRoute adminOnly><RecurrenceAudit /></ProtectedRoute>} />
               <Route path="/portal/:token" element={<ClientPortal />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
