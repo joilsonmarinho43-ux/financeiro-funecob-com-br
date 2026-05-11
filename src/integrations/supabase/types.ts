@@ -640,6 +640,51 @@ export type Database = {
         }
         Relationships: []
       }
+      recurrence_audit_logs: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          client_id: string | null
+          details: Json | null
+          id: string
+          invoice_id: string | null
+          new_due_date: string | null
+          old_due_date: string | null
+          organization_id: string | null
+          original_due_day: number | null
+          reason: string
+          source: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          client_id?: string | null
+          details?: Json | null
+          id?: string
+          invoice_id?: string | null
+          new_due_date?: string | null
+          old_due_date?: string | null
+          organization_id?: string | null
+          original_due_day?: number | null
+          reason: string
+          source?: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          client_id?: string | null
+          details?: Json | null
+          id?: string
+          invoice_id?: string | null
+          new_due_date?: string | null
+          old_due_date?: string | null
+          organization_id?: string | null
+          original_due_day?: number | null
+          reason?: string
+          source?: string
+        }
+        Relationships: []
+      }
       sms_messages: {
         Row: {
           created_at: string
@@ -1218,6 +1263,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      audit_recurrence_integrity: {
+        Args: { p_organization_id?: string }
+        Returns: Json
+      }
+      client_original_due_day: {
+        Args: { p_client_id: string }
+        Returns: number
+      }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -1238,6 +1291,10 @@ export type Database = {
       }
       repair_client_due_dates: {
         Args: { p_dry_run?: boolean; p_organization_id?: string }
+        Returns: Json
+      }
+      rollback_due_date_change: {
+        Args: { p_audit_log_id: string }
         Returns: Json
       }
     }
