@@ -168,6 +168,7 @@ export function AppSidebar() {
           ...systemItems,
           ...(isAdmin ? [
             { title: "Admin", icon: Shield, url: "/admin", badge: "" },
+            { title: "Auditoria Recorrência", icon: CalendarCheck, url: "/admin/recurrence", badge: "" },
             { title: "Config Global", icon: Globe, url: "/admin/global-settings", badge: "" },
           ] : []),
         ]} />
