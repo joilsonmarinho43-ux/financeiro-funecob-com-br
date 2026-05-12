@@ -30,6 +30,11 @@ import { cn } from "@/lib/utils";
 import { ptBR } from "date-fns/locale";
 import { formatCurrency } from "@/lib/format";
 import { auditLog } from "@/lib/auditLog";
+import { StickyFilterBar } from "@/components/ui/sticky-filter-bar";
+import { StatusPill } from "@/components/ui/status-pill";
+import { DataCard } from "@/components/ui/data-card";
+import { Fab } from "@/components/ui/fab";
+import { maskPhone, maskCPFCNPJ } from "@/lib/masks";
 
 type Client = Tables<"clients">;
 type Plan = Tables<"plans">;
@@ -57,6 +62,8 @@ export default function Clients() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [visibleCount, setVisibleCount] = useState(25);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailDialog, setDetailDialog] = useState<Client | null>(null);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
@@ -339,12 +346,17 @@ export default function Clients() {
     upsertMutation.mutate();
   };
 
-  const filtered = clients.filter(
-    (c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.email?.toLowerCase().includes(search.toLowerCase()) ||
-      c.document?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = clients.filter((c) => {
+    if (statusFilter !== "all" && c.status !== statusFilter) return false;
+    const q = search.toLowerCase();
+    if (!q) return true;
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.email?.toLowerCase().includes(q) ||
+      c.document?.toLowerCase().includes(q)
+    );
+  });
+  const visible = filtered.slice(0, visibleCount);
 
   const statusColor = (status: string) => {
     switch (status) {
