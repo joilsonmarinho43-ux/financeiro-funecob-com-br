@@ -48,9 +48,25 @@
 
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
+    --warning-soft: 43 96% 92%;
 
     --success: 160 84% 39%;
     --success-foreground: 0 0% 100%;
+    --success-soft: 152 70% 92%;
+
+    --danger: 0 72% 51%;
+    --danger-foreground: 0 0% 100%;
+    --danger-soft: 0 86% 95%;
+
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+    --info-soft: 199 89% 94%;
+
+    --neutral-soft: 220 14% 94%;
+
+    --shadow-card: 0 1px 2px 0 hsl(220 25% 10% / 0.04), 0 1px 3px 0 hsl(220 25% 10% / 0.06);
+    --shadow-elevated: 0 4px 6px -1px hsl(220 25% 10% / 0.08), 0 2px 4px -2px hsl(220 25% 10% / 0.06);
+    --shadow-fab: 0 10px 25px -5px hsl(199 89% 48% / 0.45), 0 8px 10px -6px hsl(199 89% 48% / 0.25);
 
     --chart-1: 199 89% 48%;
     --chart-2: 160 84% 39%;
@@ -125,6 +141,23 @@
     background: linear-gradient(135deg, hsl(0, 72%, 51%), hsl(0, 72%, 42%));
   }
   .gradient-sidebar {
-    background: linear-gradient(180deg, hsl(220, 25%, 12%), hsl(220, 30%, 8%));
+    background: linear-gradient(180deg, hsl(222, 47%, 11%), hsl(222, 47%, 7%));
   }
+  .shadow-card { box-shadow: var(--shadow-card); }
+  .shadow-elevated { box-shadow: var(--shadow-elevated); }
+  .shadow-fab { box-shadow: var(--shadow-fab); }
+  .tap {
+    @apply min-h-11 min-w-11 inline-flex items-center justify-center;
+  }
+  .text-financial {
+    @apply text-2xl font-bold tracking-tight tabular-nums;
+  }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .scrollbar-none { scrollbar-width: none; }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+@layer base {
+  /* Smoother focus rings */
+  :focus-visible { outline: none; }
 }

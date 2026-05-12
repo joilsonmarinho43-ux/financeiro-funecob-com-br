@@ -406,7 +406,7 @@ export default function Dashboard() {
               {loadingClients ? (
                 <Skeleton className="h-7 w-12 mt-0.5 bg-primary-foreground/20" />
               ) : (
-                <p className="text-2xl font-bold text-primary-foreground">{clientStats?.active ?? 0}</p>
+                <p className="text-financial text-primary-foreground">{clientStats?.active ?? 0}</p>
               )}
             </div>
           </CardContent>
@@ -421,7 +421,7 @@ export default function Dashboard() {
               {loadingClients ? (
                 <Skeleton className="h-7 w-12 mt-0.5 bg-destructive-foreground/20" />
               ) : (
-                <p className="text-2xl font-bold text-destructive-foreground">{clientStats?.expired ?? 0}</p>
+                <p className="text-financial text-destructive-foreground">{clientStats?.expired ?? 0}</p>
               )}
             </div>
           </CardContent>
@@ -436,7 +436,7 @@ export default function Dashboard() {
               {loadingClients ? (
                 <Skeleton className="h-7 w-12 mt-0.5" />
               ) : (
-                <p className="text-2xl font-bold text-sidebar-foreground">{clientStats?.inactive ?? 0}</p>
+                <p className="text-financial text-sidebar-foreground">{clientStats?.inactive ?? 0}</p>
               )}
             </div>
           </CardContent>
@@ -457,8 +457,8 @@ export default function Dashboard() {
                 <Skeleton className="h-6 w-24" />
               ) : (
                 <button onClick={() => setShowValues(!showValues)} className="flex items-center gap-1.5 text-foreground">
-                  <span className="text-sm font-bold">
-                    {showValues ? formatCurrency(financialStats?.monthBalance ?? 0) : "****** "}
+                  <span className="text-financial">
+                    {showValues ? formatCurrency(financialStats?.monthBalance ?? 0) : "••••••"}
                   </span>
                   {showValues ? <EyeOff className="h-3.5 w-3.5 text-muted-foreground" /> : <Eye className="h-3.5 w-3.5 text-muted-foreground" />}
                 </button>
@@ -485,8 +485,8 @@ export default function Dashboard() {
               <Skeleton className="h-6 w-28" />
             ) : (
               <button onClick={() => setShowValues(!showValues)} className="flex items-center gap-1.5 text-foreground">
-                <span className="text-sm font-bold">
-                  {showValues ? formatCurrency(financialStats?.yearBalance ?? 0) : "****** "}
+                <span className="text-financial">
+                  {showValues ? formatCurrency(financialStats?.yearBalance ?? 0) : "••••••"}
                 </span>
                 {showValues ? <EyeOff className="h-3.5 w-3.5 text-muted-foreground" /> : <Eye className="h-3.5 w-3.5 text-muted-foreground" />}
               </button>

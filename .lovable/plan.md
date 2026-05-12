@@ -1,132 +1,129 @@
-# Sistema de Auditoria e Proteção de Recorrência
+# Redesign Mobile-First Premium — FuneCob
 
-## Visão geral
+Reconstrução completa da camada de UI mantendo toda a lógica de negócio, RLS e funções existentes intactas. Foco: aparência de fintech nativa em mobile, sem perder o desktop.
 
-Construir uma camada de blindagem em volta da geração e alteração de faturas (`invoices`), garantindo que **nenhuma mensalidade futura perca o `due_day` original**. Tudo transacional, reversível e auditável.
+## 1. Design System (base)
 
----
+Atualizar `src/index.css` e `tailwind.config.ts`:
 
-## 1. Banco de dados (migração única)
+- Paleta semântica (HSL):
+  - `--background`: 210 40% 98% (#F8FAFC)
+  - `--sidebar-background`: 222 47% 11% (#0F172A)
+  - `--primary`: 199 89% 48% (#0EA5E9)
+  - Tons pastel + bordas sólidas:
+    - `--danger-soft` / `--danger` (vencidas)
+    - `--warning-soft` / `--warning` (pendentes)
+    - `--success-soft` / `--success` (pagas)
+    - `--info-soft` / `--info`
+- Tokens novos:
+  - `--radius: 0.75rem` (12px global)
+  - `--shadow-card`, `--shadow-elevated`, `--shadow-fab`
+  - `--tap-target: 44px` (mínimo de toque)
+- Tipografia: escala mobile com `text-financial` (24px/700) para valores no Dashboard.
 
-### 1.1 Tabela `recurrence_audit_logs`
-Imutável (sem UPDATE/DELETE via RLS), particionável por org.
+## 2. App Shell mobile-first
 
-Colunas:
-- `id`, `organization_id`, `client_id`, `invoice_id`
-- `old_due_date`, `new_due_date`, `original_due_day`
-- `changed_by` (uuid, nullable — system = NULL)
-- `changed_at` (timestamptz default now())
-- `reason` (text — `'manual_edit' | 'auto_generation' | 'repair' | 'migration' | 'baixa_manual' | 'portal_generation'`)
-- `source` (text — `'automatic' | 'manual'`)
-- `details` (jsonb — payload livre)
+- `AppLayout.tsx`:
+  - Header fixo (sticky) com altura 56px, trigger do drawer à esquerda, logo central, ações à direita (notificações, perfil).
+  - Em mobile (`<md`): Sidebar vira **Drawer** off-canvas (`collapsible="offcanvas"` do Shadcn sidebar) acionado por botão hamburger.
+  - Em desktop: sidebar fixa colapsável (mantém comportamento atual).
+- `AppSidebar.tsx`:
+  - Itens com altura 48px, ícone 20px, label peso 500, agrupamentos com label discreta uppercase.
+  - Indicador de rota ativa: barra vertical primária à esquerda + fundo `primary/10`.
+  - Fundo `sidebar-background` (#0F172A), texto `sidebar-foreground`.
 
-Índices: `(organization_id, changed_at desc)`, `(client_id, changed_at desc)`, `(invoice_id)`.
+## 3. Componentes reutilizáveis novos
 
-RLS: SELECT por org + admin global; INSERT só via SECURITY DEFINER funcs.
+Criar em `src/components/ui/`:
 
-### 1.2 Função `client_original_due_day(client_id) RETURNS int`
-`STABLE SECURITY DEFINER`. Retorna o dia mais frequente das faturas do cliente (desempate: mais antigo). Usada por triggers e validador.
+- `data-card.tsx` — card de dado para listas mobile (título, badge pill, valor destacado à direita, ações).
+- `status-pill.tsx` — badge arredondada (`rounded-full`) com variantes `paid|pending|overdue|canceled|info`, usando fundo pastel + texto sólido.
+- `kpi-card.tsx` — card grande do dashboard com ícone, label, valor 24px, delta opcional.
+- `fab.tsx` — Floating Action Button (56px, fixed bottom-right, sombra elevada, safe-area iOS).
+- `sticky-filter-bar.tsx` — header sticky com input de busca + chips de filtro horizontais scrolláveis.
+- `responsive-table.tsx` — wrapper que renderiza `<Table>` em `md+` e `DataCard[]` em mobile, recebendo um único schema de colunas.
+- `masked-field.tsx` — exibe CPF/CNPJ/telefone mascarados, com helpers em `src/lib/masks.ts`.
+- `secret-field.tsx` — input de chave com botão olho (revelar ao clicar, copy-to-clipboard).
 
-### 1.3 Trigger `invoices_audit_due_date`
-`AFTER INSERT OR UPDATE OF due_date ON invoices`. Compara com `client_original_due_day` e, se INSERT/UPDATE com divergência ou alteração, grava em `recurrence_audit_logs`. Nunca bloqueia — só registra.
+## 4. Helpers
 
-### 1.4 Trigger `invoices_protect_paid`
-`BEFORE UPDATE ON invoices`. Se `OLD.status IN ('pago','vencido_pago','cancelado')` e qualquer um de `due_date, amount, client_id, paid_date` mudou → `RAISE EXCEPTION` (a menos que `current_setting('app.allow_paid_edit', true) = 'on'` para casos administrativos explícitos).
+`src/lib/masks.ts`:
+- `maskCPF`, `maskCNPJ`, `maskCPFCNPJ` (auto), `maskPhone`, `maskEmail`, `maskApiKey`.
+- Apenas formatação de exibição; não altera dados no banco.
 
-### 1.5 Trigger `invoices_validate_due_date`
-`BEFORE INSERT ON invoices`. Se já existe fatura `aberto` do mesmo `client_id` com mesma `(year, month)` da nova `due_date` → bloqueia (anti-duplicidade de competência). Se `due_date < CURRENT_DATE - interval '90 days'` → bloqueia (anti-retroativo absurdo, configurável).
+## 5. Telas a refatorar (somente UI/JSX/estilo)
 
-### 1.6 Índices de performance
-```sql
-CREATE INDEX IF NOT EXISTS idx_invoices_client_due ON invoices(client_id, due_date);
-CREATE INDEX IF NOT EXISTS idx_invoices_org_status_due ON invoices(organization_id, status, due_date);
-CREATE INDEX IF NOT EXISTS idx_invoices_due_month ON invoices(client_id, date_trunc('month', due_date));
-```
+Sem tocar em queries/mutations:
 
-### 1.7 Função `audit_recurrence_integrity(p_org uuid DEFAULT NULL) RETURNS jsonb`
-Validador read-only. Retorna:
-- `misaligned[]` — faturas abertas com `due_day` divergente do original
-- `duplicates[]` — duas+ faturas abertas no mesmo mês para mesmo cliente
-- `gaps[]` — saltos de competência (cliente com fatura jan + março, sem fevereiro)
-- `invalid_dates[]` — `due_date` nulo ou fora de range razoável
-- `summary` — contadores
+1. **Dashboard** (`src/pages/Dashboard.tsx`)
+   - KPIs no topo em grid 1col mobile / 2col tablet / 4col desktop usando `KpiCard` (valores 24px+).
+   - Lista "Inadimplentes" via `ResponsiveTable` → cards no mobile com pill de status e valor destacado à direita.
+   - Sticky filter bar.
 
-### 1.8 Estender `repair_client_due_dates` existente
-Adicionar parâmetro `p_reason text default 'repair'` e gravar em `recurrence_audit_logs` além de `system_logs`.
+2. **Clients** (`src/pages/Clients.tsx`)
+   - `StickyFilterBar` (busca + chips: todos/ativos/inadimplentes).
+   - `ResponsiveTable` para listagem; cards com nome (título), CPF mascarado, telefone mascarado, status pill.
+   - Botões de ação tap-target 44px.
+   - **FAB "+"** para "Novo Cliente".
+   - **Paginação Load More** (client-side sobre o resultado já carregado, em lotes de 25).
 
----
+3. **Invoices** (`src/pages/Invoices.tsx`)
+   - Sticky filter bar com chips: Todos / Pagos / Pendentes / Vencidos.
+   - Cards com borda lateral sólida 4px conforme status (vencido = pastel rosa + borda vermelha, etc.).
+   - Valor monetário alinhado à direita, peso 600.
+   - FAB "+" para "Nova Fatura".
+   - Load More 25 por página.
 
-## 2. Edge function `recurrence-guardian` (cron diário)
+4. **WhatsApp** (`src/pages/WhatsApp.tsx`)
+   - Lista de instâncias em cards.
+   - Histórico com Load More.
+   - Tap targets 44px nos botões.
 
-`supabase/functions/recurrence-guardian/index.ts`:
-- Roda `audit_recurrence_integrity(NULL)`
-- Se detectar problemas, insere alerta em `system_logs` com `action='recurrence_alert'`
-- Opcional: envia para `webhook_configs` com evento `recurrence.alert`
-- Retorna JSON com summary
+5. **Settings / Gateways / GlobalSettings**
+   - Substituir inputs de API key por `SecretField` (revelar/copiar).
+   - Telefones e CPFs em `MaskedField`.
 
-Agendar via `pg_cron` 1×/dia 03:00 (usar `supabase--insert` com URL+anon key específicos).
+6. **Settlement, Reports, Transactions, BillingSettings, RecurrenceAudit, AdminPanel, Plans, SystemLogs, Webhooks, V3Pay, SMS**
+   - Aplicar `ResponsiveTable`, `StatusPill`, sticky filter onde houver listagem; ajustes de spacing e radius. Sem mudança funcional.
 
----
+7. **AppLayout / Header**
+   - Notificações com badge.
+   - Safe area inset para FAB (`env(safe-area-inset-bottom)`).
 
-## 3. Frontend — Dashboard Admin
+## 6. Acessibilidade & toque
 
-Nova página `src/pages/RecurrenceAudit.tsx` (rota `/admin/recurrence`, guarda `has_role admin`):
+- Classe utilitária `.tap` = `min-h-11 min-w-11 inline-flex items-center justify-center` para todos os ícone-botões.
+- `aria-label` em todos os botões só com ícone.
 
-Seções:
-1. **Status de integridade** — cards: total clientes, desalinhados, duplicidades, gaps
-2. **Tabela de divergências** — cliente, fatura, due_date atual, due_day original, proposta, motivo
-3. **Botões**:
-   - `Simular correções (Dry-run)` → chama `repair_client_due_dates(org, true)` e mostra antes/depois
-   - `Aplicar correções` → confirm window.confirm + chama com `false`
-   - `Recarregar auditoria`
-4. **Histórico** — últimas 100 entradas de `recurrence_audit_logs` filtráveis por org/cliente/motivo
+## 7. Não faremos
 
-Adicionar item no `AppSidebar` (visível só para admin) e card de atalho no `AdminPanel.tsx`.
+- Não alteramos schema do banco, RLS, triggers, edge functions, lógica de cobrança/recorrência, autenticação.
+- Não removemos rotas nem mudamos navegação além do shell.
+- Sem dependências novas (usamos Shadcn já instalado).
 
----
+## 8. Ordem de execução
 
-## 4. Hardening de código (regras críticas)
+1. Tokens em `index.css` + `tailwind.config.ts`.
+2. Helpers (`masks.ts`) + componentes base (`StatusPill`, `KpiCard`, `Fab`, `StickyFilterBar`, `MaskedField`, `SecretField`, `DataCard`, `ResponsiveTable`).
+3. `AppLayout` + `AppSidebar` (drawer mobile).
+4. Dashboard → Clients → Invoices (telas críticas).
+5. WhatsApp + Settings/Gateways/GlobalSettings (mascaramento).
+6. Demais telas (passagem de polimento).
+7. QA visual em 390px (mobile) e 1280px (desktop).
 
-- `client-portal/index.ts` — já força `due_day` original. Adicionar `INSERT INTO recurrence_audit_logs (..., reason='portal_generation', source='automatic')`.
-- `Dashboard.tsx::confirmGenerateInvoice` — adicionar comentário "NUNCA usar paid_date" e gravar audit log com `reason='auto_generation'`.
-- `baixa-manual` edge function — garante que **não toca em `due_date`** (já não toca, adicionar comentário-contrato).
-- `Invoices.tsx` (edição manual) — ao alterar `due_date` de fatura aberta, exibir warning se diferir do `due_day` original e gravar audit com `reason='manual_edit'`.
+## Detalhes técnicos
 
----
-
-## 5. Rollback
-
-- `recurrence_audit_logs` é a trilha reversa: cada linha tem `old_due_date` → SQL de rollback gerável.
-- Função utilitária `rollback_due_date_change(audit_log_id uuid)` que reverte uma alteração específica (apenas admin, apenas se fatura ainda `aberto`).
-
----
-
-## Detalhes técnicos (resumo)
-
-| Item | Tipo | Localização |
-|---|---|---|
-| Tabela audit | migration | nova |
-| Triggers (3) | migration | nova |
-| Funções SQL (4) | migration | nova |
-| Índices (3) | migration | nova |
-| Edge function guardian | TS | `supabase/functions/recurrence-guardian/` |
-| Cron job | insert SQL | pg_cron |
-| Página admin | TSX | `src/pages/RecurrenceAudit.tsx` |
-| Rota + sidebar | edit | `App.tsx`, `AppSidebar.tsx` |
-| Hooks portal/dashboard | edit | 3 arquivos |
-
----
-
-## Ordem de execução
-
-1. Migração (tabela + triggers + funções + índices)
-2. Edge function `recurrence-guardian` + cron
-3. Página admin + rota
-4. Hardening dos pontos de geração
-5. Rodar `audit_recurrence_integrity()` em todas orgs e mostrar relatório final
-
----
-
-## Confirmação
-
-Confirma para eu seguir? Se quiser ajustar (ex: pular cron, pular página admin, mudar janela de retroativo de 90d), me diz antes.
+- Drawer: usar o próprio `Sidebar` do Shadcn com `collapsible="offcanvas"` no breakpoint mobile via `useIsMobile`.
+- Sticky: `sticky top-14 z-30 bg-background/80 backdrop-blur` (top-14 = abaixo do header).
+- Cards de status (overdue):
+  ```
+  bg-danger-soft border-l-4 border-danger rounded-xl shadow-card
+  ```
+- FAB:
+  ```
+  fixed bottom-6 right-6 h-14 w-14 rounded-full
+  bg-primary text-primary-foreground shadow-fab
+  pb-[env(safe-area-inset-bottom)]
+  ```
+- Paginação Load More: estado local `visibleCount` + botão "Carregar mais" no fim da lista; mantém queries existentes.
+- Mascaramento: aplicado no render; valor real preserved em forms via `react-hook-form` (sem mudar payloads).
