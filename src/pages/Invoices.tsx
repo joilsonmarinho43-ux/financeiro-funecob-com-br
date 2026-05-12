@@ -35,6 +35,9 @@ import {
 } from "lucide-react";
 import { exportToExcel, exportToPDF } from "@/lib/exportInvoices";
 import { formatCurrency } from "@/lib/format";
+import { StatusPill } from "@/components/ui/status-pill";
+import { DataCard } from "@/components/ui/data-card";
+import { Fab } from "@/components/ui/fab";
 
 type Invoice = Tables<"invoices"> & { clients?: { name: string } | null };
 
@@ -48,6 +51,7 @@ export default function Invoices() {
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
+  const [visibleCount, setVisibleCount] = useState(25);
   const [payDialog, setPayDialog] = useState<Invoice | null>(null);
   const [paidDate, setPaidDate] = useState<Date | undefined>(new Date());
   const [testPixOpen, setTestPixOpen] = useState(false);
@@ -380,18 +384,17 @@ export default function Invoices() {
     }
   };
 
-  const statusBadge = (inv: Invoice) => {
+  const statusInfo = (inv: Invoice): { variant: "paid" | "pending" | "overdue" | "canceled"; label: string; accent: "success" | "warning" | "danger" | "none" } => {
     const isOverdue = inv.status === "aberto" && isBefore(parseISO(inv.due_date), today);
-    if (isOverdue)
-      return <Badge className="bg-destructive/10 text-destructive border-0">Vencida</Badge>;
-    switch (inv.status) {
-      case "pago":
-        return <Badge className="bg-success/10 text-success border-0">Pago</Badge>;
-      case "cancelado":
-        return <Badge className="bg-muted text-muted-foreground border-0">Cancelado</Badge>;
-      default:
-        return <Badge className="bg-warning/10 text-warning border-0">Em aberto</Badge>;
-    }
+    if (isOverdue) return { variant: "overdue", label: "Vencida", accent: "danger" };
+    if (inv.status === "pago") return { variant: "paid", label: "Pago", accent: "success" };
+    if (inv.status === "cancelado") return { variant: "canceled", label: "Cancelado", accent: "none" };
+    return { variant: "pending", label: "Em aberto", accent: "warning" };
+  };
+
+  const statusBadge = (inv: Invoice) => {
+    const s = statusInfo(inv);
+    return <StatusPill variant={s.variant}>{s.label}</StatusPill>;
   };
 
   return (
