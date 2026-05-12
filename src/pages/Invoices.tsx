@@ -539,83 +539,119 @@ export default function Invoices() {
                 Nenhuma fatura encontrada.
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Descrição</TableHead>
-                      <TableHead>Vencimento</TableHead>
-                      <TableHead className="text-right">Valor</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Pago em</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.map((inv) => (
-                      <TableRow key={inv.id}>
-                        <TableCell className="font-medium">{inv.clients?.name || "—"}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">{inv.description || "—"}</TableCell>
-                        <TableCell>{format(parseISO(inv.due_date), "dd/MM/yyyy")}</TableCell>
-                        <TableCell className="text-right font-semibold">{formatCurrency(Number(inv.amount))}</TableCell>
-                        <TableCell>{statusBadge(inv)}</TableCell>
-                        <TableCell>{inv.paid_date ? format(parseISO(inv.paid_date), "dd/MM/yyyy") : "—"}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
+              <>
+                {/* Mobile: cards with colored left border by status */}
+                <div className="md:hidden p-3 space-y-2.5">
+                  {filtered.slice(0, visibleCount).map((inv) => {
+                    const s = statusInfo(inv);
+                    return (
+                      <DataCard
+                        key={inv.id}
+                        accent={s.accent}
+                        title={inv.clients?.name || "—"}
+                        pill={<StatusPill variant={s.variant}>{s.label}</StatusPill>}
+                        subtitle={inv.description || "Sem descrição"}
+                        amount={formatCurrency(Number(inv.amount))}
+                        amountTone={s.variant === "overdue" ? "danger" : s.variant === "paid" ? "success" : "default"}
+                        meta={
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <span>Venc. {format(parseISO(inv.due_date), "dd/MM/yyyy")}</span>
+                            {inv.paid_date && <span>· Pago {format(parseISO(inv.paid_date), "dd/MM/yyyy")}</span>}
+                          </div>
+                        }
+                        actions={
+                          <>
                             {inv.status === "aberto" && (
                               <>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 text-primary border-primary/30 hover:bg-primary/10"
-                                  disabled={notifyMutation.isPending}
-                                  onClick={() => notifyMutation.mutate(inv)}
-                                  title="Enviar notificação manual via WhatsApp"
-                                >
-                                  <Send className="h-3.5 w-3.5 mr-1" /> Enviar Agora
+                                <Button size="sm" variant="outline" className="tap text-primary border-primary/30" disabled={notifyMutation.isPending} onClick={() => notifyMutation.mutate(inv)}>
+                                  <Send className="h-3.5 w-3.5 mr-1" /> Enviar
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 text-success border-success/30 hover:bg-success/10"
-                                  onClick={() => { setPayDialog(inv); setPaidDate(new Date()); }}
-                                >
+                                <Button size="sm" variant="outline" className="tap text-success border-success/30" onClick={() => { setPayDialog(inv); setPaidDate(new Date()); }}>
                                   <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Baixa
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-8 text-destructive"
-                                  onClick={() => {
-                                    if (window.confirm("Cancelar esta fatura?")) cancelMutation.mutate(inv.id);
-                                  }}
-                                >
+                                <Button size="sm" variant="ghost" className="tap text-destructive" onClick={() => { if (window.confirm("Cancelar esta fatura?")) cancelMutation.mutate(inv.id); }}>
                                   Cancelar
                                 </Button>
                               </>
                             )}
                             {(inv.status === "pago" || inv.status === "cancelado") && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8"
-                                onClick={() => reopenMutation.mutate(inv.id)}
-                              >
+                              <Button size="sm" variant="ghost" className="tap" onClick={() => reopenMutation.mutate(inv.id)}>
                                 Reabrir
                               </Button>
                             )}
-                          </div>
-                        </TableCell>
+                          </>
+                        }
+                      />
+                    );
+                  })}
+                </div>
+
+                {/* Desktop: table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead>Vencimento</TableHead>
+                        <TableHead className="text-right">Valor</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Pago em</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {filtered.slice(0, visibleCount).map((inv) => (
+                        <TableRow key={inv.id}>
+                          <TableCell className="font-medium">{inv.clients?.name || "—"}</TableCell>
+                          <TableCell className="max-w-[200px] truncate">{inv.description || "—"}</TableCell>
+                          <TableCell>{format(parseISO(inv.due_date), "dd/MM/yyyy")}</TableCell>
+                          <TableCell className="text-right font-semibold tabular-nums">{formatCurrency(Number(inv.amount))}</TableCell>
+                          <TableCell>{statusBadge(inv)}</TableCell>
+                          <TableCell>{inv.paid_date ? format(parseISO(inv.paid_date), "dd/MM/yyyy") : "—"}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              {inv.status === "aberto" && (
+                                <>
+                                  <Button size="sm" variant="outline" className="h-9 text-primary border-primary/30 hover:bg-primary/10" disabled={notifyMutation.isPending} onClick={() => notifyMutation.mutate(inv)} title="Enviar notificação manual via WhatsApp">
+                                    <Send className="h-3.5 w-3.5 mr-1" /> Enviar Agora
+                                  </Button>
+                                  <Button size="sm" variant="outline" className="h-9 text-success border-success/30 hover:bg-success/10" onClick={() => { setPayDialog(inv); setPaidDate(new Date()); }}>
+                                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Baixa
+                                  </Button>
+                                  <Button size="sm" variant="ghost" className="h-9 text-destructive" onClick={() => { if (window.confirm("Cancelar esta fatura?")) cancelMutation.mutate(inv.id); }}>
+                                    Cancelar
+                                  </Button>
+                                </>
+                              )}
+                              {(inv.status === "pago" || inv.status === "cancelado") && (
+                                <Button size="sm" variant="ghost" className="h-9" onClick={() => reopenMutation.mutate(inv.id)}>
+                                  Reabrir
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {filtered.length > visibleCount && (
+                  <div className="p-4 flex justify-center">
+                    <Button variant="outline" onClick={() => setVisibleCount((c) => c + 25)}>
+                      Carregar mais ({filtered.length - visibleCount} restantes)
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* FAB - nova fatura */}
+      <Fab onClick={() => setNewInvoiceOpen(true)} aria-label="Nova fatura" />
 
       {/* Pay confirmation dialog */}
       <Dialog open={!!payDialog} onOpenChange={(o) => !o && setPayDialog(null)}>
