@@ -1271,6 +1271,10 @@ export type Database = {
         Args: { p_client_id: string }
         Returns: number
       }
+      generate_next_recurrence: {
+        Args: { p_paid_invoice_id: string; p_user_id?: string }
+        Returns: Json
+      }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -1287,6 +1291,10 @@ export type Database = {
           p_paid_date: string
           p_user_id: string
         }
+        Returns: Json
+      }
+      rebuild_client_recurrence: {
+        Args: { p_client_id: string; p_dry_run?: boolean; p_until?: string }
         Returns: Json
       }
       repair_client_due_dates: {
