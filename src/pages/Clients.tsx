@@ -598,14 +598,22 @@ export default function Clients() {
           ))}
         </div>
 
-        {/* Search + Table */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-3">
-            <div className="relative max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Buscar por nome, e-mail ou documento..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
-            </div>
-          </CardHeader>
+        {/* Sticky filter bar */}
+        <StickyFilterBar
+          search={search}
+          onSearch={(v) => { setSearch(v); setVisibleCount(25); }}
+          placeholder="Buscar por nome, e-mail ou documento..."
+          chips={[
+            { key: "all", label: "Todos", count: clients.length },
+            { key: "ativo", label: "Ativos", count: clients.filter((c) => c.status === "ativo").length },
+            { key: "inativo", label: "Inativos", count: clients.filter((c) => c.status === "inativo").length },
+          ]}
+          activeChip={statusFilter}
+          onChipChange={(k) => { setStatusFilter(k); setVisibleCount(25); }}
+        />
+
+        {/* List */}
+        <Card className="border-0 shadow-card rounded-2xl">
           <CardContent className="p-0">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
@@ -616,98 +624,159 @@ export default function Clients() {
                 {clients.length === 0 ? "Nenhum cliente cadastrado ainda." : "Nenhum resultado encontrado."}
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nome</TableHead>
-                      <TableHead>Telefone</TableHead>
-                      <TableHead>CPF/CNPJ</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.map((client) => (
-                      <TableRow key={client.id}>
-                        <TableCell className="font-medium">{client.name}</TableCell>
-                        <TableCell>{client.phone || "—"}</TableCell>
-                        <TableCell>{client.document || "—"}</TableCell>
-                        <TableCell>
-                          <Badge className={statusColor(client.status)}>{client.status}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            {/* Detail view */}
-                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Ver detalhes" onClick={() => setDetailDialog(client)}>
-                              <Eye className="h-4 w-4" />
+              <>
+                {/* Mobile: cards */}
+                <div className="md:hidden p-3 space-y-2.5">
+                  {visible.map((client) => (
+                    <DataCard
+                      key={client.id}
+                      title={client.name}
+                      pill={
+                        <StatusPill variant={client.status === "ativo" ? "paid" : "canceled"}>
+                          {client.status}
+                        </StatusPill>
+                      }
+                      subtitle={
+                        <>
+                          {client.phone && <span>{maskPhone(client.phone)}</span>}
+                          {client.phone && client.document && <span> · </span>}
+                          {client.document && <span>{maskCPFCNPJ(client.document)}</span>}
+                        </>
+                      }
+                      actions={
+                        <>
+                          <Button variant="ghost" size="icon" className="tap text-muted-foreground" aria-label="Ver detalhes" onClick={() => setDetailDialog(client)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          {client.phone && (
+                            <Button variant="ghost" size="icon" className="tap text-muted-foreground" aria-label="Mensagem" onClick={() => { setMsgDialog({ phone: client.phone!, name: client.name }); setManualMsg(""); }}>
+                              <Send className="h-4 w-4" />
                             </Button>
-                            {/* Send manual message */}
-                            {client.phone && (
-                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Enviar mensagem" onClick={() => { setMsgDialog({ phone: client.phone!, name: client.name }); setManualMsg(""); }}>
-                                <Send className="h-4 w-4" />
-                              </Button>
-                            )}
-                            {/* Open WhatsApp directly */}
-                            {client.phone && (
-                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Abrir WhatsApp" asChild>
-                                <a href={`https://wa.me/${client.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer">
-                                  <MessageSquare className="h-4 w-4" />
-                                </a>
-                              </Button>
-                            )}
-                            <PortalLinkButton clientId={client.id} organizationId={organizationId} />
-                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Gerar fatura" onClick={async () => {
-                              setInvoiceDialog(client);
-                              setInvForm({ description: "Mensalidade", amount: "", due_date: new Date() });
-                              // Fetch last invoice for this client to pre-fill amount
-                              const { data: lastInv } = await supabase
-                                .from("invoices")
-                                .select("amount, description, plan_id")
-                                .eq("organization_id", organizationId!)
-                                .eq("client_id", client.id)
-                                .order("created_at", { ascending: false })
-                                .limit(1)
-                                .maybeSingle();
-                              let amt = "";
-                              let desc = "Mensalidade";
-                              if (lastInv?.amount) {
-                                amt = String(lastInv.amount);
-                                if (lastInv.description) desc = lastInv.description;
-                              } else {
-                                // Fallback: try plan price from last invoice's plan_id (if any)
-                                const planId = lastInv?.plan_id;
-                                if (planId) {
-                                  const p = plans.find((pl) => pl.id === planId);
-                                  if (p?.price) amt = String(p.price);
-                                }
+                          )}
+                          {client.phone && (
+                            <Button variant="ghost" size="icon" className="tap text-success" aria-label="WhatsApp" asChild>
+                              <a href={`https://wa.me/${client.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer">
+                                <MessageSquare className="h-4 w-4" />
+                              </a>
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="icon" className="tap text-primary" aria-label="Editar" onClick={() => openEdit(client)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="tap text-destructive" aria-label="Remover"
+                            onClick={() => {
+                              if (window.confirm(`Tem certeza que deseja remover "${client.name}"? Esta ação não pode ser desfeita.`)) {
+                                deleteMutation.mutate(client.id);
                               }
-                              setInvForm({ description: desc, amount: amt, due_date: new Date() });
                             }}>
-                              <Receipt className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(client)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive"
-                              onClick={() => {
-                                if (window.confirm(`Tem certeza que deseja remover "${client.name}"? Esta ação não pode ser desfeita.`)) {
-                                  deleteMutation.mutate(client.id);
-                                }
-                              }}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      }
+                    />
+                  ))}
+                </div>
+
+                {/* Desktop: table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nome</TableHead>
+                        <TableHead>Telefone</TableHead>
+                        <TableHead>CPF/CNPJ</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {visible.map((client) => (
+                        <TableRow key={client.id}>
+                          <TableCell className="font-medium">{client.name}</TableCell>
+                          <TableCell>{maskPhone(client.phone) || "—"}</TableCell>
+                          <TableCell>{maskCPFCNPJ(client.document) || "—"}</TableCell>
+                          <TableCell>
+                            <StatusPill variant={client.status === "ativo" ? "paid" : "canceled"}>{client.status}</StatusPill>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="icon" className="h-9 w-9" title="Ver detalhes" onClick={() => setDetailDialog(client)}>
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              {client.phone && (
+                                <Button variant="ghost" size="icon" className="h-9 w-9" title="Enviar mensagem" onClick={() => { setMsgDialog({ phone: client.phone!, name: client.name }); setManualMsg(""); }}>
+                                  <Send className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {client.phone && (
+                                <Button variant="ghost" size="icon" className="h-9 w-9" title="Abrir WhatsApp" asChild>
+                                  <a href={`https://wa.me/${client.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer">
+                                    <MessageSquare className="h-4 w-4" />
+                                  </a>
+                                </Button>
+                              )}
+                              <PortalLinkButton clientId={client.id} organizationId={organizationId} />
+                              <Button variant="ghost" size="icon" className="h-9 w-9" title="Gerar fatura" onClick={async () => {
+                                setInvoiceDialog(client);
+                                setInvForm({ description: "Mensalidade", amount: "", due_date: new Date() });
+                                const { data: lastInv } = await supabase
+                                  .from("invoices")
+                                  .select("amount, description, plan_id")
+                                  .eq("organization_id", organizationId!)
+                                  .eq("client_id", client.id)
+                                  .order("created_at", { ascending: false })
+                                  .limit(1)
+                                  .maybeSingle();
+                                let amt = "";
+                                let desc = "Mensalidade";
+                                if (lastInv?.amount) {
+                                  amt = String(lastInv.amount);
+                                  if (lastInv.description) desc = lastInv.description;
+                                } else {
+                                  const planId = lastInv?.plan_id;
+                                  if (planId) {
+                                    const p = plans.find((pl) => pl.id === planId);
+                                    if (p?.price) amt = String(p.price);
+                                  }
+                                }
+                                setInvForm({ description: desc, amount: amt, due_date: new Date() });
+                              }}>
+                                <Receipt className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => openEdit(client)}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive"
+                                onClick={() => {
+                                  if (window.confirm(`Tem certeza que deseja remover "${client.name}"? Esta ação não pode ser desfeita.`)) {
+                                    deleteMutation.mutate(client.id);
+                                  }
+                                }}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {visible.length < filtered.length && (
+                  <div className="p-4 flex justify-center">
+                    <Button variant="outline" onClick={() => setVisibleCount((c) => c + 25)}>
+                      Carregar mais ({filtered.length - visible.length} restantes)
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* FAB - mobile new client */}
+      <Fab onClick={() => { setEditingClient(null); setForm(emptyForm); setDialogOpen(true); }} aria-label="Novo cliente" />
 
       {/* Manual Message Dialog */}
       <Dialog open={!!msgDialog} onOpenChange={(open) => { if (!open) setMsgDialog(null); }}>
