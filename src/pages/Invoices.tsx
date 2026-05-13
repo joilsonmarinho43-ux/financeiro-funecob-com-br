@@ -47,7 +47,7 @@ export default function Invoices() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [statusFilter, setStatusFilter] = useState<string>("todos");
+  const [statusFilter, setStatusFilter] = useState<string>("ativas");
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
