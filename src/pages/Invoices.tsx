@@ -294,6 +294,8 @@ export default function Invoices() {
   // Filtering
   const today = startOfDay(new Date());
   const filtered = invoices.filter((inv) => {
+    // "ativas" = padrão: oculta pagas e canceladas para manter a tela limpa
+    if (statusFilter === "ativas" && (inv.status === "pago" || inv.status === "cancelado")) return false;
     if (statusFilter === "aberto" && inv.status !== "aberto") return false;
     if (statusFilter === "pago" && inv.status !== "pago") return false;
     if (statusFilter === "vencido") {
