@@ -47,7 +47,7 @@ export default function Invoices() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [statusFilter, setStatusFilter] = useState<string>("todos");
+  const [statusFilter, setStatusFilter] = useState<string>("ativas");
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
@@ -294,6 +294,8 @@ export default function Invoices() {
   // Filtering
   const today = startOfDay(new Date());
   const filtered = invoices.filter((inv) => {
+    // "ativas" = padrão: oculta pagas e canceladas para manter a tela limpa
+    if (statusFilter === "ativas" && (inv.status === "pago" || inv.status === "cancelado")) return false;
     if (statusFilter === "aberto" && inv.status !== "aberto") return false;
     if (statusFilter === "pago" && inv.status !== "pago") return false;
     if (statusFilter === "vencido") {
@@ -453,7 +455,8 @@ export default function Invoices() {
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todos">Todos</SelectItem>
+                    <SelectItem value="ativas">Ativas (ocultar pagas)</SelectItem>
+                    <SelectItem value="todos">Todos (incluir pagas)</SelectItem>
                     <SelectItem value="aberto">Em aberto</SelectItem>
                     <SelectItem value="vencido">Vencidas</SelectItem>
                     <SelectItem value="pago">Pagas</SelectItem>
