@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
-import { Plus, Search, Pencil, Trash2, Users, CalendarDays, Repeat, BookOpen, Link2, Copy, Check, Send, MessageSquare, CreditCard, Eye, Receipt, CalendarIcon } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Users, CalendarDays, Repeat, BookOpen, Link2, Copy, Check, Send, MessageSquare, CreditCard, Eye, Receipt, CalendarIcon, Zap, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -73,6 +73,115 @@ export default function Clients() {
   const [invoiceDialog, setInvoiceDialog] = useState<Client | null>(null);
   const [invForm, setInvForm] = useState<{ description: string; amount: string; due_date: Date | undefined }>({ description: "Mensalidade", amount: "", due_date: new Date() });
   const [creatingInvoice, setCreatingInvoice] = useState(false);
+  const [quickGenState, setQuickGenState] = useState<Record<string, "loading" | "success">>({});
+
+  const quickGenerateInvoice = async (client: Client) => {
+    if (!organizationId) return;
+    if (quickGenState[client.id]) return;
+    setQuickGenState((s) => ({ ...s, [client.id]: "loading" }));
+    try {
+      // Pega última fatura do cliente para herdar dia/valor/plano
+      const { data: lastInv, error: lastErr } = await supabase
+        .from("invoices")
+        .select("id, due_date, amount, description, plan_id")
+        .eq("organization_id", organizationId)
+        .eq("client_id", client.id)
+        .order("due_date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastErr) throw lastErr;
+
+      const today = new Date();
+      // Dia padrão: dia da última fatura, ou dia atual se nunca houve
+      const dueDay = lastInv?.due_date
+        ? parseInt(lastInv.due_date.split("-")[2], 10)
+        : today.getDate();
+
+      // Base: competência da última fatura + 1 mês; senão, mês atual
+      let baseYear: number, baseMonth: number;
+      if (lastInv?.due_date) {
+        const [y, m] = lastInv.due_date.split("-").map(Number);
+        baseYear = y;
+        baseMonth = m; // próximo mês (1-12 -> usar como índice 0-based do próximo)
+      } else {
+        baseYear = today.getFullYear();
+        baseMonth = today.getMonth(); // mês atual em 0-based já é "próximo" sem +1
+      }
+      // Normaliza
+      const target = new Date(baseYear, baseMonth, 1);
+      // Se a base ainda é anterior/igual ao mês atual, avança para o próximo
+      while (
+        target.getFullYear() < today.getFullYear() ||
+        (target.getFullYear() === today.getFullYear() && target.getMonth() < today.getMonth())
+      ) {
+        target.setMonth(target.getMonth() + 1);
+      }
+      const targetYear = target.getFullYear();
+      const targetMonth = target.getMonth(); // 0-based
+      const lastDayOfMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+      const finalDay = Math.min(dueDay, lastDayOfMonth);
+      const dueDateStr = `${targetYear}-${String(targetMonth + 1).padStart(2, "0")}-${String(finalDay).padStart(2, "0")}`;
+      const monthStart = `${targetYear}-${String(targetMonth + 1).padStart(2, "0")}-01`;
+      const monthEnd = `${targetMonth === 11 ? targetYear + 1 : targetYear}-${String(targetMonth === 11 ? 1 : targetMonth + 2).padStart(2, "0")}-01`;
+
+      // Verifica duplicidade: já existe fatura nesse mês para o cliente?
+      const { data: existing, error: exErr } = await supabase
+        .from("invoices")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .eq("client_id", client.id)
+        .gte("due_date", monthStart)
+        .lt("due_date", monthEnd)
+        .limit(1);
+      if (exErr) throw exErr;
+      if (existing && existing.length > 0) {
+        toast({ title: "Mensalidade deste mês já existe", variant: "destructive" });
+        setQuickGenState((s) => {
+          const n = { ...s };
+          delete n[client.id];
+          return n;
+        });
+        return;
+      }
+
+      const amount = lastInv?.amount ? Number(lastInv.amount) : 0;
+      if (!amount) {
+        toast({ title: "Valor não encontrado", description: "Cliente sem fatura anterior — gere a primeira manualmente.", variant: "destructive" });
+        setQuickGenState((s) => { const n = { ...s }; delete n[client.id]; return n; });
+        return;
+      }
+
+      const { error: insErr } = await supabase.from("invoices").insert({
+        client_id: client.id,
+        organization_id: organizationId,
+        plan_id: lastInv?.plan_id || null,
+        amount,
+        due_date: dueDateStr,
+        description: lastInv?.description || "Mensalidade",
+        status: "aberto",
+      });
+      if (insErr) throw insErr;
+
+      auditLog({
+        action: "invoice.quick_generate",
+        organizationId,
+        details: { client_id: client.id, due_date: dueDateStr, amount, source: "clients_quick_button" },
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["client-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-financial"] });
+
+      setQuickGenState((s) => ({ ...s, [client.id]: "success" }));
+      toast({ title: "Mensalidade gerada ✅", description: `Vencimento: ${finalDay}/${String(targetMonth + 1).padStart(2, "0")}/${targetYear}` });
+      setTimeout(() => {
+        setQuickGenState((s) => { const n = { ...s }; delete n[client.id]; return n; });
+      }, 2000);
+    } catch (err: any) {
+      toast({ title: "Erro ao gerar mensalidade", description: err.message, variant: "destructive" });
+      setQuickGenState((s) => { const n = { ...s }; delete n[client.id]; return n; });
+    }
+  };
 
   const { data: clients = [], isLoading } = useQuery({
     queryKey: ["clients", organizationId],
@@ -660,6 +769,26 @@ export default function Clients() {
                           <Button variant="ghost" size="icon" className="tap text-muted-foreground" aria-label="Ver detalhes" onClick={() => setDetailDialog(client)}>
                             <Eye className="h-4 w-4" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn(
+                              "tap",
+                              quickGenState[client.id] === "success" ? "text-success" : "text-warning"
+                            )}
+                            aria-label="Gerar mensalidade do mês"
+                            title="Gerar mensalidade do mês"
+                            disabled={!!quickGenState[client.id]}
+                            onClick={() => quickGenerateInvoice(client)}
+                          >
+                            {quickGenState[client.id] === "loading" ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : quickGenState[client.id] === "success" ? (
+                              <Check className="h-4 w-4" />
+                            ) : (
+                              <Zap className="h-4 w-4" />
+                            )}
+                          </Button>
                           {client.phone && (
                             <Button variant="ghost" size="icon" className="tap text-muted-foreground" aria-label="Mensagem" onClick={() => { setMsgDialog({ phone: client.phone!, name: client.name }); setManualMsg(""); }}>
                               <Send className="h-4 w-4" />
@@ -714,6 +843,26 @@ export default function Clients() {
                             <div className="flex justify-end gap-1">
                               <Button variant="ghost" size="icon" className="h-9 w-9" title="Ver detalhes" onClick={() => setDetailDialog(client)}>
                                 <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn(
+                                  "h-9 w-9",
+                                  quickGenState[client.id] === "success" ? "text-success" : "text-warning"
+                                )}
+                                title="Gerar mensalidade do mês (1 clique)"
+                                aria-label="Gerar mensalidade do mês"
+                                disabled={!!quickGenState[client.id]}
+                                onClick={() => quickGenerateInvoice(client)}
+                              >
+                                {quickGenState[client.id] === "loading" ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : quickGenState[client.id] === "success" ? (
+                                  <Check className="h-4 w-4" />
+                                ) : (
+                                  <Zap className="h-4 w-4" />
+                                )}
                               </Button>
                               {client.phone && (
                                 <Button variant="ghost" size="icon" className="h-9 w-9" title="Enviar mensagem" onClick={() => { setMsgDialog({ phone: client.phone!, name: client.name }); setManualMsg(""); }}>
