@@ -455,7 +455,8 @@ export default function Invoices() {
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todos">Todos</SelectItem>
+                    <SelectItem value="ativas">Ativas (ocultar pagas)</SelectItem>
+                    <SelectItem value="todos">Todos (incluir pagas)</SelectItem>
                     <SelectItem value="aberto">Em aberto</SelectItem>
                     <SelectItem value="vencido">Vencidas</SelectItem>
                     <SelectItem value="pago">Pagas</SelectItem>
