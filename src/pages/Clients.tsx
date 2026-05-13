@@ -769,6 +769,26 @@ export default function Clients() {
                           <Button variant="ghost" size="icon" className="tap text-muted-foreground" aria-label="Ver detalhes" onClick={() => setDetailDialog(client)}>
                             <Eye className="h-4 w-4" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn(
+                              "tap",
+                              quickGenState[client.id] === "success" ? "text-success" : "text-warning"
+                            )}
+                            aria-label="Gerar mensalidade do mês"
+                            title="Gerar mensalidade do mês"
+                            disabled={!!quickGenState[client.id]}
+                            onClick={() => quickGenerateInvoice(client)}
+                          >
+                            {quickGenState[client.id] === "loading" ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : quickGenState[client.id] === "success" ? (
+                              <Check className="h-4 w-4" />
+                            ) : (
+                              <Zap className="h-4 w-4" />
+                            )}
+                          </Button>
                           {client.phone && (
                             <Button variant="ghost" size="icon" className="tap text-muted-foreground" aria-label="Mensagem" onClick={() => { setMsgDialog({ phone: client.phone!, name: client.name }); setManualMsg(""); }}>
                               <Send className="h-4 w-4" />
