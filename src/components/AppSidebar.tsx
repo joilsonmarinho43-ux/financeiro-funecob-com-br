@@ -170,6 +170,7 @@ export function AppSidebar() {
           ...(isAdmin ? [
             { title: "Admin", icon: Shield, url: "/admin", badge: "" },
             { title: "Auditoria Recorrência", icon: CalendarCheck, url: "/admin/recurrence", badge: "" },
+            { title: "Liquidação Auto", icon: Zap, url: "/admin/auto-settlement", badge: "Novo!" },
             { title: "Config Global", icon: Globe, url: "/admin/global-settings", badge: "" },
           ] : []),
         ]} />
