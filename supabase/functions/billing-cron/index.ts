@@ -267,7 +267,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, processed: totalProcessed, queued: totalQueued }),
+      JSON.stringify({ success: true, processed: totalProcessed, queued: totalQueued, rebuilt: totalRebuilt, rebuild_errors: totalRebuildErrors }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
