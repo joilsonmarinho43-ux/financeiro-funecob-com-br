@@ -1,1 +1,4 @@
 project_id = "jxhgssqzyhrlfpvlqliv"
+
+[functions.pix-ocr-settlement]
+verify_jwt = false
