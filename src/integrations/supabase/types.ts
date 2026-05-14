@@ -14,6 +14,159 @@ export type Database = {
   }
   public: {
     Tables: {
+      auto_settlement_allocations: {
+        Row: {
+          amount_applied: number
+          created_at: string
+          event_id: string
+          id: string
+          invoice_id: string
+          organization_id: string
+          was_generated: boolean
+        }
+        Insert: {
+          amount_applied: number
+          created_at?: string
+          event_id: string
+          id?: string
+          invoice_id: string
+          organization_id: string
+          was_generated?: boolean
+        }
+        Update: {
+          amount_applied?: number
+          created_at?: string
+          event_id?: string
+          id?: string
+          invoice_id?: string
+          organization_id?: string
+          was_generated?: boolean
+        }
+        Relationships: []
+      }
+      auto_settlement_credits: {
+        Row: {
+          amount: number
+          client_id: string
+          created_at: string
+          id: string
+          organization_id: string
+          origin_event_id: string | null
+          source: string
+          status: string
+          updated_at: string
+          used_amount: number
+        }
+        Insert: {
+          amount: number
+          client_id: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          origin_event_id?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+          used_amount?: number
+        }
+        Update: {
+          amount?: number
+          client_id?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          origin_event_id?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+          used_amount?: number
+        }
+        Relationships: []
+      }
+      auto_settlement_events: {
+        Row: {
+          amount_detected: number | null
+          client_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          ocr_payload: Json | null
+          organization_id: string
+          phone: string
+          pix_end_to_end_id: string | null
+          processed_at: string | null
+          raw_text: string | null
+          status: string
+          txid: string | null
+          updated_at: string
+          whatsapp_message_id: string | null
+        }
+        Insert: {
+          amount_detected?: number | null
+          client_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          ocr_payload?: Json | null
+          organization_id: string
+          phone: string
+          pix_end_to_end_id?: string | null
+          processed_at?: string | null
+          raw_text?: string | null
+          status?: string
+          txid?: string | null
+          updated_at?: string
+          whatsapp_message_id?: string | null
+        }
+        Update: {
+          amount_detected?: number | null
+          client_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          ocr_payload?: Json | null
+          organization_id?: string
+          phone?: string
+          pix_end_to_end_id?: string | null
+          processed_at?: string | null
+          raw_text?: string | null
+          status?: string
+          txid?: string | null
+          updated_at?: string
+          whatsapp_message_id?: string | null
+        }
+        Relationships: []
+      }
+      auto_settlement_logs: {
+        Row: {
+          action: string
+          client_id: string | null
+          created_at: string
+          details: Json
+          event_id: string | null
+          id: string
+          organization_id: string
+        }
+        Insert: {
+          action: string
+          client_id?: string | null
+          created_at?: string
+          details?: Json
+          event_id?: string | null
+          id?: string
+          organization_id: string
+        }
+        Update: {
+          action?: string
+          client_id?: string | null
+          created_at?: string
+          details?: Json
+          event_id?: string | null
+          id?: string
+          organization_id?: string
+        }
+        Relationships: []
+      }
       barcode_configs: {
         Row: {
           client_id_length: number
@@ -1265,6 +1418,10 @@ export type Database = {
     Functions: {
       audit_recurrence_integrity: {
         Args: { p_organization_id?: string }
+        Returns: Json
+      }
+      auto_settlement_process_payment: {
+        Args: { p_event_id: string }
         Returns: Json
       }
       client_original_due_day: {
