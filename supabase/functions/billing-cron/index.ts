@@ -34,6 +34,52 @@ Deno.serve(async (req) => {
 
     let totalProcessed = 0;
     let totalQueued = 0;
+    let totalRebuilt = 0;
+    let totalRebuildErrors = 0;
+
+    // ===== Daily recurrence rebuild: ensure current-month invoices exist for all active clients =====
+    try {
+      const { data: activeClients, error: clientsErr } = await supabase
+        .from("clients")
+        .select("id, organization_id")
+        .eq("status", "ativo");
+
+      if (clientsErr) {
+        console.error("[billing-cron] rebuild: failed to load clients:", clientsErr.message);
+      } else if (activeClients && activeClients.length > 0) {
+        const todayDateStr = today.toISOString().split("T")[0];
+        for (const c of activeClients) {
+          try {
+            const { data: rb, error: rbErr } = await supabase.rpc("rebuild_client_recurrence", {
+              p_client_id: c.id,
+              p_until: todayDateStr,
+              p_dry_run: false,
+            });
+            if (rbErr) {
+              totalRebuildErrors++;
+              console.error(`[billing-cron] rebuild error client ${c.id}:`, rbErr.message);
+              continue;
+            }
+            const created = (rb as any)?.created ?? 0;
+            if (created > 0) {
+              totalRebuilt += created;
+              await supabase.from("system_logs").insert({
+                action: "auto_rebuild_recurrence_cron",
+                user_id: "00000000-0000-0000-0000-000000000000",
+                organization_id: c.organization_id,
+                details: { client_id: c.id, created, until: todayDateStr, result: rb },
+              } as any);
+            }
+          } catch (e) {
+            totalRebuildErrors++;
+            console.error(`[billing-cron] rebuild exception client ${c.id}:`, e);
+          }
+        }
+        console.log(`[billing-cron] rebuild done: created=${totalRebuilt}, errors=${totalRebuildErrors}`);
+      }
+    } catch (e) {
+      console.error("[billing-cron] rebuild block failed:", e);
+    }
 
     for (const settings of allSettings) {
       const orgId = settings.organization_id;
@@ -221,7 +267,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, processed: totalProcessed, queued: totalQueued }),
+      JSON.stringify({ success: true, processed: totalProcessed, queued: totalQueued, rebuilt: totalRebuilt, rebuild_errors: totalRebuildErrors }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
