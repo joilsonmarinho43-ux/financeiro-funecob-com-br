@@ -109,7 +109,43 @@ export default function AutoSettlement() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="text-base">Eventos Recentes</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-primary" /> Webhook do WhatsApp (Evolution API)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Cole esta URL no campo <strong>Webhook</strong> da sua instância na Evolution API
+              e habilite o evento <code className="px-1 py-0.5 bg-muted rounded text-xs">MESSAGES_UPSERT</code>.
+              Quando o cliente enviar a foto do comprovante PIX no WhatsApp, o sistema lê o valor
+              automaticamente e dá baixa nas faturas em aberto.
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
+                {`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`}
+              </code>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`);
+                  toast.success("URL copiada");
+                }}
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p>• Funciona com <strong>imagens</strong> de comprovante (OCR via IA) e textos com valor (ex.: "Paguei R$ 44,00 via PIX").</p>
+              <p>• Identifica o cliente pelo telefone do remetente dentro da organização.</p>
+              <p>• Quita faturas em aberto na ordem de vencimento. Sobra vira crédito.</p>
+              <p>• Idempotente: o mesmo TXID nunca é processado duas vezes.</p>
+            </div>
+          </CardContent>
+        </Card>
+
+
           <CardContent className="overflow-x-auto">
             <Table>
               <TableHeader><TableRow>
