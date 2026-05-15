@@ -144,8 +144,8 @@ export default function AutoSettlement() {
             </div>
           </CardContent>
         </Card>
-
-
+        <Card>
+          <CardHeader><CardTitle className="text-base">Eventos Recentes</CardTitle></CardHeader>
           <CardContent className="overflow-x-auto">
             <Table>
               <TableHeader><TableRow>
