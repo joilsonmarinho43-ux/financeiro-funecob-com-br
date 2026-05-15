@@ -80,10 +80,10 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
     const body = await req.json();
-    const { organization_id, phone, image_url, image_base64, message_id, raw_text } = body;
+    const { organization_id, phone, image_url, image_base64, message_id, raw_text, manual_amount, manual_txid } = body;
 
-    if (!organization_id || !phone || (!image_url && !image_base64 && !raw_text)) {
-      return new Response(JSON.stringify({ error: "missing organization_id, phone, or image/raw_text" }), {
+    if (!organization_id || !phone || (!image_url && !image_base64 && !raw_text && manual_amount == null)) {
+      return new Response(JSON.stringify({ error: "missing organization_id, phone, or image/raw_text/manual_amount" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -115,8 +115,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    const txid = ocr?.txid || null;
-    const amount = typeof ocr?.amount === "number" ? ocr.amount : null;
+    const txid = ocr?.txid || manual_txid || null;
+    const amount = typeof ocr?.amount === "number" ? ocr.amount : (typeof manual_amount === "number" ? manual_amount : null);
 
     // Idempotency: existing txid?
     if (txid) {
