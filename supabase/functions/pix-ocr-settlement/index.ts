@@ -115,8 +115,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    const txid = ocr?.txid || null;
-    const amount = typeof ocr?.amount === "number" ? ocr.amount : null;
+    const txid = ocr?.txid || manual_txid || null;
+    const amount = typeof ocr?.amount === "number" ? ocr.amount : (typeof manual_amount === "number" ? manual_amount : null);
 
     // Idempotency: existing txid?
     if (txid) {
