@@ -144,7 +144,7 @@ export default function SystemHealth() {
     : 100;
 
   return (
-    <DashboardLayout>
+    <AppLayout>
       <div className="space-y-6">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
@@ -329,6 +329,6 @@ export default function SystemHealth() {
           </CardContent>
         </Card>
       </div>
-    </DashboardLayout>
+    </AppLayout>
   );
 }
