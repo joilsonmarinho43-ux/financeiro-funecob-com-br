@@ -19,6 +19,7 @@ import {
   Globe,
   CalendarCheck,
   Zap,
+  Activity,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -172,6 +173,7 @@ export function AppSidebar() {
             { title: "Auditoria Recorrência", icon: CalendarCheck, url: "/admin/recurrence", badge: "" },
             { title: "Liquidação Auto", icon: Zap, url: "/admin/auto-settlement", badge: "Novo!" },
             { title: "Config Global", icon: Globe, url: "/admin/global-settings", badge: "" },
+            { title: "Saúde do Sistema", icon: Activity, url: "/system-health", badge: "Novo!" },
           ] : []),
         ]} />
       </SidebarContent>
