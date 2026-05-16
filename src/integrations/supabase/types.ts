@@ -203,6 +203,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "barcode_configs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
+          },
         ]
       }
       billing_reminders: {
@@ -253,6 +260,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_reminders_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
           },
         ]
       }
@@ -340,6 +354,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "billing_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
+          },
         ]
       }
       bips: {
@@ -407,6 +428,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "bips_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
+          },
         ]
       }
       client_portal_tokens: {
@@ -448,6 +476,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_portal_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
           },
         ]
       }
@@ -513,6 +548,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
           },
         ]
       }
@@ -605,6 +647,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "invoices_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
+          },
+          {
             foreignKeyName: "invoices_plan_id_fkey"
             columns: ["plan_id"]
             isOneToOne: false
@@ -643,6 +692,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "org_api_keys_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
+          },
         ]
       }
       organization_members: {
@@ -674,6 +730,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_members_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
           },
         ]
       }
@@ -766,6 +829,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plans_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
           },
         ]
       }
@@ -877,6 +947,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "sms_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
+          },
         ]
       }
       subscriptions: {
@@ -918,6 +995,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "subscriptions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
+          },
         ]
       }
       system_logs: {
@@ -958,6 +1042,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
           },
         ]
       }
@@ -1012,6 +1103,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
           },
         ]
       }
@@ -1078,6 +1176,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "webhook_configs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
+          },
         ]
       }
       webhook_logs: {
@@ -1118,6 +1223,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webhook_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
           },
           {
             foreignKeyName: "webhook_logs_webhook_id_fkey"
@@ -1182,6 +1294,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "whatsapp_campaigns_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
+          },
         ]
       }
       whatsapp_instances: {
@@ -1228,6 +1347,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_instances_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
           },
         ]
       }
@@ -1296,6 +1422,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "whatsapp_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
+          },
         ]
       }
       whatsapp_queue: {
@@ -1349,6 +1482,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_queue_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
           },
         ]
       }
@@ -1409,11 +1549,71 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "whatsapp_send_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "system_health_metrics"
+            referencedColumns: ["organization_id"]
+          },
         ]
       }
     }
     Views: {
-      [_ in never]: never
+      system_health_metrics: {
+        Row: {
+          amount_open: number | null
+          amount_overdue: number | null
+          clients_active: number | null
+          credit_balance_available: number | null
+          invoices_open: number | null
+          invoices_overdue: number | null
+          invoices_paid_30d: number | null
+          organization_id: string | null
+          organization_name: string | null
+          settlement_errors_total: number | null
+          settlement_ok_30d: number | null
+          wa_failed_24h: number | null
+          wa_instances_connected: number | null
+          wa_messages_24h: number | null
+          wa_queue_pending: number | null
+        }
+        Insert: {
+          amount_open?: never
+          amount_overdue?: never
+          clients_active?: never
+          credit_balance_available?: never
+          invoices_open?: never
+          invoices_overdue?: never
+          invoices_paid_30d?: never
+          organization_id?: string | null
+          organization_name?: string | null
+          settlement_errors_total?: never
+          settlement_ok_30d?: never
+          wa_failed_24h?: never
+          wa_instances_connected?: never
+          wa_messages_24h?: never
+          wa_queue_pending?: never
+        }
+        Update: {
+          amount_open?: never
+          amount_overdue?: never
+          clients_active?: never
+          credit_balance_available?: never
+          invoices_open?: never
+          invoices_overdue?: never
+          invoices_paid_30d?: never
+          organization_id?: string | null
+          organization_name?: string | null
+          settlement_errors_total?: never
+          settlement_ok_30d?: never
+          wa_failed_24h?: never
+          wa_instances_connected?: never
+          wa_messages_24h?: never
+          wa_queue_pending?: never
+        }
+        Relationships: []
+      }
     }
     Functions: {
       audit_recurrence_integrity: {
