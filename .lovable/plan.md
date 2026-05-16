@@ -1,100 +1,56 @@
-## Módulo: Motor de Antecipação e Liquidação Automática via WhatsApp (PIX OCR)
+# Auditoria Técnica Enterprise — Plano em Fases
 
-Camada **complementar e desacoplada**. Não toca em: `perform_baixa_manual`, `generate_next_recurrence`, `billing-cron`, gateways, fluxos de cobrança atuais.
+Uma auditoria completa nas 7 áreas listadas é grande demais para uma única execução sem risco de quebrar funcionalidades. Proponho executar em **fases priorizadas**, cada uma com diagnóstico → correção → validação, sem tocar em fluxos que já funcionam.
 
----
+## Fase 1 — Integridade Financeira (PRIORIDADE MÁXIMA)
+Onde o risco de perda de dinheiro é maior.
 
-### 1. Banco de Dados (migration)
+1. Rodar `audit_recurrence_integrity()` em todas as orgs ativas → relatório de:
+   - mensalidades desalinhadas (dia errado)
+   - duplicadas na mesma competência
+   - gaps (meses faltando)
+   - datas inválidas
+2. Conferir baixas duplicadas (mesma invoice paga 2x), pagamentos órfãos, valores zerados
+3. Validar `perform_baixa_manual` + `generate_next_recurrence` + `auto_settlement_process_payment` quanto a race conditions e arredondamento
+4. Correções via `repair_client_due_dates(dry_run=false)` somente após review
 
-**Feature flag global** (em `global_settings`):
-- `auto_settlement_enabled` = `'false'` (default OFF — segurança)
+## Fase 2 — PIX / Liquidação Automática
+1. Auditar eventos em `auto_settlement_events` com status `erro` — classificar causas
+2. Validar idempotência de txid (índice único)
+3. Conferir lógica de sobra → crédito → consumo de crédito
+4. Garantir que pagamento parcial NÃO marca fatura como paga (já está OK no RPC, validar)
 
-**Novas tabelas (sufixo `auto_` para isolamento total):**
+## Fase 3 — WhatsApp / Filas
+1. Mensagens travadas em `queued`/`retry` há > 24h
+2. Instâncias `disconnected` sem reconexão
+3. Mensagens duplicadas (mesmo phone + message + janela < 5min)
+4. Validar `whatsapp_send_config` (limites anti-ban)
 
-```text
-auto_settlement_credits          -- saldo a favor do cliente
-  id, organization_id, client_id, amount, source (pix_ocr|sobra_quitacao|manual),
-  origin_event_id, status (disponivel|consumido|estornado), used_amount, created_at, updated_at
+## Fase 4 — Banco de Dados / Performance
+1. Rodar `supabase--linter`
+2. Identificar tabelas sem índice em colunas filtradas (`organization_id`, `client_id`, `due_date`, `status`)
+3. Adicionar índices compostos faltantes (migration)
+4. Revisar RLS para garantir isolamento e performance
 
-auto_settlement_events           -- cada comprovante PIX recebido (idempotência via txid)
-  id, organization_id, client_id (nullable), phone, raw_text, ocr_payload (jsonb),
-  txid (unique nullable), pix_end_to_end_id, amount_detected,
-  status (recebido|processando|conciliado|erro|duplicado|ignorado),
-  whatsapp_message_id, error_message, processed_at, created_at
-  UNIQUE (organization_id, txid) WHERE txid IS NOT NULL
+## Fase 5 — Segurança
+1. `security--run_security_scan`
+2. Revisar políticas RLS overly-permissive
+3. Edge functions: verificar inputs validados, secrets mascarados
+4. Logs de auditoria → confirmar cobertura
 
-auto_settlement_logs             -- auditoria detalhada passo a passo
-  id, organization_id, event_id, client_id, action, details (jsonb), created_at
+## Fase 6 — Observabilidade
+1. Criar view `system_health_metrics` (eventos/hora, taxa de erro, fila, baixas/dia)
+2. Página admin `/system-health` com refresh em tempo real
+3. Alertas em `system_logs` quando métricas críticas saem do baseline
 
-auto_settlement_allocations      -- alocação valor → fatura (rastreabilidade)
-  id, event_id, invoice_id, amount_applied, was_generated (bool), created_at
-```
+## Restrições (não-negociáveis)
+- Nenhuma alteração em `perform_baixa_manual`, `generate_next_recurrence`, `auto_settlement_process_payment` sem dry-run primeiro
+- Toda correção de dados precisa de log em `system_logs`
+- Migrations adicionam, nunca removem colunas/tabelas existentes
+- Funcionalidades atuais permanecem intactas
 
-**RLS:** todas com `organization_id = get_user_organization_id(auth.uid())` (SELECT/INSERT/UPDATE), service_role bypass para a edge function.
-
-**RPC `auto_settlement_process_payment(p_event_id uuid)`** — função SECURITY DEFINER que:
-1. Trava o evento (`FOR UPDATE`)
-2. Busca faturas `aberto` do cliente ordenadas por `due_date ASC`
-3. Quita uma a uma (status='pago', paid_date=hoje) consumindo `amount_detected`
-4. Se sobra > 0 e existem competências futuras a gerar: chama lógica equivalente a `rebuild_client_recurrence` (mês a mês até consumir saldo) e quita
-5. Sobra final → cria registro em `auto_settlement_credits`
-6. Insere logs em cada passo + allocations
-7. Marca evento como `conciliado`
-
-Idempotência: trigger ou check no início da RPC garante que evento já `conciliado` retorna early.
-
----
-
-### 2. Edge Function: `pix-ocr-settlement`
-
-`supabase/functions/pix-ocr-settlement/index.ts`
-
-Endpoints (POST):
-- `/ingest` — recebe payload do webhook WhatsApp com phone + image_url (ou base64) + message_id
-  - Valida feature flag
-  - Identifica cliente por phone (normalizado) dentro da org
-  - Roda OCR via **Lovable AI Gateway** (`google/gemini-2.5-flash`) com prompt estruturado pedindo JSON: `{ amount, txid, end_to_end_id, paid_at, sender_name }`
-  - Cria `auto_settlement_events`
-  - Se `txid` já existe → marca `duplicado`, retorna sem processar
-  - Chama RPC `auto_settlement_process_payment`
-  - Envia confirmação via WhatsApp (reusa `whatsapp-sender` existente, sem alterá-lo) com resumo: faturas quitadas + crédito gerado
-
-CORS habilitado, `verify_jwt = false` (recebe webhook externo + valida via header secret `AUTO_SETTLEMENT_WEBHOOK_SECRET`).
-
-Processamento assíncrono: responde 202 imediatamente e processa em background via `EdgeRuntime.waitUntil`.
-
----
-
-### 3. UI (mínima, não-invasiva)
-
-Nova página admin `/admin/auto-settlement`:
-- Toggle da feature flag
-- Tabela de eventos recentes (status, cliente, valor, faturas quitadas, crédito gerado)
-- Tabela de créditos disponíveis por cliente
-- Drill-down em logs de um evento
-- Link no menu lateral apenas para admin (mesmo padrão de `/admin/recurrence`)
-
-Nenhuma alteração em Clientes, Faturas, Dashboard, BillingSettings.
-
----
-
-### 4. Salvaguardas
-
-- Feature flag OFF por default — nada roda até admin ligar
-- Trigger `trg_invoices_validate_due_date` existente já bloqueia duplicidade no mês ✅
-- `UNIQUE (organization_id, txid)` bloqueia reprocessamento
-- Lock `FOR UPDATE` no evento previne race condition
-- Logs imutáveis (sem UPDATE/DELETE policy)
-- Mensagens de WhatsApp passam pela infra existente (sem novo provider)
-
----
-
-### 5. Entregáveis
-
-1. Migration: 4 tabelas + RPC + RLS + flag global
-2. Edge function `pix-ocr-settlement` (ingest + process)
-3. Página `/admin/auto-settlement` (read-only + toggle)
-4. Item de menu admin
-5. Doc curta em `README` da função explicando como apontar webhook do WhatsApp
-
-**Não tocar:** `perform_baixa_manual`, `generate_next_recurrence`, `billing-cron`, `whatsapp-sender`, `bip-receiver`, gateways, Invoices.tsx, Clients.tsx, Dashboard.tsx.
+## Próximo passo
+Confirme se devo:
+- **A)** Executar Fase 1 agora (diagnóstico financeiro completo + correções) e parar para revisão
+- **B)** Executar todas as fases em sequência sem pausas (mais demorado, mais risco)
+- **C)** Pular para uma fase específica que te preocupa mais
