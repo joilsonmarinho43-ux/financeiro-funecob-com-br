@@ -154,8 +154,17 @@ export default function AutoSettlement() {
               >
                 <Copy className="h-4 w-4" />
               </Button>
+              <Button
+                size="sm"
+                onClick={() => registerWebhook.mutate()}
+                disabled={registerWebhook.isPending}
+              >
+                <Webhook className="h-4 w-4 mr-1" />
+                {registerWebhook.isPending ? "Registrando..." : "Registrar webhook nas instâncias"}
+              </Button>
             </div>
             <div className="text-xs text-muted-foreground space-y-1">
+              <p>• <strong>Clique no botão acima</strong> para configurar automaticamente o webhook em todas as instâncias WhatsApp conectadas.</p>
               <p>• Funciona com <strong>imagens</strong> de comprovante (OCR via IA) e textos com valor (ex.: "Paguei R$ 44,00 via PIX").</p>
               <p>• Identifica o cliente pelo telefone do remetente dentro da organização.</p>
               <p>• Quita faturas em aberto na ordem de vencimento. Sobra vira crédito.</p>
