@@ -16,6 +16,18 @@ function normalizePhone(p: string): string {
   return (p || "").replace(/\D/g, "").replace(/^55/, "");
 }
 
+// Coerces amount from OCR (which often returns string like "44.00" or "44,00")
+function coerceAmount(v: any): number | null {
+  if (v == null) return null;
+  if (typeof v === "number" && isFinite(v) && v > 0) return v;
+  if (typeof v === "string") {
+    const cleaned = v.replace(/[^\d,.\-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
+    const n = parseFloat(cleaned);
+    if (isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
 async function runOcr(imageUrl: string): Promise<any> {
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
