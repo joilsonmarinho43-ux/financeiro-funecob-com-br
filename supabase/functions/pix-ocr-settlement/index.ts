@@ -16,6 +16,18 @@ function normalizePhone(p: string): string {
   return (p || "").replace(/\D/g, "").replace(/^55/, "");
 }
 
+// Coerces amount from OCR (which often returns string like "44.00" or "44,00")
+function coerceAmount(v: any): number | null {
+  if (v == null) return null;
+  if (typeof v === "number" && isFinite(v) && v > 0) return v;
+  if (typeof v === "string") {
+    const cleaned = v.replace(/[^\d,.\-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
+    const n = parseFloat(cleaned);
+    if (isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
 async function runOcr(imageUrl: string): Promise<any> {
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -115,16 +127,31 @@ Deno.serve(async (req) => {
       }
     }
 
-    const txid = ocr?.txid || manual_txid || null;
-    const amount = typeof ocr?.amount === "number" ? ocr.amount : (typeof manual_amount === "number" ? manual_amount : null);
+    // Coerce amount (OCR may return string like "44,00") and txid (fallback to message_id for idempotency)
+    const amount = coerceAmount(ocr?.amount) ?? coerceAmount(manual_amount);
+    const txid = ocr?.txid || manual_txid || (message_id ? `WA-MSG-${message_id}` : null);
 
-    // Idempotency: existing txid?
+    // Idempotency: by txid (limit 1, ordered, tolerates legacy duplicates)
     if (txid) {
       const { data: existing } = await supabase
         .from("auto_settlement_events")
-        .select("id").eq("organization_id", organization_id).eq("txid", txid).maybeSingle();
+        .select("id").eq("organization_id", organization_id).eq("txid", txid)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
       if (existing) {
         return new Response(JSON.stringify({ status: "duplicado", event_id: existing.id }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // Idempotency: by whatsapp_message_id (covers retries when OCR fails to extract txid)
+    if (message_id) {
+      const { data: existingMsg } = await supabase
+        .from("auto_settlement_events")
+        .select("id").eq("organization_id", organization_id).eq("whatsapp_message_id", message_id)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (existingMsg) {
+        return new Response(JSON.stringify({ status: "duplicado", event_id: existingMsg.id }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
