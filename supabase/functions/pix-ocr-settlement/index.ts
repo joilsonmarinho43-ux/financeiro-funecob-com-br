@@ -127,8 +127,19 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Fallback: extract amount from raw text "R$ 44,00" / "44.00" when OCR/manual missing
+    function extractFromText(t: string | null | undefined): number | null {
+      if (!t) return null;
+      const m = t.match(/r\$?\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:[,.][0-9]{2}))/i)
+             || t.match(/\b([0-9]+[.,][0-9]{2})\b/);
+      if (!m) return null;
+      return coerceAmount(m[1]);
+    }
     // Coerce amount (OCR may return string like "44,00") and txid (fallback to message_id for idempotency)
-    const amount = coerceAmount(ocr?.amount) ?? coerceAmount(manual_amount);
+    const amount = coerceAmount(ocr?.amount)
+      ?? coerceAmount(manual_amount)
+      ?? extractFromText(ocr?.raw_text)
+      ?? extractFromText(raw_text);
     const txid = ocr?.txid || manual_txid || (message_id ? `WA-MSG-${message_id}` : null);
 
     // Idempotency: by txid (limit 1, ordered, tolerates legacy duplicates)
