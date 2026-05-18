@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Zap, RefreshCw, Eye, Copy, CheckCircle2 } from "lucide-react";
+import { Zap, RefreshCw, Eye, Copy, CheckCircle2, Webhook } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
@@ -46,6 +46,25 @@ export default function AutoSettlement() {
       toast.success("Configuração atualizada");
     },
     onError: (e: any) => toast.error(e.message),
+  });
+
+  const registerWebhook = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("register-pix-webhook", { body: {} });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data: any) => {
+      const ok = data?.ok ?? 0;
+      const total = data?.total ?? 0;
+      if (ok === total && total > 0) {
+        toast.success(`Webhook registrado em ${ok}/${total} instâncias`);
+      } else {
+        toast.warning(`Webhook registrado em ${ok}/${total} instâncias — verifique falhas no console`);
+        console.warn("register-pix-webhook results:", data?.results);
+      }
+    },
+    onError: (e: any) => toast.error(`Falha ao registrar webhook: ${e.message}`),
   });
 
   const { data: events = [], refetch: refetchEvents } = useQuery({
@@ -135,8 +154,17 @@ export default function AutoSettlement() {
               >
                 <Copy className="h-4 w-4" />
               </Button>
+              <Button
+                size="sm"
+                onClick={() => registerWebhook.mutate()}
+                disabled={registerWebhook.isPending}
+              >
+                <Webhook className="h-4 w-4 mr-1" />
+                {registerWebhook.isPending ? "Registrando..." : "Registrar webhook nas instâncias"}
+              </Button>
             </div>
             <div className="text-xs text-muted-foreground space-y-1">
+              <p>• <strong>Clique no botão acima</strong> para configurar automaticamente o webhook em todas as instâncias WhatsApp conectadas.</p>
               <p>• Funciona com <strong>imagens</strong> de comprovante (OCR via IA) e textos com valor (ex.: "Paguei R$ 44,00 via PIX").</p>
               <p>• Identifica o cliente pelo telefone do remetente dentro da organização.</p>
               <p>• Quita faturas em aberto na ordem de vencimento. Sobra vira crédito.</p>
