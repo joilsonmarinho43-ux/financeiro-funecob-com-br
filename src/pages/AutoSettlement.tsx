@@ -48,6 +48,25 @@ export default function AutoSettlement() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const registerWebhook = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("register-pix-webhook", { body: {} });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data: any) => {
+      const ok = data?.ok ?? 0;
+      const total = data?.total ?? 0;
+      if (ok === total && total > 0) {
+        toast.success(`Webhook registrado em ${ok}/${total} instâncias`);
+      } else {
+        toast.warning(`Webhook registrado em ${ok}/${total} instâncias — verifique falhas no console`);
+        console.warn("register-pix-webhook results:", data?.results);
+      }
+    },
+    onError: (e: any) => toast.error(`Falha ao registrar webhook: ${e.message}`),
+  });
+
   const { data: events = [], refetch: refetchEvents } = useQuery({
     queryKey: ["auto-settlement-events"],
     queryFn: async () => {
