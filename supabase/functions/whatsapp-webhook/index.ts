@@ -148,10 +148,16 @@ async function handleEvent(payload: any) {
   let body: any = null;
 
   if (isImage || isDocImage) {
-    // Always treat images as candidate receipts (PIX receipts often arrive without caption)
-    const base64 = apiUrl && apiKey
-      ? await fetchMediaBase64(apiUrl, apiKey, instanceName, { key, message: messageObj })
-      : null;
+    // Evolution v2 sometimes embeds base64 directly in the payload — use it first
+    const inlineB64 = msg?.message?.base64
+      || msg?.base64
+      || messageObj?.imageMessage?.base64
+      || messageObj?.documentMessage?.base64
+      || null;
+    const base64 = inlineB64
+      || (apiUrl && apiKey
+        ? await fetchMediaBase64(apiUrl, apiKey, instanceName, { key, message: messageObj })
+        : null);
     if (!base64) {
       console.log("[wa-webhook] image without retrievable base64, skipping");
       return;
