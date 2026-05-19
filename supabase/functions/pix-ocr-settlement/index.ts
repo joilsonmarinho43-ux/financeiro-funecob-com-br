@@ -123,12 +123,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Identify client by phone within org
-    const phoneNorm = normalizePhone(phone);
+    // Identify client by phone within org (tolerates 9-prefix variations)
+    const incomingVariants = phoneVariants(phone);
     const { data: clients } = await supabase
       .from("clients").select("id, phone")
       .eq("organization_id", organization_id);
-    const client = (clients || []).find((c: any) => normalizePhone(c.phone || "") === phoneNorm);
+    const client = (clients || []).find((c: any) => {
+      const cv = phoneVariants(c.phone || "");
+      return cv.some((v) => incomingVariants.includes(v));
+    });
 
     // OCR
     let ocr: any = { raw_text: raw_text || null };
