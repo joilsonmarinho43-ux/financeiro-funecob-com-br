@@ -136,7 +136,7 @@ const App = () => (
               <Route path="/admin/global-settings" element={<ProtectedRoute adminOnly><GlobalSettings /></ProtectedRoute>} />
               <Route path="/admin/recurrence" element={<ProtectedRoute adminOnly><RecurrenceAudit /></ProtectedRoute>} />
               <Route path="/admin/auto-settlement" element={<ProtectedRoute adminOnly><AutoSettlement /></ProtectedRoute>} />
-              <Route path="/system-health" element={<ProtectedRoute adminOnly><SystemHealth /></ProtectedRoute>} />
+              <Route path="/system-health" element={<ProtectedRoute><SystemHealth /></ProtectedRoute>} />
               <Route path="/portal/:token" element={<ClientPortal />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

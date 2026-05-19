@@ -168,12 +168,12 @@ export function AppSidebar() {
         <MenuGroup label="Comunicação" items={communicationItems} />
         <MenuGroup label="Sistema" items={[
           ...systemItems,
+          { title: "Saúde do Sistema", icon: Activity, url: "/system-health", badge: "Novo!" },
           ...(isAdmin ? [
             { title: "Admin", icon: Shield, url: "/admin", badge: "" },
             { title: "Auditoria Recorrência", icon: CalendarCheck, url: "/admin/recurrence", badge: "" },
             { title: "Liquidação Auto", icon: Zap, url: "/admin/auto-settlement", badge: "Novo!" },
             { title: "Config Global", icon: Globe, url: "/admin/global-settings", badge: "" },
-            { title: "Saúde do Sistema", icon: Activity, url: "/system-health", badge: "Novo!" },
           ] : []),
         ]} />
       </SidebarContent>
