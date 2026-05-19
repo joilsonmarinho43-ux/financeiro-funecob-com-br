@@ -15,6 +15,20 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 function normalizePhone(p: string): string {
   return (p || "").replace(/\D/g, "").replace(/^55/, "");
 }
+// Returns a set of phone variants to tolerate the mobile "9" prefix
+// (e.g. "9184456470" cadastrado vs "91984456470" enviado pelo WhatsApp).
+function phoneVariants(p: string): string[] {
+  const n = normalizePhone(p);
+  if (!n) return [];
+  const set = new Set<string>([n]);
+  // 11 digits with 9 → also try 10 digits (drop the 9 after DDD)
+  if (n.length === 11 && n[2] === "9") set.add(n.slice(0, 2) + n.slice(3));
+  // 10 digits → also try 11 digits (insert 9 after DDD)
+  if (n.length === 10) set.add(n.slice(0, 2) + "9" + n.slice(2));
+  // last 8 digits fallback for partial cadastros
+  if (n.length >= 8) set.add(n.slice(-8));
+  return [...set];
+}
 
 // Coerces amount from OCR (which often returns string like "44.00" or "44,00")
 function coerceAmount(v: any): number | null {
@@ -109,12 +123,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Identify client by phone within org
-    const phoneNorm = normalizePhone(phone);
+    // Identify client by phone within org (tolerates 9-prefix variations)
+    const incomingVariants = phoneVariants(phone);
     const { data: clients } = await supabase
       .from("clients").select("id, phone")
       .eq("organization_id", organization_id);
-    const client = (clients || []).find((c: any) => normalizePhone(c.phone || "") === phoneNorm);
+    const client = (clients || []).find((c: any) => {
+      const cv = phoneVariants(c.phone || "");
+      return cv.some((v) => incomingVariants.includes(v));
+    });
 
     // OCR
     let ocr: any = { raw_text: raw_text || null };
