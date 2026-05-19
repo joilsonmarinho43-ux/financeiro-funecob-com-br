@@ -16,14 +16,13 @@ const WEBHOOK_TARGET = `${SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
 async function setWebhook(apiUrl: string, apiKey: string, instance: string) {
   const base = apiUrl.replace(/\/$/, "");
+  // Evolution API expects a FLAT payload (url at root level)
   const payload = {
-    webhook: {
-      enabled: true,
-      url: WEBHOOK_TARGET,
-      webhookByEvents: false,
-      webhookBase64: true,
-      events: ["MESSAGES_UPSERT"],
-    },
+    url: WEBHOOK_TARGET,
+    enabled: true,
+    webhookByEvents: false,
+    webhookBase64: true,
+    events: ["MESSAGES_UPSERT"],
   };
   // Evolution v2 endpoint
   const res = await fetch(`${base}/webhook/set/${encodeURIComponent(instance)}`, {
