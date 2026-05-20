@@ -20,6 +20,7 @@ import {
   CalendarCheck,
   Zap,
   Activity,
+  FlaskConical,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -173,6 +174,7 @@ export function AppSidebar() {
             { title: "Admin", icon: Shield, url: "/admin", badge: "" },
             { title: "Auditoria Recorrência", icon: CalendarCheck, url: "/admin/recurrence", badge: "" },
             { title: "Liquidação Auto", icon: Zap, url: "/admin/auto-settlement", badge: "Novo!" },
+            { title: "Sandbox Testes", icon: FlaskConical, url: "/sandbox-tests", badge: "Novo!" },
             { title: "Config Global", icon: Globe, url: "/admin/global-settings", badge: "" },
           ] : []),
         ]} />

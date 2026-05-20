@@ -29,6 +29,7 @@ import GlobalSettings from "./pages/GlobalSettings";
 import RecurrenceAudit from "./pages/RecurrenceAudit";
 import AutoSettlement from "./pages/AutoSettlement";
 import SystemHealth from "./pages/SystemHealth";
+import SandboxTests from "./pages/SandboxTests";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -137,6 +138,7 @@ const App = () => (
               <Route path="/admin/recurrence" element={<ProtectedRoute adminOnly><RecurrenceAudit /></ProtectedRoute>} />
               <Route path="/admin/auto-settlement" element={<ProtectedRoute adminOnly><AutoSettlement /></ProtectedRoute>} />
               <Route path="/system-health" element={<ProtectedRoute><SystemHealth /></ProtectedRoute>} />
+              <Route path="/sandbox-tests" element={<ProtectedRoute adminOnly><SandboxTests /></ProtectedRoute>} />
               <Route path="/portal/:token" element={<ClientPortal />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
