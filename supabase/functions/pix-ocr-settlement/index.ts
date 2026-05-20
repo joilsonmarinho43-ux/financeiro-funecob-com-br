@@ -126,9 +126,9 @@ Deno.serve(async (req) => {
     // Identify client by phone within org (tolerates 9-prefix variations)
     const incomingVariants = phoneVariants(phone);
     const { data: clients } = await supabase
-      .from("clients").select("id, phone")
+      .from("clients").select("id, phone, name, document")
       .eq("organization_id", organization_id);
-    const client = (clients || []).find((c: any) => {
+    let client = (clients || []).find((c: any) => {
       const cv = phoneVariants(c.phone || "");
       return cv.some((v) => incomingVariants.includes(v));
     });
@@ -141,6 +141,31 @@ Deno.serve(async (req) => {
         ocr = await runOcr(url);
       } catch (e: any) {
         ocr = { error: String(e?.message || e) };
+      }
+    }
+
+    // Fallback identification when phone is a @lid (no match):
+    // try CPF/document from OCR, then fuzzy name match.
+    if (!client && clients?.length) {
+      const ocrText = `${ocr?.raw_text || ""} ${ocr?.sender_name || ""}`.toLowerCase();
+      const cpfMatch = ocrText.match(/\b(\d{3}\.?\d{3}\.?\d{3}-?\d{2})\b/);
+      if (cpfMatch) {
+        const cpfDigits = cpfMatch[1].replace(/\D/g, "");
+        client = clients.find((c: any) =>
+          (c.document || "").replace(/\D/g, "") === cpfDigits
+        );
+      }
+      if (!client && ocr?.sender_name) {
+        const senderNorm = String(ocr.sender_name).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        const senderTokens = senderNorm.split(/\s+/).filter(t => t.length >= 3);
+        if (senderTokens.length >= 2) {
+          client = clients.find((c: any) => {
+            const n = (c.name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            // require at least 2 matching tokens for safety
+            const hits = senderTokens.filter(t => n.includes(t)).length;
+            return hits >= 2;
+          });
+        }
       }
     }
 
