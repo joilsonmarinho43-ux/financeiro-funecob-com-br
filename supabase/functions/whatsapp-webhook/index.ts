@@ -97,8 +97,44 @@ async function handleEvent(payload: any) {
 
   const remoteJid: string = key.remoteJid || "";
   if (remoteJid.endsWith("@g.us")) return; // ignore groups
-  const phone = remoteJid.replace(/@s\.whatsapp\.net$/, "").replace(/\D/g, "");
+
+  // ===== Phone extraction tolerant to Evolution v2 @lid protocol =====
+  // remoteJid may be "<phone>@s.whatsapp.net" (legacy) OR "<lid>@lid" (new).
+  // Real phone often lives in: senderPn, remoteJidAlt, participantPn,
+  // participantAlt, msg.pushName-related fields, or msg.contextInfo.
+  // We collect all candidates and pick the first that LOOKS like a BR phone.
+  function jidToDigits(j: any): string {
+    if (!j || typeof j !== "string") return "";
+    return j.split("@")[0].replace(/:\d+$/, "").replace(/\D/g, "");
+  }
+  function looksLikePhone(d: string): boolean {
+    // BR phones: 10-13 digits. LIDs are typically 14-16.
+    return d.length >= 10 && d.length <= 13;
+  }
+  const candidates: string[] = [
+    jidToDigits(key.senderPn),
+    jidToDigits(key.remoteJidAlt),
+    jidToDigits(key.participantPn),
+    jidToDigits(key.participantAlt),
+    jidToDigits(key.participant),
+    jidToDigits(msg?.senderPn),
+    jidToDigits(msg?.participantPn),
+    // remoteJid LAST — only if it's @s.whatsapp.net (not @lid)
+    remoteJid.endsWith("@lid") ? "" : jidToDigits(remoteJid),
+    // Absolute fallback — accept LID as last resort so we still log the event
+    jidToDigits(remoteJid),
+  ].filter(Boolean);
+
+  let phone = candidates.find(looksLikePhone) || "";
+  const isLidOnly = !phone && candidates.length > 0;
+  if (!phone) phone = candidates[0]; // log the LID so admin sees the event
   if (!phone) return;
+
+  if (isLidOnly) {
+    console.log("[wa-webhook] only @lid available, phone may not match clients", {
+      remoteJid, candidates,
+    });
+  }
 
   // Resolve instance → org + api creds
   const { data: instance } = await supabase
