@@ -144,6 +144,22 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ===== Reject non-receipt content (raffles, ads, etc) BEFORE creating event =====
+    // Avoids dashboard pollution with false "errors". Real PIX receipt has either
+    // a txid/E2E ID OR mentions "comprovante"/"transferência" alongside an amount.
+    const combinedText = `${ocr?.raw_text || ""} ${raw_text || ""}`.toLowerCase();
+    const NOISE_KEYWORDS = ["rifa", "sorteio", "bingo", "promo", "ganhador"];
+    const isNoise = NOISE_KEYWORDS.some((k) => combinedText.includes(k));
+    const hasReceiptMarkers =
+      !!ocr?.txid || !!ocr?.end_to_end_id ||
+      /comprovante|transfer[eê]ncia|pagamento\s+pix|recibo|pix\s+enviado/i.test(combinedText);
+    if (isNoise && !hasReceiptMarkers) {
+      console.log("[pix-ocr] rejected non-receipt (noise)", { phone, message_id });
+      return new Response(JSON.stringify({ status: "ignored", reason: "non_receipt_noise" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Fallback identification when phone is a @lid (no match):
     // try CPF/document from OCR, then fuzzy name match.
     if (!client && clients?.length) {
@@ -159,12 +175,24 @@ Deno.serve(async (req) => {
         const senderNorm = String(ocr.sender_name).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
         const senderTokens = senderNorm.split(/\s+/).filter(t => t.length >= 3);
         if (senderTokens.length >= 2) {
+          // Strict: >=2 tokens match
           client = clients.find((c: any) => {
             const n = (c.name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            // require at least 2 matching tokens for safety
             const hits = senderTokens.filter(t => n.includes(t)).length;
             return hits >= 2;
           });
+          // Looser: first+last name both present, only if exactly ONE client matches
+          if (!client) {
+            const first = senderTokens[0];
+            const last = senderTokens[senderTokens.length - 1];
+            if (first.length >= 4 && last.length >= 4 && first !== last) {
+              const matches = clients.filter((c: any) => {
+                const n = (c.name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                return n.includes(first) && n.includes(last);
+              });
+              if (matches.length === 1) client = matches[0];
+            }
+          }
         }
       }
     }
