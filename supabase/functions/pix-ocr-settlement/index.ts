@@ -74,6 +74,77 @@ async function runOcr(imageUrl: string): Promise<any> {
   try { return JSON.parse(txt); } catch { return { raw_text: txt }; }
 }
 
+async function sendPaymentConfirmation(supabase: any, organizationId: string, clientId: string, amount: number) {
+  try {
+    const { data: client } = await supabase
+      .from("clients").select("name, phone").eq("id", clientId).single();
+    if (!client?.phone) return;
+
+    const { data: settings } = await supabase
+      .from("billing_settings")
+      .select("template_baixa, pix_holder_name")
+      .eq("organization_id", organizationId).maybeSingle();
+
+    const { getOrCreatePortalLink } = await import("../_shared/portalLink.ts");
+    const portalLink = await getOrCreatePortalLink(supabase, clientId, organizationId);
+
+    const valor = Number(amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const tpl = settings?.template_baixa
+      || "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏";
+    let message = tpl
+      .replace(/{nome}/g, client.name || "Cliente")
+      .replace(/{valor}/g, valor)
+      .replace(/{data_pagamento}/g, new Date().toLocaleDateString("pt-BR"))
+      .replace(/{titular_pix}/g, settings?.pix_holder_name || "")
+      .replace(/{link_portal}/g, portalLink);
+    if (portalLink && !tpl.includes("{link_portal}") && !message.includes(portalLink)) {
+      message += `\n\n🔗 *Acesse seu portal:* ${portalLink}`;
+    }
+
+    const { data: instance } = await supabase
+      .from("whatsapp_instances").select("*")
+      .eq("organization_id", organizationId).eq("status", "connected")
+      .limit(1).maybeSingle();
+
+    const { data: gsRows } = await supabase
+      .from("global_settings").select("key, value")
+      .in("key", ["api_host", "global_api_key", "default_instance_name"]);
+    const gs: Record<string, string> = {};
+    (gsRows || []).forEach((s: any) => { gs[s.key] = s.value; });
+
+    const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
+    const apiKey = instance?.api_key || gs.global_api_key || "";
+    const instanceName = instance?.name || gs.default_instance_name || "";
+
+    if (!instanceName || !apiUrl || !apiKey) {
+      console.warn("[pix-ocr] WhatsApp not configured — skipping confirmation");
+      return;
+    }
+
+    const cleanPhone = client.phone.replace(/\D/g, "");
+    const res = await fetch(`${apiUrl}/message/sendText/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify({ number: cleanPhone, textMessage: { text: message } }),
+    });
+    const ok = res.ok;
+    if (!ok) console.error("[pix-ocr] WA confirmation failed", res.status, (await res.text()).slice(0, 200));
+
+    await supabase.from("whatsapp_messages").insert({
+      organization_id: organizationId,
+      phone: client.phone,
+      message,
+      direction: "outgoing",
+      status: ok ? "sent" : "failed",
+      instance_id: instance?.id || null,
+      client_id: clientId,
+      sent_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error("[pix-ocr] sendPaymentConfirmation error (non-blocking)", e);
+  }
+}
+
 async function processEvent(supabase: any, eventId: string, organizationId: string) {
   try {
     const { data: ev } = await supabase
@@ -86,6 +157,11 @@ async function processEvent(supabase: any, eventId: string, organizationId: stri
     const { data: result, error } = await supabase.rpc("auto_settlement_process_payment", { p_event_id: eventId });
     if (error) throw error;
     console.log("settlement result", eventId, result);
+
+    // After successful settlement, send WhatsApp confirmation (non-blocking, mirrors baixa-manual)
+    if (result?.success && ev.client_id && ev.amount_detected) {
+      await sendPaymentConfirmation(supabase, organizationId, ev.client_id, Number(ev.amount_detected));
+    }
   } catch (e: any) {
     console.error("process error", e);
     await supabase.from("auto_settlement_events")
