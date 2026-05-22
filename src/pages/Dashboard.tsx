@@ -588,8 +588,15 @@ export default function Dashboard() {
                   overdueClients.map((inv) => (
                     <TableRow key={inv.id}>
                       <TableCell className="text-xs font-medium text-primary">
-                        {(inv.clients as any)?.name ?? "—"}
+                        <button
+                          type="button"
+                          onClick={() => (inv as any).client_id && setOpenClientId((inv as any).client_id)}
+                          className="text-left hover:underline focus:outline-none focus:underline"
+                        >
+                          {(inv.clients as any)?.name ?? "—"}
+                        </button>
                       </TableCell>
+
                       <TableCell>
                         <Badge variant="outline" className="text-[10px] border-destructive/50 text-destructive">
                           {parseDateLocal(inv.due_date).toLocaleDateString("pt-BR")}
