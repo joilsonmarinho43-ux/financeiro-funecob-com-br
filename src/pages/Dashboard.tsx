@@ -376,7 +376,7 @@ export default function Dashboard() {
 
       const { data, error } = await supabase
         .from("invoices")
-        .select("id, amount, due_date, clients(name, phone), plans(name)")
+        .select("id, amount, due_date, client_id, clients(name, phone), plans(name)")
         .eq("organization_id", organizationId)
         .eq("status", "aberto")
         .gt("due_date", todayStr)
