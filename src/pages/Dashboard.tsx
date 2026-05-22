@@ -730,6 +730,13 @@ export default function Dashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+      <CustomerOperationalPanel
+        clientId={openClientId}
+        open={!!openClientId}
+        onClose={() => setOpenClientId(null)}
+      />
     </div>
+
   );
 }
