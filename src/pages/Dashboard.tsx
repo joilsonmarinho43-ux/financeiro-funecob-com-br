@@ -530,8 +530,15 @@ export default function Dashboard() {
                   activeReminders.map((inv) => (
                     <TableRow key={inv.id}>
                       <TableCell className="text-xs font-medium text-foreground">
-                        {(inv.clients as any)?.name ?? "—"}
+                        <button
+                          type="button"
+                          onClick={() => inv.client_id && setOpenClientId(inv.client_id)}
+                          className="text-left text-primary hover:underline focus:outline-none focus:underline"
+                        >
+                          {(inv.clients as any)?.name ?? "—"}
+                        </button>
                       </TableCell>
+
                       <TableCell>
                         <Badge variant="outline" className="text-[10px] border-warning/50 text-warning">
                           {parseDateLocal(inv.due_date).toLocaleDateString("pt-BR")}
