@@ -25,15 +25,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { CustomerOperationalPanel } from "@/components/customer-panel/CustomerOperationalPanel";
 
 
 export default function Dashboard() {
   const [showValues, setShowValues] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [openClientId, setOpenClientId] = useState<string | null>(null);
   const { organizationId } = useOrganization();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+
 
   // Fetch WhatsApp instance for sending
   const { data: whatsappInstance } = useQuery({
@@ -373,7 +376,7 @@ export default function Dashboard() {
 
       const { data, error } = await supabase
         .from("invoices")
-        .select("id, amount, due_date, clients(name, phone), plans(name)")
+        .select("id, amount, due_date, client_id, clients(name, phone), plans(name)")
         .eq("organization_id", organizationId)
         .eq("status", "aberto")
         .gt("due_date", todayStr)
@@ -527,8 +530,15 @@ export default function Dashboard() {
                   activeReminders.map((inv) => (
                     <TableRow key={inv.id}>
                       <TableCell className="text-xs font-medium text-foreground">
-                        {(inv.clients as any)?.name ?? "—"}
+                        <button
+                          type="button"
+                          onClick={() => inv.client_id && setOpenClientId(inv.client_id)}
+                          className="text-left text-primary hover:underline focus:outline-none focus:underline"
+                        >
+                          {(inv.clients as any)?.name ?? "—"}
+                        </button>
                       </TableCell>
+
                       <TableCell>
                         <Badge variant="outline" className="text-[10px] border-warning/50 text-warning">
                           {parseDateLocal(inv.due_date).toLocaleDateString("pt-BR")}
@@ -578,8 +588,15 @@ export default function Dashboard() {
                   overdueClients.map((inv) => (
                     <TableRow key={inv.id}>
                       <TableCell className="text-xs font-medium text-primary">
-                        {(inv.clients as any)?.name ?? "—"}
+                        <button
+                          type="button"
+                          onClick={() => (inv as any).client_id && setOpenClientId((inv as any).client_id)}
+                          className="text-left hover:underline focus:outline-none focus:underline"
+                        >
+                          {(inv.clients as any)?.name ?? "—"}
+                        </button>
                       </TableCell>
+
                       <TableCell>
                         <Badge variant="outline" className="text-[10px] border-destructive/50 text-destructive">
                           {parseDateLocal(inv.due_date).toLocaleDateString("pt-BR")}
@@ -713,6 +730,13 @@ export default function Dashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+      <CustomerOperationalPanel
+        clientId={openClientId}
+        open={!!openClientId}
+        onClose={() => setOpenClientId(null)}
+      />
     </div>
+
   );
 }
