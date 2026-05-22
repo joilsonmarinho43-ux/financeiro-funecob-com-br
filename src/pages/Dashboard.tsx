@@ -25,15 +25,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { CustomerOperationalPanel } from "@/components/customer-panel/CustomerOperationalPanel";
 
 
 export default function Dashboard() {
   const [showValues, setShowValues] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [openClientId, setOpenClientId] = useState<string | null>(null);
   const { organizationId } = useOrganization();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+
 
   // Fetch WhatsApp instance for sending
   const { data: whatsappInstance } = useQuery({
