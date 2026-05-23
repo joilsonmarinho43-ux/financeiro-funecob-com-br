@@ -248,26 +248,37 @@ Deno.serve(async (req) => {
         );
       }
       if (!client && ocr?.sender_name) {
-        const senderNorm = String(ocr.sender_name).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        // Common Brazilian name tokens that cause false-positives when matched alone
+        const STOPWORDS = new Set([
+          "maria","jose","da","de","do","das","dos","silva","santos","souza","sousa",
+          "oliveira","pereira","lima","ferreira","costa","rodrigues","almeida","gomes",
+          "ribeiro","carvalho","martins","araujo","barbosa","rocha","dias","nascimento",
+          "moreira","cardoso","fernandes","correia","mendes","freitas","cavalcante",
+          "monteiro","goncalves","pinto","ramos","azevedo","teixeira","melo","barros",
+          "vieira","reis","moura","castro","campos","cruz","alves","machado","junior",
+          "neto","filho","sobrinho","ana","jr"
+        ]);
+        const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const senderNorm = norm(String(ocr.sender_name)).trim();
         const senderTokens = senderNorm.split(/\s+/).filter(t => t.length >= 3);
-        if (senderTokens.length >= 2) {
-          // Strict: >=2 tokens match
-          client = clients.find((c: any) => {
-            const n = (c.name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            const hits = senderTokens.filter(t => n.includes(t)).length;
-            return hits >= 2;
+        const distinctive = senderTokens.filter(t => !STOPWORDS.has(t));
+        const firstName = senderTokens[0];
+
+        if (firstName && firstName.length >= 3) {
+          // Must match first name + at least one distinctive token, AND be unique
+          const matches = clients.filter((c: any) => {
+            const n = norm(c.name || "");
+            const nTokens = n.split(/\s+/).filter(Boolean);
+            if (!nTokens.includes(firstName)) return false;
+            if (distinctive.length === 0) return true; // sender has only common tokens
+            return distinctive.some(t => n.includes(t));
           });
-          // Looser: first+last name both present, only if exactly ONE client matches
-          if (!client) {
-            const first = senderTokens[0];
-            const last = senderTokens[senderTokens.length - 1];
-            if (first.length >= 4 && last.length >= 4 && first !== last) {
-              const matches = clients.filter((c: any) => {
-                const n = (c.name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                return n.includes(first) && n.includes(last);
-              });
-              if (matches.length === 1) client = matches[0];
-            }
+          if (matches.length === 1) client = matches[0];
+          else if (matches.length > 1) {
+            console.warn("[pix-ocr] fuzzy match ambiguous — skipping auto-link", {
+              sender: ocr.sender_name,
+              candidates: matches.map((c: any) => c.name),
+            });
           }
         }
       }
