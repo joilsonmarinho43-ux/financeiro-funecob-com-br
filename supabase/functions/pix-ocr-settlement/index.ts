@@ -325,30 +325,58 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ===== Anti third-party safeguard =====
+    // If client was identified ONLY by fuzzy name (no phone/CPF), require the amount
+    // to exactly match one of the client's open invoices. Otherwise the PIX may have
+    // been sent by a third party with similar name → leave for manual review.
+    let amountMatchesInvoice = false;
+    if (client && amount) {
+      const { data: openInvs } = await supabase
+        .from("invoices").select("amount")
+        .eq("organization_id", organization_id)
+        .eq("client_id", client.id).eq("status", "aberto");
+      amountMatchesInvoice = (openInvs || []).some(
+        (i: any) => Math.abs(Number(i.amount) - Number(amount)) < 0.01
+      );
+    }
+    const requiresReview = matchSource === "fuzzy_name" && !amountMatchesInvoice;
+
+    let eventStatus: string;
+    let errorMessage: string | null = null;
+    if (!client) { eventStatus = "erro"; errorMessage = "client not identified by phone/cpf/name"; }
+    else if (!amount) { eventStatus = "erro"; errorMessage = "amount not detected"; }
+    else if (requiresReview) {
+      eventStatus = "pendente_revisao";
+      errorMessage = "match por nome sem fatura compatível — possível PIX de terceiro";
+    } else {
+      eventStatus = "recebido";
+    }
+
     const { data: ev, error: insErr } = await supabase
       .from("auto_settlement_events").insert({
         organization_id,
         client_id: client?.id || null,
         phone,
         raw_text: ocr?.raw_text || null,
-        ocr_payload: ocr,
+        ocr_payload: { ...ocr, _match_source: matchSource, _amount_matches_invoice: amountMatchesInvoice },
         txid,
         pix_end_to_end_id: ocr?.end_to_end_id || null,
         amount_detected: amount,
         whatsapp_message_id: message_id || null,
-        status: client && amount ? "recebido" : "erro",
-        error_message: !client ? "client not identified by phone" : !amount ? "amount not detected" : null,
+        status: eventStatus,
+        error_message: errorMessage,
       }).select("id").single();
 
     if (insErr) throw insErr;
 
     await supabase.from("auto_settlement_logs").insert({
       organization_id, event_id: ev.id, client_id: client?.id || null,
-      action: "ingested", details: { phone, amount, txid, client_found: !!client },
+      action: "ingested",
+      details: { phone, amount, txid, client_found: !!client, match_source: matchSource, amount_matches_invoice: amountMatchesInvoice, requires_review: requiresReview },
     });
 
-    if (client && amount) {
-      // Process async
+    // Only auto-settle when match is trusted (phone/cpf) OR fuzzy_name + amount matches an open invoice
+    if (client && amount && !requiresReview) {
       // @ts-ignore
       EdgeRuntime.waitUntil(processEvent(supabase, ev.id, organization_id));
     }
