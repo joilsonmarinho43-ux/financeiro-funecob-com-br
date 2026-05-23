@@ -199,7 +199,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Identify client by phone within org (tolerates 9-prefix variations)
+    // ===== Client identification — strict priority: phone > CPF > name(+amount) =====
+    // PIX can be sent by third parties, so name match alone is unsafe.
+    // Phone (WhatsApp) is the only fully trusted signal.
     const incomingVariants = phoneVariants(phone);
     const { data: clients } = await supabase
       .from("clients").select("id, phone, name, document")
@@ -208,6 +210,7 @@ Deno.serve(async (req) => {
       const cv = phoneVariants(c.phone || "");
       return cv.some((v) => incomingVariants.includes(v));
     });
+    let matchSource: "phone" | "cpf" | "fuzzy_name" | null = client ? "phone" : null;
 
     // OCR
     let ocr: any = { raw_text: raw_text || null };
@@ -221,8 +224,6 @@ Deno.serve(async (req) => {
     }
 
     // ===== Reject non-receipt content (raffles, ads, etc) BEFORE creating event =====
-    // Avoids dashboard pollution with false "errors". Real PIX receipt has either
-    // a txid/E2E ID OR mentions "comprovante"/"transferência" alongside an amount.
     const combinedText = `${ocr?.raw_text || ""} ${raw_text || ""}`.toLowerCase();
     const NOISE_KEYWORDS = ["rifa", "sorteio", "bingo", "promo", "ganhador"];
     const isNoise = NOISE_KEYWORDS.some((k) => combinedText.includes(k));
@@ -236,19 +237,19 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fallback identification when phone is a @lid (no match):
-    // try CPF/document from OCR, then fuzzy name match.
+    // ===== Fallback when phone is @lid or unmatched =====
     if (!client && clients?.length) {
+      // (1) CPF from OCR raw text — high-confidence identifier
       const ocrText = `${ocr?.raw_text || ""} ${ocr?.sender_name || ""}`.toLowerCase();
       const cpfMatch = ocrText.match(/\b(\d{3}\.?\d{3}\.?\d{3}-?\d{2})\b/);
       if (cpfMatch) {
         const cpfDigits = cpfMatch[1].replace(/\D/g, "");
-        client = clients.find((c: any) =>
-          (c.document || "").replace(/\D/g, "") === cpfDigits
-        );
+        const byCpf = clients.find((c: any) => (c.document || "").replace(/\D/g, "") === cpfDigits);
+        if (byCpf) { client = byCpf; matchSource = "cpf"; }
       }
+
+      // (2) Fuzzy name — ONLY as candidate; final validation requires amount match
       if (!client && ocr?.sender_name) {
-        // Common Brazilian name tokens that cause false-positives when matched alone
         const STOPWORDS = new Set([
           "maria","jose","da","de","do","das","dos","silva","santos","souza","sousa",
           "oliveira","pereira","lima","ferreira","costa","rodrigues","almeida","gomes",
@@ -265,17 +266,16 @@ Deno.serve(async (req) => {
         const firstName = senderTokens[0];
 
         if (firstName && firstName.length >= 3) {
-          // Must match first name + at least one distinctive token, AND be unique
           const matches = clients.filter((c: any) => {
             const n = norm(c.name || "");
             const nTokens = n.split(/\s+/).filter(Boolean);
             if (!nTokens.includes(firstName)) return false;
-            if (distinctive.length === 0) return true; // sender has only common tokens
+            if (distinctive.length === 0) return true;
             return distinctive.some(t => n.includes(t));
           });
-          if (matches.length === 1) client = matches[0];
+          if (matches.length === 1) { client = matches[0]; matchSource = "fuzzy_name"; }
           else if (matches.length > 1) {
-            console.warn("[pix-ocr] fuzzy match ambiguous — skipping auto-link", {
+            console.warn("[pix-ocr] fuzzy match ambiguous — skipping", {
               sender: ocr.sender_name,
               candidates: matches.map((c: any) => c.name),
             });
