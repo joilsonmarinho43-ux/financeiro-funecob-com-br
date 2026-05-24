@@ -254,6 +254,8 @@ export default function BillingSettings() {
       if ((settings as any).template_baixa) setTemplateBaixa((settings as any).template_baixa);
       if ((settings as any).template_retorno) setTemplateRetorno((settings as any).template_retorno);
       if ((settings as any).template_remarcar) setTemplateRemarcar((settings as any).template_remarcar);
+      if ((settings as any).template_welcome) setTemplateWelcome((settings as any).template_welcome);
+      if (typeof (settings as any).welcome_enabled === "boolean") setWelcomeEnabled((settings as any).welcome_enabled);
     }
   }, [settings]);
 
