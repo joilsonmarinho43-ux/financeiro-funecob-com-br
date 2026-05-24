@@ -294,7 +294,9 @@ export type Database = {
           template_remarcar: string
           template_reminder: string
           template_retorno: string
+          template_welcome: string
           updated_at: string
+          welcome_enabled: boolean
         }
         Insert: {
           billing_mode?: string
@@ -319,7 +321,9 @@ export type Database = {
           template_remarcar?: string
           template_reminder?: string
           template_retorno?: string
+          template_welcome?: string
           updated_at?: string
+          welcome_enabled?: boolean
         }
         Update: {
           billing_mode?: string
@@ -344,7 +348,9 @@ export type Database = {
           template_remarcar?: string
           template_reminder?: string
           template_retorno?: string
+          template_welcome?: string
           updated_at?: string
+          welcome_enabled?: boolean
         }
         Relationships: [
           {

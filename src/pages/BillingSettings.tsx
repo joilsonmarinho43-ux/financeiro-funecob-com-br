@@ -101,6 +101,8 @@ export default function BillingSettings() {
   const [templateBaixa, setTemplateBaixa] = useState(DEFAULT_TEMPLATES.baixa);
   const [templateRetorno, setTemplateRetorno] = useState(DEFAULT_TEMPLATES.retorno);
   const [templateRemarcar, setTemplateRemarcar] = useState(DEFAULT_TEMPLATES.remarcar);
+  const [templateWelcome, setTemplateWelcome] = useState("Olá {nome}! 👋\n\nSeja muito bem-vindo(a)! Seu cadastro foi realizado com sucesso. 🎉\n\nA partir de agora você receberá por aqui os avisos das suas mensalidades e comprovantes de pagamento.\n\nQualquer dúvida, estamos à disposição! 😊");
+  const [welcomeEnabled, setWelcomeEnabled] = useState(true);
 
   const applyTone = (kind: TemplateKind, tone: ToneKind) => {
     const text = TONE_PRESETS[kind][tone];
@@ -252,6 +254,8 @@ export default function BillingSettings() {
       if ((settings as any).template_baixa) setTemplateBaixa((settings as any).template_baixa);
       if ((settings as any).template_retorno) setTemplateRetorno((settings as any).template_retorno);
       if ((settings as any).template_remarcar) setTemplateRemarcar((settings as any).template_remarcar);
+      if ((settings as any).template_welcome) setTemplateWelcome((settings as any).template_welcome);
+      if (typeof (settings as any).welcome_enabled === "boolean") setWelcomeEnabled((settings as any).welcome_enabled);
     }
   }, [settings]);
 
@@ -284,6 +288,8 @@ export default function BillingSettings() {
         template_baixa: templateBaixa,
         template_retorno: templateRetorno,
         template_remarcar: templateRemarcar,
+        template_welcome: templateWelcome,
+        welcome_enabled: welcomeEnabled,
       } as any;
 
       const { error } = await supabase
@@ -1074,6 +1080,15 @@ export default function BillingSettings() {
                 desc: "Enviado quando a fatura é remarcada para nova data",
                 cls: "text-primary",
               },
+              {
+                label: "Boas-vindas (novo cliente)",
+                icon: Sparkles,
+                value: templateWelcome,
+                setter: setTemplateWelcome,
+                desc: "Enviado automaticamente ao cadastrar um novo cliente com telefone",
+                cls: "text-primary",
+                welcomeToggle: true,
+              },
             ].map((t) => {
               const currentTone = t.kind ? detectTone(t.value, t.kind) : null;
               return (
@@ -1085,6 +1100,12 @@ export default function BillingSettings() {
                     <CardDescription className="text-xs">{t.desc}</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
+                    {(t as any).welcomeToggle && (
+                      <div className="flex items-center justify-between rounded-md border border-border/50 p-2">
+                        <Label className="text-xs">Enviar automaticamente ao cadastrar cliente</Label>
+                        <Switch checked={welcomeEnabled} onCheckedChange={setWelcomeEnabled} />
+                      </div>
+                    )}
                     {t.showCriticalDays && (
                       <div className="flex items-center gap-2">
                         <Label className="text-xs whitespace-nowrap">Disparar após:</Label>
