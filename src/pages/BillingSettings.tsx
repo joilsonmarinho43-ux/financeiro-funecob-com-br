@@ -1100,6 +1100,12 @@ export default function BillingSettings() {
                     <CardDescription className="text-xs">{t.desc}</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
+                    {(t as any).welcomeToggle && (
+                      <div className="flex items-center justify-between rounded-md border border-border/50 p-2">
+                        <Label className="text-xs">Enviar automaticamente ao cadastrar cliente</Label>
+                        <Switch checked={welcomeEnabled} onCheckedChange={setWelcomeEnabled} />
+                      </div>
+                    )}
                     {t.showCriticalDays && (
                       <div className="flex items-center gap-2">
                         <Label className="text-xs whitespace-nowrap">Disparar após:</Label>
