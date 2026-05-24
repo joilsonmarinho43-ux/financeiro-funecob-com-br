@@ -288,6 +288,8 @@ export default function BillingSettings() {
         template_baixa: templateBaixa,
         template_retorno: templateRetorno,
         template_remarcar: templateRemarcar,
+        template_welcome: templateWelcome,
+        welcome_enabled: welcomeEnabled,
       } as any;
 
       const { error } = await supabase
