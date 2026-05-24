@@ -319,6 +319,28 @@ export default function Clients() {
           .single();
         if (error) throw error;
         clientId = data.id;
+
+        // Mensagem de boas-vindas (fire-and-forget) — só quando há telefone
+        if (clientPayload.phone) {
+          try {
+            const { data: bs } = await supabase
+              .from("billing_settings")
+              .select("template_welcome, welcome_enabled")
+              .eq("organization_id", organizationId)
+              .maybeSingle();
+            const enabled = (bs as any)?.welcome_enabled ?? true;
+            const tpl = (bs as any)?.template_welcome ||
+              "Olá {nome}! 👋\n\nSeja muito bem-vindo(a)! Seu cadastro foi realizado com sucesso. 🎉\n\nQualquer dúvida, estamos à disposição! 😊";
+            if (enabled && tpl) {
+              const msg = String(tpl).replace(/\{nome\}/g, clientPayload.name || "");
+              supabase.functions.invoke("send-now", {
+                body: { phone: clientPayload.phone, message: msg, organization_id: organizationId },
+              }).catch(() => {});
+            }
+          } catch {
+            // silencioso — não bloquear cadastro
+          }
+        }
       }
 
       // Generate invoices for new clients only
