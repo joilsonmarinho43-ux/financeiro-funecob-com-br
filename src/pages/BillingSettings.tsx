@@ -1080,6 +1080,15 @@ export default function BillingSettings() {
                 desc: "Enviado quando a fatura é remarcada para nova data",
                 cls: "text-primary",
               },
+              {
+                label: "Boas-vindas (novo cliente)",
+                icon: Sparkles,
+                value: templateWelcome,
+                setter: setTemplateWelcome,
+                desc: "Enviado automaticamente ao cadastrar um novo cliente com telefone",
+                cls: "text-primary",
+                welcomeToggle: true,
+              },
             ].map((t) => {
               const currentTone = t.kind ? detectTone(t.value, t.kind) : null;
               return (
