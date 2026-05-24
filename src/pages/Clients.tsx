@@ -320,7 +320,7 @@ export default function Clients() {
         if (error) throw error;
         clientId = data.id;
 
-        // Mensagem de boas-vindas (fire-and-forget) — só quando há telefone
+        // Mensagem de boas-vindas — só quando há telefone
         if (clientPayload.phone) {
           try {
             const { data: bs } = await supabase
@@ -333,12 +333,18 @@ export default function Clients() {
               "Olá {nome}! 👋\n\nSeja muito bem-vindo(a)! Seu cadastro foi realizado com sucesso. 🎉\n\nQualquer dúvida, estamos à disposição! 😊";
             if (enabled && tpl) {
               const msg = String(tpl).replace(/\{nome\}/g, clientPayload.name || "");
-              supabase.functions.invoke("send-now", {
-                body: { phone: clientPayload.phone, message: msg, organization_id: organizationId },
-              }).catch(() => {});
+              const phoneClean = String(clientPayload.phone).replace(/\D/g, "");
+              const { data: sendData, error: sendErr } = await supabase.functions.invoke("send-now", {
+                body: { phone: phoneClean, message: msg, organization_id: organizationId },
+              });
+              if (sendErr || (sendData as any)?.error) {
+                console.warn("[welcome] falha envio:", sendErr || (sendData as any)?.error);
+              } else {
+                console.log("[welcome] enviada para", phoneClean);
+              }
             }
-          } catch {
-            // silencioso — não bloquear cadastro
+          } catch (e) {
+            console.warn("[welcome] erro:", e);
           }
         }
       }
