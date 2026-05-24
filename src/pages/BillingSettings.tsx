@@ -101,6 +101,8 @@ export default function BillingSettings() {
   const [templateBaixa, setTemplateBaixa] = useState(DEFAULT_TEMPLATES.baixa);
   const [templateRetorno, setTemplateRetorno] = useState(DEFAULT_TEMPLATES.retorno);
   const [templateRemarcar, setTemplateRemarcar] = useState(DEFAULT_TEMPLATES.remarcar);
+  const [templateWelcome, setTemplateWelcome] = useState("Olá {nome}! 👋\n\nSeja muito bem-vindo(a)! Seu cadastro foi realizado com sucesso. 🎉\n\nA partir de agora você receberá por aqui os avisos das suas mensalidades e comprovantes de pagamento.\n\nQualquer dúvida, estamos à disposição! 😊");
+  const [welcomeEnabled, setWelcomeEnabled] = useState(true);
 
   const applyTone = (kind: TemplateKind, tone: ToneKind) => {
     const text = TONE_PRESETS[kind][tone];
