@@ -58,7 +58,7 @@ const emptyForm = {
 
 export default function Clients() {
   const { user } = useAuth();
-  const { organizationId } = useOrganization();
+  const { organizationId, organization } = useOrganization();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -332,7 +332,9 @@ export default function Clients() {
             const tpl = (bs as any)?.template_welcome ||
               "Olá {nome}! 👋\n\nSeja muito bem-vindo(a)! Seu cadastro foi realizado com sucesso. 🎉\n\nQualquer dúvida, estamos à disposição! 😊";
             if (enabled && tpl) {
-              const msg = String(tpl).replace(/\{nome\}/g, clientPayload.name || "");
+              const msg = String(tpl)
+                .replace(/\{nome\}/g, clientPayload.name || "")
+                .replace(/\{empresa\}/g, organization?.name || "");
               const phoneClean = String(clientPayload.phone).replace(/\D/g, "");
               const { data: sendData, error: sendErr } = await supabase.functions.invoke("send-now", {
                 body: { phone: phoneClean, message: msg, organization_id: organizationId },

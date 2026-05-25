@@ -57,6 +57,7 @@ const FIELD_LABELS: Record<string, string> = {
 
 const TEMPLATE_VARS = [
   { var: "{nome}", desc: "Nome do cliente" },
+  { var: "{empresa}", desc: "Nome da sua empresa" },
   { var: "{valor}", desc: "Valor da fatura (R$)" },
   { var: "{vencimento}", desc: "Data de vencimento" },
   { var: "{link_ou_chave_pix}", desc: "Link de pagamento ou chave Pix" },
@@ -101,7 +102,7 @@ export default function BillingSettings() {
   const [templateBaixa, setTemplateBaixa] = useState(DEFAULT_TEMPLATES.baixa);
   const [templateRetorno, setTemplateRetorno] = useState(DEFAULT_TEMPLATES.retorno);
   const [templateRemarcar, setTemplateRemarcar] = useState(DEFAULT_TEMPLATES.remarcar);
-  const [templateWelcome, setTemplateWelcome] = useState("Olá {nome}! 👋\n\nSeja muito bem-vindo(a)! Seu cadastro foi realizado com sucesso. 🎉\n\nA partir de agora você receberá por aqui os avisos das suas mensalidades e comprovantes de pagamento.\n\nQualquer dúvida, estamos à disposição! 😊");
+  const [templateWelcome, setTemplateWelcome] = useState("Olá {nome}! 👋\n\nSeja muito bem-vindo(a) à {empresa}! Seu cadastro foi realizado com sucesso. 🎉\n\nA partir de agora você receberá por aqui os avisos das suas mensalidades e comprovantes de pagamento.\n\nQualquer dúvida, estamos à disposição! 😊");
   const [welcomeEnabled, setWelcomeEnabled] = useState(true);
 
   const applyTone = (kind: TemplateKind, tone: ToneKind) => {
