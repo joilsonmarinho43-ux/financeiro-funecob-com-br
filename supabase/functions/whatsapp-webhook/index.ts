@@ -195,7 +195,9 @@ async function handleEvent(payload: any) {
         ? await fetchMediaBase64(apiUrl, apiKey, instanceName, { key, message: messageObj })
         : null);
     if (!base64) {
-      console.log("[wa-webhook] image without retrievable base64, skipping");
+      console.error("[wa-webhook] image WITHOUT base64 — Evolution media fetch falhou", {
+        instance: instanceName, phone, messageId, hasApiCreds: !!(apiUrl && apiKey),
+      });
       return;
     }
     body = {
