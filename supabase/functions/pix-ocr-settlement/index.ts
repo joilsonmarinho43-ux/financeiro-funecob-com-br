@@ -263,22 +263,28 @@ Deno.serve(async (req) => {
         const senderNorm = norm(String(ocr.sender_name)).trim();
         const senderTokens = senderNorm.split(/\s+/).filter(t => t.length >= 3);
         const distinctive = senderTokens.filter(t => !STOPWORDS.has(t));
-        const firstName = senderTokens[0];
 
-        if (firstName && firstName.length >= 3) {
-          const matches = clients.filter((c: any) => {
-            const n = norm(c.name || "");
-            const nTokens = n.split(/\s+/).filter(Boolean);
-            if (!nTokens.includes(firstName)) return false;
-            if (distinctive.length === 0) return true;
-            return distinctive.some(t => n.includes(t));
-          });
-          if (matches.length === 1) { client = matches[0]; matchSource = "fuzzy_name"; }
-          else if (matches.length > 1) {
-            console.warn("[pix-ocr] fuzzy match ambiguous — skipping", {
-              sender: ocr.sender_name,
-              candidates: matches.map((c: any) => c.name),
-            });
+        // Match if ANY distinctive sender token appears as a token in the client's name.
+        // Handles cases like sender "José Ivanilson Nogueira de Castro" → cliente "Ivanilson".
+        // A salvaguarda `amountMatchesInvoice` previne falsos positivos.
+        if (distinctive.length > 0) {
+          const candidates = clients.map((c: any) => {
+            const nTokens = new Set(norm(c.name || "").split(/\s+/).filter(Boolean));
+            const score = distinctive.filter(t => nTokens.has(t)).length;
+            return { c, score };
+          }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+
+          if (candidates.length === 1) {
+            client = candidates[0].c; matchSource = "fuzzy_name";
+          } else if (candidates.length > 1) {
+            if (candidates[0].score > candidates[1].score) {
+              client = candidates[0].c; matchSource = "fuzzy_name";
+            } else {
+              console.warn("[pix-ocr] fuzzy match ambiguous — skipping", {
+                sender: ocr.sender_name,
+                candidates: candidates.slice(0, 5).map(x => `${x.c.name}(${x.score})`),
+              });
+            }
           }
         }
       }
