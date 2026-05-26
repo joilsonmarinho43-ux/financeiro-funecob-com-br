@@ -230,9 +230,21 @@ export default function AutoSettlement() {
                     <TableCell className="text-xs font-mono max-w-[120px] truncate">{e.txid || "-"}</TableCell>
                     <TableCell className="text-xs">{format(new Date(e.created_at), "dd/MM HH:mm", { locale: ptBR })}</TableCell>
                     <TableCell>
-                      <Button size="sm" variant="ghost" onClick={() => setSelectedEvent(e.id)}>
-                        <Eye className="h-3 w-3" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        {(e.status === "pendente_revisao" || (e.status === "erro" && e.amount_detected && !e.client_id)) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            title="Vincular este comprovante a um cliente"
+                            onClick={() => { setLinkEvent(e); setClientSearch(""); }}
+                          >
+                            <Link2 className="h-3 w-3 mr-1" /> Vincular
+                          </Button>
+                        )}
+                        <Button size="sm" variant="ghost" onClick={() => setSelectedEvent(e.id)}>
+                          <Eye className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
