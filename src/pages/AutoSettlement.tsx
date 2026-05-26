@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Zap, RefreshCw, Eye, Copy, CheckCircle2, Webhook } from "lucide-react";
+import { Zap, RefreshCw, Eye, Copy, CheckCircle2, Webhook, Link2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
@@ -20,11 +21,48 @@ const statusColors: Record<string, string> = {
   duplicado: "outline",
   erro: "destructive",
   ignorado: "outline",
+  pendente_revisao: "destructive",
 };
 
 export default function AutoSettlement() {
   const qc = useQueryClient();
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
+  const [linkEvent, setLinkEvent] = useState<any | null>(null);
+  const [clientSearch, setClientSearch] = useState("");
+
+  const { data: linkableClients = [] } = useQuery({
+    queryKey: ["link-clients", linkEvent?.organization_id, clientSearch],
+    queryFn: async () => {
+      if (!linkEvent) return [];
+      let q = supabase.from("clients").select("id, name, phone")
+        .eq("organization_id", linkEvent.organization_id)
+        .order("name").limit(30);
+      if (clientSearch.trim()) q = q.ilike("name", `%${clientSearch.trim()}%`);
+      const { data } = await q;
+      return data || [];
+    },
+    enabled: !!linkEvent,
+  });
+
+  const assignClient = useMutation({
+    mutationFn: async ({ event_id, client_id }: { event_id: string; client_id: string }) => {
+      const { data, error } = await supabase.functions.invoke("auto-settlement-assign-client", {
+        body: { event_id, client_id },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data;
+    },
+    onSuccess: (data: any) => {
+      toast.success(
+        `Vinculado a ${data?.client_name || "cliente"}${data?.whatsapp_sent ? " — confirmação WhatsApp enviada" : ""}`
+      );
+      setLinkEvent(null);
+      setClientSearch("");
+      qc.invalidateQueries({ queryKey: ["auto-settlement-events"] });
+    },
+    onError: (e: any) => toast.error(`Falha: ${e.message}`),
+  });
 
   const { data: flag } = useQuery({
     queryKey: ["auto-settlement-flag"],
@@ -192,9 +230,21 @@ export default function AutoSettlement() {
                     <TableCell className="text-xs font-mono max-w-[120px] truncate">{e.txid || "-"}</TableCell>
                     <TableCell className="text-xs">{format(new Date(e.created_at), "dd/MM HH:mm", { locale: ptBR })}</TableCell>
                     <TableCell>
-                      <Button size="sm" variant="ghost" onClick={() => setSelectedEvent(e.id)}>
-                        <Eye className="h-3 w-3" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        {(e.status === "pendente_revisao" || (e.status === "erro" && e.amount_detected && !e.client_id)) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            title="Vincular este comprovante a um cliente"
+                            onClick={() => { setLinkEvent(e); setClientSearch(""); }}
+                          >
+                            <Link2 className="h-3 w-3 mr-1" /> Vincular
+                          </Button>
+                        )}
+                        <Button size="sm" variant="ghost" onClick={() => setSelectedEvent(e.id)}>
+                          <Eye className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -241,6 +291,49 @@ export default function AutoSettlement() {
               ))}
               {logs.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Sem logs</p>}
             </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!linkEvent} onOpenChange={(o) => { if (!o) { setLinkEvent(null); setClientSearch(""); } }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Vincular comprovante a um cliente</DialogTitle>
+            </DialogHeader>
+            {linkEvent && (
+              <div className="space-y-3">
+                <div className="text-xs bg-muted p-2 rounded space-y-1">
+                  <div>Valor: <strong>R$ {Number(linkEvent.amount_detected || 0).toFixed(2)}</strong></div>
+                  <div>Telefone WhatsApp: <span className="font-mono">{linkEvent.phone}</span></div>
+                  {linkEvent.ocr_payload?.sender_name && (
+                    <div>Remetente PIX: <strong>{linkEvent.ocr_payload.sender_name}</strong></div>
+                  )}
+                </div>
+                <Input
+                  placeholder="Buscar cliente pelo nome..."
+                  value={clientSearch}
+                  onChange={(e) => setClientSearch(e.target.value)}
+                  autoFocus
+                />
+                <div className="max-h-72 overflow-y-auto border rounded divide-y">
+                  {linkableClients.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">Nenhum cliente</p>
+                  ) : linkableClients.map((c: any) => (
+                    <button
+                      key={c.id}
+                      disabled={assignClient.isPending}
+                      onClick={() => assignClient.mutate({ event_id: linkEvent.id, client_id: c.id })}
+                      className="w-full text-left p-2 hover:bg-muted text-sm flex items-center justify-between disabled:opacity-50"
+                    >
+                      <span>{c.name}</span>
+                      <span className="text-xs text-muted-foreground font-mono">{c.phone || "—"}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Ao vincular, o sistema quita as faturas em aberto do cliente e envia a confirmação de pagamento via WhatsApp.
+                </p>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>

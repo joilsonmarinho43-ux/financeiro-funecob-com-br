@@ -349,8 +349,14 @@ Deno.serve(async (req) => {
 
     let eventStatus: string;
     let errorMessage: string | null = null;
-    if (!client) { eventStatus = "erro"; errorMessage = "client not identified by phone/cpf/name"; }
-    else if (!amount) { eventStatus = "erro"; errorMessage = "amount not detected"; }
+    if (!amount) { eventStatus = "erro"; errorMessage = "amount not detected"; }
+    else if (!client) {
+      // Comprovante válido mas cliente não identificado (LID do WhatsApp v2,
+      // PIX enviado por terceiro com nome diferente, etc).
+      // Vai para fila de revisão manual em vez de morrer como 'erro'.
+      eventStatus = "pendente_revisao";
+      errorMessage = "cliente não identificado automaticamente — vincule manualmente em Liquidação Automática";
+    }
     else if (requiresReview) {
       eventStatus = "pendente_revisao";
       errorMessage = "match por nome sem fatura compatível — possível PIX de terceiro";
