@@ -27,6 +27,42 @@ const statusColors: Record<string, string> = {
 export default function AutoSettlement() {
   const qc = useQueryClient();
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
+  const [linkEvent, setLinkEvent] = useState<any | null>(null);
+  const [clientSearch, setClientSearch] = useState("");
+
+  const { data: linkableClients = [] } = useQuery({
+    queryKey: ["link-clients", linkEvent?.organization_id, clientSearch],
+    queryFn: async () => {
+      if (!linkEvent) return [];
+      let q = supabase.from("clients").select("id, name, phone")
+        .eq("organization_id", linkEvent.organization_id)
+        .order("name").limit(30);
+      if (clientSearch.trim()) q = q.ilike("name", `%${clientSearch.trim()}%`);
+      const { data } = await q;
+      return data || [];
+    },
+    enabled: !!linkEvent,
+  });
+
+  const assignClient = useMutation({
+    mutationFn: async ({ event_id, client_id }: { event_id: string; client_id: string }) => {
+      const { data, error } = await supabase.functions.invoke("auto-settlement-assign-client", {
+        body: { event_id, client_id },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data;
+    },
+    onSuccess: (data: any) => {
+      toast.success(
+        `Vinculado a ${data?.client_name || "cliente"}${data?.whatsapp_sent ? " — confirmação WhatsApp enviada" : ""}`
+      );
+      setLinkEvent(null);
+      setClientSearch("");
+      qc.invalidateQueries({ queryKey: ["auto-settlement-events"] });
+    },
+    onError: (e: any) => toast.error(`Falha: ${e.message}`),
+  });
 
   const { data: flag } = useQuery({
     queryKey: ["auto-settlement-flag"],
