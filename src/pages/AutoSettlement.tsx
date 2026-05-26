@@ -20,6 +20,7 @@ const statusColors: Record<string, string> = {
   duplicado: "outline",
   erro: "destructive",
   ignorado: "outline",
+  pendente_revisao: "destructive",
 };
 
 export default function AutoSettlement() {
