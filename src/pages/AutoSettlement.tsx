@@ -293,6 +293,49 @@ export default function AutoSettlement() {
             </div>
           </DialogContent>
         </Dialog>
+
+        <Dialog open={!!linkEvent} onOpenChange={(o) => { if (!o) { setLinkEvent(null); setClientSearch(""); } }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Vincular comprovante a um cliente</DialogTitle>
+            </DialogHeader>
+            {linkEvent && (
+              <div className="space-y-3">
+                <div className="text-xs bg-muted p-2 rounded space-y-1">
+                  <div>Valor: <strong>R$ {Number(linkEvent.amount_detected || 0).toFixed(2)}</strong></div>
+                  <div>Telefone WhatsApp: <span className="font-mono">{linkEvent.phone}</span></div>
+                  {linkEvent.ocr_payload?.sender_name && (
+                    <div>Remetente PIX: <strong>{linkEvent.ocr_payload.sender_name}</strong></div>
+                  )}
+                </div>
+                <Input
+                  placeholder="Buscar cliente pelo nome..."
+                  value={clientSearch}
+                  onChange={(e) => setClientSearch(e.target.value)}
+                  autoFocus
+                />
+                <div className="max-h-72 overflow-y-auto border rounded divide-y">
+                  {linkableClients.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">Nenhum cliente</p>
+                  ) : linkableClients.map((c: any) => (
+                    <button
+                      key={c.id}
+                      disabled={assignClient.isPending}
+                      onClick={() => assignClient.mutate({ event_id: linkEvent.id, client_id: c.id })}
+                      className="w-full text-left p-2 hover:bg-muted text-sm flex items-center justify-between disabled:opacity-50"
+                    >
+                      <span>{c.name}</span>
+                      <span className="text-xs text-muted-foreground font-mono">{c.phone || "—"}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Ao vincular, o sistema quita as faturas em aberto do cliente e envia a confirmação de pagamento via WhatsApp.
+                </p>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
   );
