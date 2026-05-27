@@ -124,6 +124,41 @@ Deno.serve(async (req) => {
       details: { linked_by_user: true, previous_status: ev.status },
     });
 
+    // === Aprende o mapeamento LID → cliente para auto-resolver futuros PIX ===
+    // Quando Evolution v2 entrega só @lid (14-16 dígitos sem telefone real),
+    // gravamos esse LID associado ao cliente para que próximas mensagens do
+    // mesmo remetente sejam reconhecidas automaticamente.
+    const rawPhone = (ev.phone || "").replace(/\D/g, "");
+    const looksLikeLid = rawPhone.length >= 14;
+    let lid_learned = false;
+    let auto_resolved_count = 0;
+    if (looksLikeLid) {
+      const { error: mapErr } = await supabase.from("whatsapp_lid_map").upsert({
+        organization_id: ev.organization_id,
+        lid: rawPhone,
+        client_id,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "organization_id,lid" });
+      if (!mapErr) lid_learned = true;
+
+      // Reprocessa outros eventos pendente_revisao do mesmo LID
+      const { data: others } = await supabase
+        .from("auto_settlement_events")
+        .select("id")
+        .eq("organization_id", ev.organization_id)
+        .eq("phone", ev.phone)
+        .is("client_id", null)
+        .in("status", ["pendente_revisao", "erro"]);
+      for (const o of others || []) {
+        if (o.id === event_id) continue;
+        await supabase.from("auto_settlement_events")
+          .update({ client_id, status: "recebido", error_message: null, updated_at: new Date().toISOString() })
+          .eq("id", o.id);
+        const { error: rErr } = await supabase.rpc("auto_settlement_process_payment", { p_event_id: o.id });
+        if (!rErr) auto_resolved_count++;
+      }
+    }
+
     // Dispara processamento (quita faturas / gera crédito)
     const { data: result, error: rpcErr } = await supabase
       .rpc("auto_settlement_process_payment", { p_event_id: event_id });
@@ -147,6 +182,7 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true, result, whatsapp_sent, client_name: cli.name,
+      lid_learned, auto_resolved_count,
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("[assign-client] error", e);
