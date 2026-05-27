@@ -23,6 +23,8 @@ import {
   FlaskConical,
   KeyRound,
   ChevronUp,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
