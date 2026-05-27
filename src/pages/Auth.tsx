@@ -40,6 +40,23 @@ export default function Auth() {
     setLoading(false);
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) {
+      toast({ title: "Informe seu e-mail", description: "Digite o e-mail cadastrado para receber o link de recuperação.", variant: "destructive" });
+      return;
+    }
+    setLoading(true);
+    const { error } = await resetPassword(email);
+    if (error) {
+      toast({ title: "Erro ao enviar", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "E-mail enviado!", description: "Verifique sua caixa de entrada e siga as instruções para redefinir sua senha." });
+      setShowForgot(false);
+    }
+    setLoading(false);
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md border-0 shadow-lg">
