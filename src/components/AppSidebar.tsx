@@ -322,7 +322,28 @@ export function AppSidebar() {
               <p className="text-[11px] text-sidebar-muted truncate">{displayEmail}</p>
             </div>
           )}
-          {!collapsed && (
+          {!collapsed ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="text-sidebar-muted hover:text-sidebar-accent-foreground transition-colors shrink-0"
+                  title="Opções do usuário"
+                >
+                  <ChevronUp className="h-4 w-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="end" className="w-48">
+                <DropdownMenuItem onClick={() => setChangePasswordOpen(true)} className="cursor-pointer">
+                  <KeyRound className="h-4 w-4 mr-2" />
+                  Alterar senha
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={signOut} className="cursor-pointer text-destructive focus:text-destructive">
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Sair
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
             <button
               onClick={signOut}
               className="text-sidebar-muted hover:text-sidebar-accent-foreground transition-colors shrink-0"
@@ -333,6 +354,8 @@ export function AppSidebar() {
           )}
         </div>
       </SidebarFooter>
+
+      <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
     </Sidebar>
   );
 }
