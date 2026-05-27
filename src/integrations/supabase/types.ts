@@ -1363,6 +1363,33 @@ export type Database = {
           },
         ]
       }
+      whatsapp_lid_map: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          lid: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          lid: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          lid?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       whatsapp_messages: {
         Row: {
           client_id: string | null
