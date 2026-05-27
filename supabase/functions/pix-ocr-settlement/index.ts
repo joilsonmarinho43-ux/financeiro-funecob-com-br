@@ -199,7 +199,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ===== Client identification — strict priority: phone > CPF > name(+amount) =====
+    // ===== Client identification — strict priority: phone > LID map > CPF > name(+amount) =====
     // PIX can be sent by third parties, so name match alone is unsafe.
     // Phone (WhatsApp) is the only fully trusted signal.
     const incomingVariants = phoneVariants(phone);
@@ -210,7 +210,25 @@ Deno.serve(async (req) => {
       const cv = phoneVariants(c.phone || "");
       return cv.some((v) => incomingVariants.includes(v));
     });
-    let matchSource: "phone" | "cpf" | "fuzzy_name" | null = client ? "phone" : null;
+    let matchSource: "phone" | "lid_map" | "cpf" | "fuzzy_name" | null = client ? "phone" : null;
+
+    // LID resolver: Evolution v2 may send only @lid (14-16 digit anonymized id).
+    // We keep a persistent (org, lid) → client map populated when an admin
+    // manually links an event. Subsequent PIXes from the same LID auto-resolve.
+    const rawPhone = (phone || "").replace(/\D/g, "");
+    const looksLikeLid = rawPhone.length >= 14;
+    if (!client && looksLikeLid) {
+      const { data: lidRow } = await supabase
+        .from("whatsapp_lid_map")
+        .select("client_id")
+        .eq("organization_id", organization_id)
+        .eq("lid", rawPhone)
+        .maybeSingle();
+      if (lidRow?.client_id) {
+        const found = (clients || []).find((c: any) => c.id === lidRow.client_id);
+        if (found) { client = found; matchSource = "lid_map"; }
+      }
+    }
 
     // OCR
     let ocr: any = { raw_text: raw_text || null };
