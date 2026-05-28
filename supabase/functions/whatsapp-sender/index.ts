@@ -8,6 +8,16 @@ const corsHeaders = {
 
 const MAX_RETRIES = 3;
 
+// Normaliza telefone BR para formato E.164 sem '+': adiciona 55 quando faltar.
+// Aceita 10 dígitos (fixo: DDD+8) ou 11 dígitos (celular: DDD+9). Mantém intacto se já tiver 55 ou for internacional.
+function normalizeBRPhone(raw: string): string {
+  const digits = (raw || "").replace(/\D/g, "");
+  if (!digits) return digits;
+  if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) return digits;
+  if (digits.length === 10 || digits.length === 11) return "55" + digits;
+  return digits;
+}
+
 // ─── Advanced message variation (anti-ban) ──────────────
 const greetingPools = [
   ["Olá", "Oi", "E aí", "Bom dia", "Boa tarde", "Prezado(a)"],
