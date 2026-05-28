@@ -62,7 +62,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const cleanPhone = phone.replace(/\D/g, "");
+    const digits = phone.replace(/\D/g, "");
+    const cleanPhone = (digits.startsWith("55") && (digits.length === 12 || digits.length === 13))
+      ? digits
+      : (digits.length === 10 || digits.length === 11) ? "55" + digits : digits;
     const sendUrl = `${apiUrl}/message/sendText/${instanceName}`;
 
     const maskedKey = apiKey.length > 4 ? apiKey.slice(0, 2) + "***" + apiKey.slice(-2) : "***";

@@ -54,7 +54,8 @@ async function sendPaymentConfirmation(
     const instanceName = instance?.name || gs.default_instance_name || "";
     if (!instanceName || !apiUrl || !apiKey) return false;
 
-    const cleanPhone = client.phone.replace(/\D/g, "");
+    const _d = (client.phone || "").replace(/\D/g, "");
+    const cleanPhone = (_d.startsWith("55") && (_d.length === 12 || _d.length === 13)) ? _d : ((_d.length === 10 || _d.length === 11) ? "55" + _d : _d);
     const res = await fetch(`${apiUrl}/message/sendText/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: apiKey },
