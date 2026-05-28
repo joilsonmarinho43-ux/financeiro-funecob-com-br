@@ -86,7 +86,8 @@ function parseWebhookPayload(provider: string, body: any): { paid: boolean; exte
 async function trySendWhatsApp(instance: any, phone: string, message: string): Promise<boolean> {
   try {
     if (!instance.api_url || !instance.api_key || !instance.name) return false;
-    const cleanPhone = phone.replace(/\D/g, "");
+    const _d = (phone || "").replace(/\D/g, "");
+    const cleanPhone = (_d.startsWith("55") && (_d.length === 12 || _d.length === 13)) ? _d : ((_d.length === 10 || _d.length === 11) ? "55" + _d : _d);
     const apiUrl = instance.api_url.replace(/\/$/, "");
     const apiKey = instance.api_key;
     const sendUrl = `${apiUrl}/message/sendText/${instance.name}`;
