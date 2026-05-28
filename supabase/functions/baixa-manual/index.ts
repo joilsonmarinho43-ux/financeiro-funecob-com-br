@@ -119,7 +119,8 @@ Deno.serve(async (req) => {
         const instanceName = instance?.name || gs.default_instance_name || "";
 
         if (instanceName && apiUrl && apiKey) {
-          const cleanPhone = client.phone.replace(/\D/g, "");
+          const _d = (client.phone || "").replace(/\D/g, "");
+          const cleanPhone = (_d.startsWith("55") && (_d.length === 12 || _d.length === 13)) ? _d : ((_d.length === 10 || _d.length === 11) ? "55" + _d : _d);
           const sendUrl = `${apiUrl}/message/sendText/${instanceName}`;
 
           const maskedKey = apiKey.length > 4 ? apiKey.slice(0, 2) + "***" + apiKey.slice(-2) : "***";
