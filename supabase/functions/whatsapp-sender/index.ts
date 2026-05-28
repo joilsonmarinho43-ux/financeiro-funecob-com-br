@@ -284,7 +284,7 @@ Deno.serve(async (req) => {
           throw new Error("WhatsApp não configurado — verifique instância e configurações globais");
         }
 
-        const phone = item.phone.replace(/\D/g, "");
+        const phone = normalizeBRPhone(item.phone);
         const sendUrl = `${apiUrl}/message/sendText/${instanceName}`;
         const variedMessage = varyMessage(item.message, config.randomness_level || "medium");
 
