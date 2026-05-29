@@ -207,6 +207,7 @@ async function handleEvent(payload: any) {
     body = {
       organization_id: instance.organization_id,
       phone,
+      push_name: pushName || null,
       image_base64: base64,
       message_id: messageId,
       raw_text: caption || null,
@@ -217,6 +218,7 @@ async function handleEvent(payload: any) {
     body = {
       organization_id: instance.organization_id,
       phone,
+      push_name: pushName || null,
       raw_text: textBody,
       manual_amount: amount,
       manual_txid: `WA-TXT-${messageId}`,
