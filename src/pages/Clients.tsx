@@ -54,6 +54,7 @@ const emptyForm = {
   carne_installments: "12",
   status: "ativo",
   observations: "",
+  send_invoice_whatsapp: true,
 };
 
 export default function Clients() {
