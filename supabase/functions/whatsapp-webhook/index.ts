@@ -160,6 +160,10 @@ async function handleEvent(payload: any) {
   const textBody: string = messageObj?.conversation ||
                            messageObj?.extendedTextMessage?.text || "";
 
+  // WhatsApp contact display name — used downstream to identify clients when
+  // remoteJid is @lid and the OCR can't extract a sender_name from the image.
+  const pushName: string = msg?.pushName || msg?.push_name || payload?.data?.pushName || "";
+
   const isImage = !!messageObj?.imageMessage || messageType === "imageMessage";
   const isDocImage = !!messageObj?.documentMessage &&
     (messageObj.documentMessage.mimetype || "").startsWith("image/");
@@ -203,6 +207,7 @@ async function handleEvent(payload: any) {
     body = {
       organization_id: instance.organization_id,
       phone,
+      push_name: pushName || null,
       image_base64: base64,
       message_id: messageId,
       raw_text: caption || null,
@@ -213,6 +218,7 @@ async function handleEvent(payload: any) {
     body = {
       organization_id: instance.organization_id,
       phone,
+      push_name: pushName || null,
       raw_text: textBody,
       manual_amount: amount,
       manual_txid: `WA-TXT-${messageId}`,

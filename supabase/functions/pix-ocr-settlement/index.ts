@@ -183,7 +183,7 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
     const body = await req.json();
-    const { organization_id, phone, image_url, image_base64, message_id, raw_text, manual_amount, manual_txid } = body;
+    const { organization_id, phone, push_name, image_url, image_base64, message_id, raw_text, manual_amount, manual_txid } = body;
 
     if (!organization_id || !phone || (!image_url && !image_base64 && !raw_text && manual_amount == null)) {
       return new Response(JSON.stringify({ error: "missing organization_id, phone, or image/raw_text/manual_amount" }), {
@@ -268,7 +268,11 @@ Deno.serve(async (req) => {
       }
 
       // (2) Fuzzy name — ONLY as candidate; final validation requires amount match
-      if (!client && ocr?.sender_name) {
+      //     Source priority: OCR sender_name > WhatsApp pushName (display name of the contact)
+      const nameForMatch = (ocr?.sender_name && String(ocr.sender_name).trim())
+        || (push_name && String(push_name).trim())
+        || "";
+      if (!client && nameForMatch) {
         const STOPWORDS = new Set([
           "maria","jose","da","de","do","das","dos","silva","santos","souza","sousa",
           "oliveira","pereira","lima","ferreira","costa","rodrigues","almeida","gomes",
@@ -279,7 +283,7 @@ Deno.serve(async (req) => {
           "neto","filho","sobrinho","ana","jr"
         ]);
         const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const senderNorm = norm(String(ocr.sender_name)).trim();
+        const senderNorm = norm(nameForMatch).trim();
         const senderTokens = senderNorm.split(/\s+/).filter(t => t.length >= 3);
         const distinctive = senderTokens.filter(t => !STOPWORDS.has(t));
 
@@ -300,7 +304,7 @@ Deno.serve(async (req) => {
               client = candidates[0].c; matchSource = "fuzzy_name";
             } else {
               console.warn("[pix-ocr] fuzzy match ambiguous — skipping", {
-                sender: ocr.sender_name,
+                sender: nameForMatch,
                 candidates: candidates.slice(0, 5).map(x => `${x.c.name}(${x.score})`),
               });
             }
@@ -417,6 +421,23 @@ Deno.serve(async (req) => {
 
     // Only auto-settle when match is trusted (phone/cpf) OR fuzzy_name + amount matches an open invoice
     if (client && amount && !requiresReview) {
+      // ===== Auto-learn LID → client mapping on confident match =====
+      // When we identify a client via fuzzy_name + invoice-amount match (or via CPF)
+      // and the incoming "phone" is actually a WhatsApp @lid (14+ digits),
+      // persist the mapping so future PIX from the same contact resolve instantly
+      // by lid_map (no admin click needed).
+      if (looksLikeLid && (matchSource === "fuzzy_name" || matchSource === "cpf")) {
+        try {
+          await supabase.from("whatsapp_lid_map").upsert({
+            organization_id,
+            lid: rawPhone,
+            client_id: client.id,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "organization_id,lid" });
+        } catch (e) {
+          console.warn("[pix-ocr] lid auto-learn failed (non-blocking)", e);
+        }
+      }
       // @ts-ignore
       EdgeRuntime.waitUntil(processEvent(supabase, ev.id, organization_id));
     }
