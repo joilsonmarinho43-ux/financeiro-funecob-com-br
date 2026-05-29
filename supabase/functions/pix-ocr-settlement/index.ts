@@ -50,7 +50,7 @@ async function runOcr(imageUrl: string): Promise<any> {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model: "google/gemini-2.5-pro",
       messages: [
         {
           role: "system",
@@ -368,11 +368,20 @@ Deno.serve(async (req) => {
 
     let eventStatus: string;
     let errorMessage: string | null = null;
-    if (!amount) { eventStatus = "erro"; errorMessage = "amount not detected"; }
+    if (!amount) {
+      // Sem valor detectado: se também não há marcadores de comprovante,
+      // tratamos como 'ignorado' (imagem aleatória, foto do dia, etc.)
+      // para não poluir métricas de saúde nem gerar ruído.
+      if (!hasReceiptMarkers) {
+        console.log("[pix-ocr] no amount + no receipt markers → ignored", { phone, message_id });
+        return new Response(JSON.stringify({ status: "ignored", reason: "not_a_receipt" }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      eventStatus = "pendente_revisao";
+      errorMessage = "valor não detectado pelo OCR — revise manualmente";
+    }
     else if (!client) {
-      // Comprovante válido mas cliente não identificado (LID do WhatsApp v2,
-      // PIX enviado por terceiro com nome diferente, etc).
-      // Vai para fila de revisão manual em vez de morrer como 'erro'.
       eventStatus = "pendente_revisao";
       errorMessage = "cliente não identificado automaticamente — vincule manualmente em Liquidação Automática";
     }

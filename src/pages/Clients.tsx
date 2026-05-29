@@ -54,6 +54,7 @@ const emptyForm = {
   carne_installments: "12",
   status: "ativo",
   observations: "",
+  send_invoice_whatsapp: true,
 };
 
 export default function Clients() {
@@ -271,26 +272,25 @@ export default function Clients() {
     mutationFn: async () => {
       if (!organizationId || !user) throw new Error("Organização não encontrada");
 
-      const clientPayload: any = {
-        name: form.name,
-        email: form.email || null,
-        phone: form.phone || null,
-        document: form.document || null,
-        address: form.address || null,
-        client_code: form.client_code || null,
-        status: form.status || "ativo",
-        created_by: user.id,
-        organization_id: organizationId,
-        collector_id: user.id,
-      };
-
       let clientId = editingClient?.id;
 
       if (editingClient) {
+        // === EDIT: only update mutable fields. Preserve created_by/collector_id ===
+        const updatePayload: any = {
+          name: form.name,
+          email: form.email || null,
+          phone: form.phone || null,
+          document: form.document || null,
+          address: form.address || null,
+          client_code: form.client_code || null,
+          status: form.status || "ativo",
+          updated_at: new Date().toISOString(),
+        };
         const { error } = await supabase
           .from("clients")
-          .update(clientPayload)
-          .eq("id", editingClient.id);
+          .update(updatePayload)
+          .eq("id", editingClient.id)
+          .eq("organization_id", organizationId);
         if (error) throw error;
 
         // Update next invoice (due date and/or plan/value) if changed
@@ -312,16 +312,29 @@ export default function Clients() {
           }
         }
       } else {
+        // === INSERT: full payload with creator info ===
+        const insertPayload: any = {
+          name: form.name,
+          email: form.email || null,
+          phone: form.phone || null,
+          document: form.document || null,
+          address: form.address || null,
+          client_code: form.client_code || null,
+          status: form.status || "ativo",
+          created_by: user.id,
+          organization_id: organizationId,
+          collector_id: user.id,
+        };
         const { data, error } = await supabase
           .from("clients")
-          .insert(clientPayload)
+          .insert(insertPayload)
           .select("id")
           .single();
         if (error) throw error;
         clientId = data.id;
 
         // Mensagem de boas-vindas — só quando há telefone
-        if (clientPayload.phone) {
+        if (insertPayload.phone) {
           try {
             const { data: bs } = await supabase
               .from("billing_settings")
@@ -333,16 +346,14 @@ export default function Clients() {
               "Olá {nome}! 👋\n\nSeja muito bem-vindo(a)! Seu cadastro foi realizado com sucesso. 🎉\n\nQualquer dúvida, estamos à disposição! 😊";
             if (enabled && tpl) {
               const msg = String(tpl)
-                .replace(/\{nome\}/g, clientPayload.name || "")
+                .replace(/\{nome\}/g, insertPayload.name || "")
                 .replace(/\{empresa\}/g, organization?.name || "");
-              const phoneClean = String(clientPayload.phone).replace(/\D/g, "");
+              const phoneClean = String(insertPayload.phone).replace(/\D/g, "");
               const { data: sendData, error: sendErr } = await supabase.functions.invoke("send-now", {
                 body: { phone: phoneClean, message: msg, organization_id: organizationId },
               });
               if (sendErr || (sendData as any)?.error) {
                 console.warn("[welcome] falha envio:", sendErr || (sendData as any)?.error);
-              } else {
-                console.log("[welcome] enviada para", phoneClean);
               }
             }
           } catch (e) {
@@ -352,16 +363,14 @@ export default function Clients() {
       }
 
       // Generate invoices for new clients only
+      let firstInvoice: { amount: number; due_date: string; description: string } | null = null;
       if (!editingClient && clientId && invoiceAmount > 0) {
         const dueDay = parseInt(form.due_day) || 5;
         const now = new Date();
         const invoices: TablesInsert<"invoices">[] = [];
 
-        // Use full date if provided, otherwise calculate from due_day
         const getFirstDueDate = () => {
-          if (form.due_date_full) {
-            return new Date(form.due_date_full + "T12:00:00");
-          }
+          if (form.due_date_full) return new Date(form.due_date_full + "T12:00:00");
           const d = new Date(now.getFullYear(), now.getMonth(), dueDay);
           if (d <= now) d.setMonth(d.getMonth() + 1);
           return d;
@@ -369,31 +378,35 @@ export default function Clients() {
 
         if (form.billing_type === "recorrencia") {
           const dueDate = getFirstDueDate();
+          const desc = selectedPlan ? `${selectedPlan.name} - Mensalidade` : `Mensalidade`;
           invoices.push({
             client_id: clientId,
             organization_id: organizationId,
             plan_id: form.plan_id || null,
             amount: invoiceAmount,
             due_date: format(dueDate, "yyyy-MM-dd"),
-            description: selectedPlan ? `${selectedPlan.name} - Mensalidade` : `Mensalidade`,
+            description: desc,
             status: "aberto",
           });
+          firstInvoice = { amount: invoiceAmount, due_date: format(dueDate, "yyyy-MM-dd"), description: desc };
         } else {
           const totalInstallments = parseInt(form.carne_installments) || 12;
           const firstDue = getFirstDueDate();
           for (let i = 0; i < totalInstallments; i++) {
             const dueDate = new Date(firstDue.getFullYear(), firstDue.getMonth() + i, firstDue.getDate());
+            const desc = selectedPlan
+              ? `${selectedPlan.name} - Carnê ${i + 1}/${totalInstallments}`
+              : `Carnê - Parcela ${i + 1}/${totalInstallments}`;
             invoices.push({
               client_id: clientId,
               organization_id: organizationId,
               plan_id: form.plan_id || null,
               amount: invoiceAmount,
               due_date: format(dueDate, "yyyy-MM-dd"),
-              description: selectedPlan
-                ? `${selectedPlan.name} - Carnê ${i + 1}/${totalInstallments}`
-                : `Carnê - Parcela ${i + 1}/${totalInstallments}`,
+              description: desc,
               status: "aberto",
             });
+            if (i === 0) firstInvoice = { amount: invoiceAmount, due_date: format(dueDate, "yyyy-MM-dd"), description: desc };
           }
         }
 
@@ -401,17 +414,47 @@ export default function Clients() {
           const { error: invError } = await supabase.from("invoices").insert(invoices);
           if (invError) throw invError;
         }
+
+        // === Send first invoice via WhatsApp (opt-in checkbox) ===
+        if (form.send_invoice_whatsapp && firstInvoice && form.phone) {
+          try {
+            const { data: bs } = await supabase
+              .from("billing_settings")
+              .select("template_reminder, pix_key, pix_key_type, pix_holder_name")
+              .eq("organization_id", organizationId)
+              .maybeSingle();
+            const valor = formatCurrency(firstInvoice.amount);
+            const venc = firstInvoice.due_date.split("-").reverse().join("/");
+            const pixLine = (bs as any)?.pix_key
+              ? `\n\n💳 *PIX (${(bs as any).pix_key_type || "chave"}):* ${(bs as any).pix_key}${(bs as any).pix_holder_name ? `\n👤 ${(bs as any).pix_holder_name}` : ""}`
+              : "";
+            const tpl = (bs as any)?.template_reminder
+              || "Olá {nome}! Sua fatura no valor de {valor} vence em {vencimento}.";
+            const msg = String(tpl)
+              .replace(/\{nome\}/g, form.name)
+              .replace(/\{valor\}/g, valor)
+              .replace(/\{vencimento\}/g, venc)
+              .replace(/\{link_ou_chave_pix\}/g, pixLine.trim()) + pixLine;
+            const phoneClean = String(form.phone).replace(/\D/g, "");
+            await supabase.functions.invoke("send-now", {
+              body: { phone: phoneClean, message: msg, organization_id: organizationId },
+            });
+          } catch (e) {
+            console.warn("[send-invoice] erro:", e);
+          }
+        }
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-clients"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-financial"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
       toast({ title: editingClient ? "Cliente atualizado!" : "Cliente cadastrado com faturas geradas!" });
       closeDialog();
     },
     onError: (err: Error) => {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+      toast({ title: "Erro ao salvar", description: err.message, variant: "destructive" });
     },
   });
 
@@ -712,6 +755,25 @@ export default function Clients() {
                             <p className="text-muted-foreground">Total: {formatCurrency(invoiceAmount * (parseInt(form.carne_installments) || 12))}</p>
                           )}
                         </div>
+                      )}
+
+                      {invoiceAmount > 0 && form.phone && (
+                        <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer hover:bg-muted/40">
+                          <input
+                            type="checkbox"
+                            className="mt-1 h-4 w-4 accent-primary"
+                            checked={form.send_invoice_whatsapp}
+                            onChange={(e) => setForm({ ...form, send_invoice_whatsapp: e.target.checked })}
+                          />
+                          <div className="text-sm">
+                            <p className="font-medium text-foreground flex items-center gap-1.5">
+                              <Send className="h-3.5 w-3.5 text-primary" /> Enviar 1ª fatura por WhatsApp
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Manda valor, vencimento e chave PIX para o cliente assim que o cadastro for salvo.
+                            </p>
+                          </div>
+                        </label>
                       )}
                     </div>
                   </>
