@@ -756,6 +756,25 @@ export default function Clients() {
                           )}
                         </div>
                       )}
+
+                      {invoiceAmount > 0 && form.phone && (
+                        <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer hover:bg-muted/40">
+                          <input
+                            type="checkbox"
+                            className="mt-1 h-4 w-4 accent-primary"
+                            checked={form.send_invoice_whatsapp}
+                            onChange={(e) => setForm({ ...form, send_invoice_whatsapp: e.target.checked })}
+                          />
+                          <div className="text-sm">
+                            <p className="font-medium text-foreground flex items-center gap-1.5">
+                              <Send className="h-3.5 w-3.5 text-primary" /> Enviar 1ª fatura por WhatsApp
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Manda valor, vencimento e chave PIX para o cliente assim que o cadastro for salvo.
+                            </p>
+                          </div>
+                        </label>
+                      )}
                     </div>
                   </>
                 )}
