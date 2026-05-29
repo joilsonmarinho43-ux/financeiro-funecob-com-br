@@ -268,7 +268,11 @@ Deno.serve(async (req) => {
       }
 
       // (2) Fuzzy name — ONLY as candidate; final validation requires amount match
-      if (!client && ocr?.sender_name) {
+      //     Source priority: OCR sender_name > WhatsApp pushName (display name of the contact)
+      const nameForMatch = (ocr?.sender_name && String(ocr.sender_name).trim())
+        || (push_name && String(push_name).trim())
+        || "";
+      if (!client && nameForMatch) {
         const STOPWORDS = new Set([
           "maria","jose","da","de","do","das","dos","silva","santos","souza","sousa",
           "oliveira","pereira","lima","ferreira","costa","rodrigues","almeida","gomes",
@@ -279,7 +283,7 @@ Deno.serve(async (req) => {
           "neto","filho","sobrinho","ana","jr"
         ]);
         const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const senderNorm = norm(String(ocr.sender_name)).trim();
+        const senderNorm = norm(nameForMatch).trim();
         const senderTokens = senderNorm.split(/\s+/).filter(t => t.length >= 3);
         const distinctive = senderTokens.filter(t => !STOPWORDS.has(t));
 
@@ -300,7 +304,7 @@ Deno.serve(async (req) => {
               client = candidates[0].c; matchSource = "fuzzy_name";
             } else {
               console.warn("[pix-ocr] fuzzy match ambiguous — skipping", {
-                sender: ocr.sender_name,
+                sender: nameForMatch,
                 candidates: candidates.slice(0, 5).map(x => `${x.c.name}(${x.score})`),
               });
             }
