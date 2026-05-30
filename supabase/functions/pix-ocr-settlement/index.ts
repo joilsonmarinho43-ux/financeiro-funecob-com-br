@@ -428,7 +428,7 @@ Deno.serve(async (req) => {
         client_id: client?.id || null,
         phone,
         raw_text: ocr?.raw_text || null,
-        ocr_payload: { ...ocr, _match_source: matchSource, _amount_matches_invoice: amountMatchesInvoice },
+        ocr_payload: { ...ocr, push_name: push_name || null, _match_source: matchSource, _amount_matches_invoice: amountMatchesInvoice },
         txid,
         pix_end_to_end_id: ocr?.end_to_end_id || null,
         amount_detected: amount,
