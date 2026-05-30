@@ -267,46 +267,72 @@ Deno.serve(async (req) => {
         if (byCpf) { client = byCpf; matchSource = "cpf"; }
       }
 
-      // (2) Fuzzy name — ONLY as candidate; final validation requires amount match
-      //     Source priority: OCR sender_name > WhatsApp pushName (display name of the contact)
-      const nameForMatch = (ocr?.sender_name && String(ocr.sender_name).trim())
-        || (push_name && String(push_name).trim())
-        || "";
-      if (!client && nameForMatch) {
-        const STOPWORDS = new Set([
-          "maria","jose","da","de","do","das","dos","silva","santos","souza","sousa",
-          "oliveira","pereira","lima","ferreira","costa","rodrigues","almeida","gomes",
-          "ribeiro","carvalho","martins","araujo","barbosa","rocha","dias","nascimento",
-          "moreira","cardoso","fernandes","correia","mendes","freitas","cavalcante",
-          "monteiro","goncalves","pinto","ramos","azevedo","teixeira","melo","barros",
-          "vieira","reis","moura","castro","campos","cruz","alves","machado","junior",
-          "neto","filho","sobrinho","ana","jr"
-        ]);
-        const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const senderNorm = norm(nameForMatch).trim();
+      // (2) Fuzzy name — ONLY as candidate; final validation requires amount match.
+      //     Try BOTH OCR sender_name AND WhatsApp push_name independently.
+      //     PIX é frequentemente pago por terceiro (família, amigo) → o nome do
+      //     comprovante NÃO é o cliente, mas o push_name (nome do contato que
+      //     enviou no WhatsApp) geralmente É o cliente.
+      const STOPWORDS = new Set([
+        "maria","jose","da","de","do","das","dos","silva","santos","souza","sousa",
+        "oliveira","pereira","lima","ferreira","costa","rodrigues","almeida","gomes",
+        "ribeiro","carvalho","martins","araujo","barbosa","rocha","dias","nascimento",
+        "moreira","cardoso","fernandes","correia","mendes","freitas","cavalcante",
+        "monteiro","goncalves","pinto","ramos","azevedo","teixeira","melo","barros",
+        "vieira","reis","moura","castro","campos","cruz","alves","machado","junior",
+        "neto","filho","sobrinho","ana","jr"
+      ]);
+      const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+      const tryFuzzy = (rawName: string) => {
+        const senderNorm = norm(rawName).trim();
         const senderTokens = senderNorm.split(/\s+/).filter(t => t.length >= 3);
         const distinctive = senderTokens.filter(t => !STOPWORDS.has(t));
+        if (distinctive.length === 0) return [] as Array<{ c: any; score: number }>;
+        return clients.map((c: any) => {
+          const nTokens = new Set(norm(c.name || "").split(/\s+/).filter(Boolean));
+          const score = distinctive.filter(t => nTokens.has(t)).length;
+          return { c, score };
+        }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+      };
 
-        // Match if ANY distinctive sender token appears as a token in the client's name.
-        // Handles cases like sender "José Ivanilson Nogueira de Castro" → cliente "Ivanilson".
-        // A salvaguarda `amountMatchesInvoice` previne falsos positivos.
-        if (distinctive.length > 0) {
-          const candidates = clients.map((c: any) => {
-            const nTokens = new Set(norm(c.name || "").split(/\s+/).filter(Boolean));
-            const score = distinctive.filter(t => nTokens.has(t)).length;
-            return { c, score };
-          }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+      const candidateHasMatchingInvoice = async (clientId: string, amt: number | null) => {
+        if (!amt) return false;
+        const { data: openInvs } = await supabase
+          .from("invoices").select("amount")
+          .eq("organization_id", organization_id)
+          .eq("client_id", clientId).eq("status", "aberto");
+        return (openInvs || []).some((i: any) => Math.abs(Number(i.amount) - Number(amt)) < 0.01);
+      };
 
-          if (candidates.length === 1) {
-            client = candidates[0].c; matchSource = "fuzzy_name";
-          } else if (candidates.length > 1) {
-            if (candidates[0].score > candidates[1].score) {
-              client = candidates[0].c; matchSource = "fuzzy_name";
-            } else {
-              console.warn("[pix-ocr] fuzzy match ambiguous — skipping", {
-                sender: nameForMatch,
-                candidates: candidates.slice(0, 5).map(x => `${x.c.name}(${x.score})`),
-              });
+      const earlyAmount = coerceAmount(ocr?.amount) ?? coerceAmount(manual_amount);
+      const names: Array<{ src: string; val: string }> = [];
+      if (ocr?.sender_name && String(ocr.sender_name).trim()) {
+        names.push({ src: "sender_name", val: String(ocr.sender_name).trim() });
+      }
+      if (push_name && String(push_name).trim()) {
+        names.push({ src: "push_name", val: String(push_name).trim() });
+      }
+
+      if (!client && names.length > 0) {
+        // 1ª passada: priorize candidato cujo valor casa com fatura aberta
+        for (const n of names) {
+          const cands = tryFuzzy(n.val);
+          if (cands.length === 0) continue;
+          const top = cands[0];
+          const tied = cands.filter(x => x.score === top.score);
+          for (const t of tied) {
+            const ok = await candidateHasMatchingInvoice(t.c.id, earlyAmount);
+            if (ok) { client = t.c; matchSource = "fuzzy_name"; break; }
+          }
+          if (client) break;
+        }
+        // 2ª passada: sem casamento de valor → candidato único mais forte (irá p/ revisão)
+        if (!client) {
+          for (const n of names) {
+            const cands = tryFuzzy(n.val);
+            if (cands.length === 1) { client = cands[0].c; matchSource = "fuzzy_name"; break; }
+            if (cands.length > 1 && cands[0].score > cands[1].score) {
+              client = cands[0].c; matchSource = "fuzzy_name"; break;
             }
           }
         }
