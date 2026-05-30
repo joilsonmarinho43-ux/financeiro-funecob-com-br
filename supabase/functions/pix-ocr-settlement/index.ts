@@ -317,11 +317,13 @@ Deno.serve(async (req) => {
         // 1ª passada: priorize candidato cujo valor casa com fatura aberta
         for (const n of names) {
           const cands = tryFuzzy(n.val);
+          console.log("[pix-ocr][fuzzy]", n.src, JSON.stringify({ raw: n.val, top: cands.slice(0, 5).map(c => ({ id: c.c.id, name: c.c.name, score: c.score })), earlyAmount }));
           if (cands.length === 0) continue;
           const top = cands[0];
           const tied = cands.filter(x => x.score === top.score);
           for (const t of tied) {
             const ok = await candidateHasMatchingInvoice(t.c.id, earlyAmount);
+            console.log("[pix-ocr][invoice-check]", { client_id: t.c.id, name: t.c.name, amount: earlyAmount, ok });
             if (ok) { client = t.c; matchSource = "fuzzy_name"; break; }
           }
           if (client) break;
@@ -333,6 +335,32 @@ Deno.serve(async (req) => {
             if (cands.length === 1) { client = cands[0].c; matchSource = "fuzzy_name"; break; }
             if (cands.length > 1 && cands[0].score > cands[1].score) {
               client = cands[0].c; matchSource = "fuzzy_name"; break;
+            }
+          }
+        }
+      }
+
+      // 3ª passada (rede de segurança): se ainda não achou cliente mas TEM valor,
+      // procura faturas abertas em toda a org com o valor EXATO. Se houver
+      // apenas UMA fatura compatível E houver sobreposição mínima de nome,
+      // vincula como fuzzy_name (a validação de valor garante a baixa segura).
+      if (!client && earlyAmount && names.length > 0) {
+        const { data: amtInvs } = await supabase
+          .from("invoices")
+          .select("client_id, amount")
+          .eq("organization_id", organization_id)
+          .eq("status", "aberto")
+          .eq("amount", earlyAmount);
+        const uniqueClientIds = Array.from(new Set((amtInvs || []).map((i: any) => i.client_id)));
+        console.log("[pix-ocr][amount-fallback]", { earlyAmount, candidates: uniqueClientIds.length });
+        if (uniqueClientIds.length === 1) {
+          const cand = (clients || []).find((c: any) => c.id === uniqueClientIds[0]);
+          if (cand) {
+            const candTokens = new Set(norm(cand.name || "").split(/\s+/).filter(t => t.length >= 4));
+            const hasOverlap = names.some(n => norm(n.val).split(/\s+/).filter(t => t.length >= 4).some(t => candTokens.has(t)));
+            if (hasOverlap) {
+              client = cand; matchSource = "fuzzy_name";
+              console.log("[pix-ocr][amount-fallback] matched", { client_id: cand.id, name: cand.name });
             }
           }
         }
