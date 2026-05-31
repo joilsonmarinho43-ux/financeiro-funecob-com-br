@@ -352,7 +352,7 @@ Deno.serve(async (req) => {
           .eq("status", "aberto")
           .eq("amount", earlyAmount);
         const uniqueClientIds = Array.from(new Set((amtInvs || []).map((i: any) => i.client_id)));
-        console.log("[pix-ocr][amount-fallback]", { earlyAmount, candidates: uniqueClientIds.length });
+        console.log("[value-fallback]", { earlyAmount, candidates: uniqueClientIds.length });
         if (uniqueClientIds.length === 1) {
           const cand = (clients || []).find((c: any) => c.id === uniqueClientIds[0]);
           if (cand) {
@@ -360,7 +360,7 @@ Deno.serve(async (req) => {
             const hasOverlap = names.some(n => norm(n.val).split(/\s+/).filter(t => t.length >= 4).some(t => candTokens.has(t)));
             if (hasOverlap) {
               client = cand; matchSource = "fuzzy_name";
-              console.log("[pix-ocr][amount-fallback] matched", { client_id: cand.id, name: cand.name });
+              console.log("[value-fallback] matched", { client_id: cand.id, name: cand.name });
             }
           }
         }
