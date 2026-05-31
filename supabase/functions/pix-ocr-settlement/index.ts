@@ -408,28 +408,66 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ===== Anti third-party safeguard =====
-    // If client was identified ONLY by fuzzy name (no phone/CPF), require the amount
-    // to exactly match one of the client's open invoices. Otherwise the PIX may have
-    // been sent by a third party with similar name → leave for manual review.
+    // ===== Reconciliação: match exato (1 fatura) OU combinação exata (subset-sum) =====
+    // Garante que pagamentos de múltiplas mensalidades em um único PIX (ex: 44+44+44=132)
+    // sejam reconhecidos como combinação válida. Cap de 12 faturas (2^12=4096 combos) por segurança.
+    function findExactCombination(amounts: number[], target: number): number[] | null {
+      if (!target || target <= 0) return null;
+      const cents = (n: number) => Math.round(Number(n) * 100);
+      const t = cents(target);
+      const arr = amounts.map(cents).filter(n => n > 0 && n <= t);
+      const n = Math.min(arr.length, 12);
+      // Single first
+      for (let i = 0; i < n; i++) if (arr[i] === t) return [amounts[i]];
+      // Subset-sum bitmask
+      for (let mask = 1; mask < (1 << n); mask++) {
+        let s = 0;
+        for (let i = 0; i < n; i++) if (mask & (1 << i)) s += arr[i];
+        if (s === t) {
+          const picks: number[] = [];
+          for (let i = 0; i < n; i++) if (mask & (1 << i)) picks.push(amounts[i]);
+          return picks;
+        }
+      }
+      return null;
+    }
+
     let amountMatchesInvoice = false;
+    let combinationPicks: number[] | null = null;
+    let openInvoicesAmounts: number[] = [];
     if (client && amount) {
       const { data: openInvs } = await supabase
         .from("invoices").select("amount")
         .eq("organization_id", organization_id)
         .eq("client_id", client.id).eq("status", "aberto");
-      amountMatchesInvoice = (openInvs || []).some(
-        (i: any) => Math.abs(Number(i.amount) - Number(amount)) < 0.01
-      );
+      openInvoicesAmounts = (openInvs || []).map((i: any) => Number(i.amount));
+      const singleMatch = openInvoicesAmounts.some(a => Math.abs(a - Number(amount)) < 0.01);
+      combinationPicks = singleMatch ? null : findExactCombination(openInvoicesAmounts, Number(amount));
+      amountMatchesInvoice = singleMatch || !!combinationPicks;
+      console.log("[invoice-combination]", {
+        client_id: client.id, amount, open_invoices: openInvoicesAmounts,
+        single_match: singleMatch, combination: combinationPicks,
+      });
     }
+
+    // Log de fonte primária de match
+    if (matchSource === "phone") console.log("[whatsapp-match]", { client_id: client?.id, phone });
+    else if (matchSource === "lid_map") console.log("[whatsapp-match]", { source: "lid_map", client_id: client?.id, lid: rawPhone });
+    else if (matchSource === "cpf") console.log("[document-match]", { client_id: client?.id });
+    else if (matchSource === "fuzzy_name") console.log("[pix-ocr][fuzzy]", { client_id: client?.id, name: client?.name });
+
+    // ===== Regra de decisão =====
+    // - phone/lid_map/cpf : sinal confiável → auto-settle (terceiros permitidos).
+    //   Mantém comportamento atual: RPC consome faturas em ASC e gera créditos/antecipação para sobras.
+    // - fuzzy_name        : exige amountMatchesInvoice (single OU combinação) para auto-settle.
     const requiresReview = matchSource === "fuzzy_name" && !amountMatchesInvoice;
+    if (requiresReview) {
+      console.log("[conflict-detected]", { reason: "fuzzy_name_without_invoice_match", client_id: client?.id, amount });
+    }
 
     let eventStatus: string;
     let errorMessage: string | null = null;
     if (!amount) {
-      // Sem valor detectado: se também não há marcadores de comprovante,
-      // tratamos como 'ignorado' (imagem aleatória, foto do dia, etc.)
-      // para não poluir métricas de saúde nem gerar ruído.
       if (!hasReceiptMarkers) {
         console.log("[pix-ocr] no amount + no receipt markers → ignored", { phone, message_id });
         return new Response(JSON.stringify({ status: "ignored", reason: "not_a_receipt" }), {
@@ -450,13 +488,26 @@ Deno.serve(async (req) => {
       eventStatus = "recebido";
     }
 
+    console.log("[settlement-decision]", {
+      match_source: matchSource, client_id: client?.id, amount,
+      amount_matches_invoice: amountMatchesInvoice,
+      combination_size: combinationPicks?.length || (amountMatchesInvoice ? 1 : 0),
+      status: eventStatus,
+    });
+
     const { data: ev, error: insErr } = await supabase
       .from("auto_settlement_events").insert({
         organization_id,
         client_id: client?.id || null,
         phone,
         raw_text: ocr?.raw_text || null,
-        ocr_payload: { ...ocr, push_name: push_name || null, _match_source: matchSource, _amount_matches_invoice: amountMatchesInvoice },
+        ocr_payload: {
+          ...ocr,
+          push_name: push_name || null,
+          _match_source: matchSource,
+          _amount_matches_invoice: amountMatchesInvoice,
+          _combination_picks: combinationPicks,
+        },
         txid,
         pix_end_to_end_id: ocr?.end_to_end_id || null,
         amount_detected: amount,
@@ -470,7 +521,13 @@ Deno.serve(async (req) => {
     await supabase.from("auto_settlement_logs").insert({
       organization_id, event_id: ev.id, client_id: client?.id || null,
       action: "ingested",
-      details: { phone, amount, txid, client_found: !!client, match_source: matchSource, amount_matches_invoice: amountMatchesInvoice, requires_review: requiresReview },
+      details: {
+        phone, amount, txid, client_found: !!client,
+        match_source: matchSource,
+        amount_matches_invoice: amountMatchesInvoice,
+        combination_picks: combinationPicks,
+        requires_review: requiresReview,
+      },
     });
 
     // Only auto-settle when match is trusted (phone/cpf) OR fuzzy_name + amount matches an open invoice
