@@ -28,6 +28,7 @@ import Settlement from "./pages/Settlement";
 import GlobalSettings from "./pages/GlobalSettings";
 import RecurrenceAudit from "./pages/RecurrenceAudit";
 import AutoSettlement from "./pages/AutoSettlement";
+import PhoneAudit from "./pages/PhoneAudit";
 import SystemHealth from "./pages/SystemHealth";
 import SandboxTests from "./pages/SandboxTests";
 import NotFound from "./pages/NotFound";
@@ -137,6 +138,7 @@ const App = () => (
               <Route path="/admin/global-settings" element={<ProtectedRoute adminOnly><GlobalSettings /></ProtectedRoute>} />
               <Route path="/admin/recurrence" element={<ProtectedRoute adminOnly><RecurrenceAudit /></ProtectedRoute>} />
               <Route path="/admin/auto-settlement" element={<ProtectedRoute adminOnly><AutoSettlement /></ProtectedRoute>} />
+              <Route path="/admin/phone-audit" element={<ProtectedRoute adminOnly><PhoneAudit /></ProtectedRoute>} />
               <Route path="/system-health" element={<ProtectedRoute><SystemHealth /></ProtectedRoute>} />
               <Route path="/sandbox-tests" element={<ProtectedRoute adminOnly><SandboxTests /></ProtectedRoute>} />
               <Route path="/portal/:token" element={<ClientPortal />} />
