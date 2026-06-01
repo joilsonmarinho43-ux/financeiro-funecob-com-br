@@ -26,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CustomerOperationalPanel } from "@/components/customer-panel/CustomerOperationalPanel";
+import { DashboardEnhancements } from "@/components/DashboardEnhancements";
 
 
 export default function Dashboard() {
@@ -497,6 +498,18 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* === Novo painel gerencial (additive, não altera lógica existente) === */}
+      <DashboardEnhancements
+        activeClients={clientStats?.active ?? 0}
+        overdueClients={clientStats?.expired ?? 0}
+        monthRevenue={financialStats?.monthBalance ?? 0}
+        yearRevenue={financialStats?.yearBalance ?? 0}
+        showValues={showValues}
+        onOpenClient={(id) => setOpenClientId(id)}
+      />
+
+
 
 
       {/* Lembretes Ativos — clientes com vencimento nos próximos 10 dias */}
