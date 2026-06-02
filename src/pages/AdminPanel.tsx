@@ -270,6 +270,7 @@ export default function AdminPanel() {
                   <SelectItem value="funeraria">Funerária</SelectItem>
                   <SelectItem value="crediario">Crediário</SelectItem>
                   <SelectItem value="loja">Loja</SelectItem>
+                  <SelectItem value="oticas">Óticas</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -313,6 +314,7 @@ export default function AdminPanel() {
                   <SelectItem value="funeraria">Funerária</SelectItem>
                   <SelectItem value="crediario">Crediário</SelectItem>
                   <SelectItem value="loja">Loja</SelectItem>
+                  <SelectItem value="oticas">Óticas</SelectItem>
                 </SelectContent>
               </Select>
             </div>

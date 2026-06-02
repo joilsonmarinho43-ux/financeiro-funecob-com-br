@@ -30,6 +30,13 @@ const TERMS_BY_NICHE: Record<string, {
     event: "Venda", installment: "Parcela",
     receipt: "Recibo", creditLimit: "Limite de Crédito",
   },
+  oticas: {
+    plan: "Plano de Pagamento", plans: "Planos de Pagamento",
+    invoice: "Parcela", invoices: "Parcelas",
+    client: "Cliente", clients: "Clientes",
+    event: "Venda de Óculos", installment: "Parcela",
+    receipt: "Recibo", creditLimit: "Limite de Crédito",
+  },
 };
 
 interface NichePreviewProps {
