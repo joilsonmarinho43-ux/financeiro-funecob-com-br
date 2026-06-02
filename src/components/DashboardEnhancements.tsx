@@ -343,37 +343,9 @@ export function DashboardEnhancements({
         </CardContent>
       </Card>
 
-      {/* At risk + Top */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* At risk */}
-        <Card className="border-0 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 bg-destructive/10 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-destructive" />
-            <h3 className="font-semibold text-sm">Clientes em Risco</h3>
-          </div>
-          <CardContent className="p-0">
-            {atRisk.length === 0 ? (
-              <p className="text-center text-xs text-muted-foreground py-6">Nenhum cliente em risco</p>
-            ) : (
-              <ul className="divide-y">
-                {atRisk.map((c) => (
-                  <li key={c.id} className="px-4 py-2.5 flex items-center justify-between gap-2 hover:bg-muted/30">
-                    <button onClick={() => onOpenClient(c.id)} className="text-left flex-1 min-w-0">
-                      <p className="text-sm font-medium text-primary truncate hover:underline">{c.name}</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        Último pagto.: {fmtDate(c.lastPaid)}
-                      </p>
-                    </button>
-                    <div className="text-right shrink-0">
-                      <Badge variant="destructive" className="text-[10px]">{c.daysLate}d atraso</Badge>
-                      <p className="text-xs font-semibold mt-0.5">{fmt(c.due)}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+      {/* Top clientes */}
+      <div className="grid grid-cols-1 gap-4">
+
 
         {/* Top */}
         <Card className="border-0 shadow-sm overflow-hidden">
