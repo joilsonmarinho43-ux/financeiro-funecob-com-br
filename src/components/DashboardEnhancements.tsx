@@ -225,30 +225,21 @@ export function DashboardEnhancements({
 
   return (
     <>
-      {/* Executive: Inadimplência + Receitas */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <Card className="border-0 shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground"><TrendingDown className="h-3.5 w-3.5" /> Taxa de Inadimplência</div>
-            <p className={`text-2xl font-bold mt-1 ${inadimplencia > 30 ? "text-destructive" : inadimplencia > 15 ? "text-warning" : "text-success"}`}>
+      {/* Executive: Inadimplência */}
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <TrendingDown className="h-3.5 w-3.5" /> Taxa de Inadimplência
+          </div>
+          <div className="text-right">
+            <p className={`text-2xl font-bold ${inadimplencia > 30 ? "text-destructive" : inadimplencia > 15 ? "text-warning" : "text-success"}`}>
               {inadimplencia.toFixed(1)}%
             </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{overdueClients} de {activeClients} ativos</p>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-sm">
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">💰 Receita do Mês</p>
-            <p className="text-financial mt-1">{fmt(monthRevenue)}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-sm col-span-2 lg:col-span-1">
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">💰 Receita do Ano</p>
-            <p className="text-financial mt-1">{fmt(yearRevenue)}</p>
-          </CardContent>
-        </Card>
-      </div>
+            <p className="text-[10px] text-muted-foreground">{overdueClients} de {activeClients} ativos</p>
+          </div>
+        </CardContent>
+      </Card>
+
 
       {/* Quick actions */}
       <Card className="border-0 shadow-sm">
