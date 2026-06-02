@@ -1,4 +1,4 @@
-import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, Bell, CheckCircle2, PlusCircle, CalendarIcon } from "lucide-react";
+import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, CheckCircle2, PlusCircle, CalendarIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
@@ -364,31 +364,8 @@ export default function Dashboard() {
     enabled: !!organizationId,
   });
 
-  // Active reminders (clients notified 10 days before due date)
-  const { data: activeReminders } = useQuery({
-    queryKey: ["dashboard-active-reminders", organizationId],
-    queryFn: async () => {
-      if (!organizationId) return [];
-      const now = new Date();
-      const tenDaysFromNow = new Date(now);
-      tenDaysFromNow.setDate(tenDaysFromNow.getDate() + 10);
-      const todayStr = now.toISOString().split("T")[0];
-      const futureStr = tenDaysFromNow.toISOString().split("T")[0];
+  // (Lembretes ativos foram consolidados nos "Alertas de Vencimento" do painel gerencial)
 
-      const { data, error } = await supabase
-        .from("invoices")
-        .select("id, amount, due_date, client_id, clients(name, phone), plans(name)")
-        .eq("organization_id", organizationId)
-        .eq("status", "aberto")
-        .gt("due_date", todayStr)
-        .lte("due_date", futureStr)
-        .order("due_date", { ascending: true })
-        .limit(20);
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!organizationId,
-  });
 
 
 
@@ -398,14 +375,14 @@ export default function Dashboard() {
   const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
   return (
-    <div className="space-y-4">
-      {/* Metric Cards - 2 columns on mobile */}
-      <div className="grid grid-cols-2 gap-3">
+    <div className="space-y-4 max-w-[1400px] mx-auto w-full">
+      {/* KPIs de Clientes — 3 cards (responsivo) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Clientes Ativos */}
         <Card className="border-0 shadow-sm overflow-hidden bg-primary">
           <CardContent className="p-4 flex items-center gap-3">
             <Users className="h-8 w-8 text-primary-foreground/80 shrink-0" />
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-primary-foreground/80">Clientes Ativos</p>
               {loadingClients ? (
                 <Skeleton className="h-7 w-12 mt-0.5 bg-primary-foreground/20" />
@@ -420,7 +397,7 @@ export default function Dashboard() {
         <Card className="border-0 shadow-sm overflow-hidden bg-destructive">
           <CardContent className="p-4 flex items-center gap-3">
             <UserX className="h-8 w-8 text-destructive-foreground/80 shrink-0" />
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-destructive-foreground/80">Clientes Vencidos</p>
               {loadingClients ? (
                 <Skeleton className="h-7 w-12 mt-0.5 bg-destructive-foreground/20" />
@@ -435,7 +412,7 @@ export default function Dashboard() {
         <Card className="border-0 shadow-sm overflow-hidden" style={{ background: "hsl(var(--sidebar-background))" }}>
           <CardContent className="p-4 flex items-center gap-3">
             <UserMinus className="h-8 w-8 text-muted-foreground shrink-0" />
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Clientes Desativados</p>
               {loadingClients ? (
                 <Skeleton className="h-7 w-12 mt-0.5" />
@@ -445,8 +422,10 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
+      </div>
 
-        {/* Saldo do Mês */}
+      {/* Saldos com toggle de visibilidade (Mês + Ano) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Card className="border-0 shadow-sm overflow-hidden">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -470,36 +449,33 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      {/* Saldo do Ano - full width */}
-      <Card className="border-0 shadow-sm">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+        <Card className="border-0 shadow-sm overflow-hidden">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Saldo Líquido do Ano</p>
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-destructive/10 text-destructive">
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                 {now.getFullYear()}
               </Badge>
             </div>
-          </div>
-          <div className="flex items-center justify-between mt-2">
-            <DollarSign className="h-6 w-6 text-primary shrink-0" />
-            {loadingFinancial ? (
-              <Skeleton className="h-6 w-28" />
-            ) : (
-              <button onClick={() => setShowValues(!showValues)} className="flex items-center gap-1.5 text-foreground">
-                <span className="text-financial">
-                  {showValues ? formatCurrency(financialStats?.yearBalance ?? 0) : "••••••"}
-                </span>
-                {showValues ? <EyeOff className="h-3.5 w-3.5 text-muted-foreground" /> : <Eye className="h-3.5 w-3.5 text-muted-foreground" />}
-              </button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+            <div className="flex items-center justify-between mt-2">
+              <DollarSign className="h-6 w-6 text-primary shrink-0" />
+              {loadingFinancial ? (
+                <Skeleton className="h-6 w-28" />
+              ) : (
+                <button onClick={() => setShowValues(!showValues)} className="flex items-center gap-1.5 text-foreground">
+                  <span className="text-financial">
+                    {showValues ? formatCurrency(financialStats?.yearBalance ?? 0) : "••••••"}
+                  </span>
+                  {showValues ? <EyeOff className="h-3.5 w-3.5 text-muted-foreground" /> : <Eye className="h-3.5 w-3.5 text-muted-foreground" />}
+                </button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* === Novo painel gerencial (additive, não altera lógica existente) === */}
+      {/* Painel gerencial: Inadimplência, PIX Central, Ações Rápidas, Faturamento, Alertas de Vencimento, Maiores Receitas */}
       <DashboardEnhancements
         activeClients={clientStats?.active ?? 0}
         overdueClients={clientStats?.expired ?? 0}
@@ -509,70 +485,7 @@ export default function Dashboard() {
         onOpenClient={(id) => setOpenClientId(id)}
       />
 
-
-
-
-      {/* Lembretes Ativos — clientes com vencimento nos próximos 10 dias */}
-      <Card className="border-0 shadow-sm overflow-hidden">
-        <div className="bg-warning px-4 py-3 flex items-center gap-2">
-          <Bell className="h-4 w-4 text-warning-foreground" />
-          <div>
-            <h3 className="font-semibold text-sm text-warning-foreground">Lembretes Ativos</h3>
-            <p className="text-xs text-warning-foreground/80">Clientes com vencimento nos próximos 10 dias</p>
-          </div>
-        </div>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-xs">Cliente</TableHead>
-                  <TableHead className="text-xs">Vencimento</TableHead>
-                  <TableHead className="text-xs">Valor</TableHead>
-                  <TableHead className="text-xs">Plano</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(!activeReminders || activeReminders.length === 0) ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-6">
-                      Nenhum vencimento nos próximos 10 dias
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  activeReminders.map((inv) => (
-                    <TableRow key={inv.id}>
-                      <TableCell className="text-xs font-medium text-foreground">
-                        <button
-                          type="button"
-                          onClick={() => inv.client_id && setOpenClientId(inv.client_id)}
-                          className="text-left text-primary hover:underline focus:outline-none focus:underline"
-                        >
-                          {(inv.clients as any)?.name ?? "—"}
-                        </button>
-                      </TableCell>
-
-                      <TableCell>
-                        <Badge variant="outline" className="text-[10px] border-warning/50 text-warning">
-                          {parseDateLocal(inv.due_date).toLocaleDateString("pt-BR")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs font-medium">
-                        {Number(inv.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      </TableCell>
-                      <TableCell className="text-[10px] text-muted-foreground">
-                        {(inv.plans as any)?.name ?? "—"}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Clientes com Plano Vencido */}
+      {/* Clientes com Plano Vencido — única tabela com ações (baixa, cobrança, gerar) */}
       <Card className="border-0 shadow-sm overflow-hidden">
         <div className="bg-destructive px-4 py-3">
           <h3 className="font-semibold text-sm text-destructive-foreground">Meus Clientes Com Plano Vencido</h3>

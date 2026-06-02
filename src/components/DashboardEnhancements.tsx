@@ -18,7 +18,6 @@ import {
   TrendingDown,
   Zap,
   Trophy,
-  AlertTriangle,
   Clock,
 } from "lucide-react";
 import {
@@ -139,53 +138,9 @@ export function DashboardEnhancements({
     },
   });
 
-  // Clients at risk — overdue, ordered by days late
-  const { data: atRisk = [] } = useQuery({
-    queryKey: ["dashboard-at-risk", organizationId],
-    enabled: !!organizationId,
-    queryFn: async () => {
-      const today = new Date().toISOString().split("T")[0];
-      const { data } = await supabase
-        .from("invoices")
-        .select("id, amount, due_date, client_id, clients(name)")
-        .eq("organization_id", organizationId!)
-        .eq("status", "aberto")
-        .lt("due_date", today)
-        .order("due_date", { ascending: true })
-        .limit(200);
-      // group by client
-      const byClient = new Map<string, { name: string; oldest: string; due: number }>();
-      for (const r of data || []) {
-        if (!r.client_id) continue;
-        const name = (r as any).clients?.name || "—";
-        const cur = byClient.get(r.client_id) || { name, oldest: r.due_date as string, due: 0 };
-        if ((r.due_date as string) < cur.oldest) cur.oldest = r.due_date as string;
-        cur.due += Number(r.amount);
-        byClient.set(r.client_id, cur);
-      }
-      // last payment per client
-      const ids = Array.from(byClient.keys());
-      let lastPaidMap = new Map<string, string>();
-      if (ids.length) {
-        const { data: paid } = await supabase
-          .from("invoices")
-          .select("client_id, paid_date")
-          .eq("organization_id", organizationId!)
-          .eq("status", "pago")
-          .in("client_id", ids)
-          .order("paid_date", { ascending: false });
-        for (const r of paid || []) {
-          if (r.paid_date && !lastPaidMap.has(r.client_id!)) lastPaidMap.set(r.client_id!, r.paid_date as string);
-        }
-      }
-      const now = Date.now();
-      return Array.from(byClient.entries()).map(([id, v]) => ({
-        id, name: v.name, due: v.due,
-        daysLate: Math.floor((now - parseDateLocal(v.oldest).getTime()) / (24 * 3600 * 1000)),
-        lastPaid: lastPaidMap.get(id) || null,
-      })).sort((a, b) => b.daysLate - a.daysLate).slice(0, 10);
-    },
-  });
+  // (Lista "Clientes em Risco" foi consolidada na tabela "Clientes com Plano Vencido" da página)
+
+
 
   // Upcoming due — buckets
   const { data: upcoming = [] } = useQuery({
@@ -225,30 +180,21 @@ export function DashboardEnhancements({
 
   return (
     <>
-      {/* Executive: Inadimplência + Receitas */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <Card className="border-0 shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground"><TrendingDown className="h-3.5 w-3.5" /> Taxa de Inadimplência</div>
-            <p className={`text-2xl font-bold mt-1 ${inadimplencia > 30 ? "text-destructive" : inadimplencia > 15 ? "text-warning" : "text-success"}`}>
+      {/* Executive: Inadimplência */}
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <TrendingDown className="h-3.5 w-3.5" /> Taxa de Inadimplência
+          </div>
+          <div className="text-right">
+            <p className={`text-2xl font-bold ${inadimplencia > 30 ? "text-destructive" : inadimplencia > 15 ? "text-warning" : "text-success"}`}>
               {inadimplencia.toFixed(1)}%
             </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{overdueClients} de {activeClients} ativos</p>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-sm">
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">💰 Receita do Mês</p>
-            <p className="text-financial mt-1">{fmt(monthRevenue)}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-sm col-span-2 lg:col-span-1">
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">💰 Receita do Ano</p>
-            <p className="text-financial mt-1">{fmt(yearRevenue)}</p>
-          </CardContent>
-        </Card>
-      </div>
+            <p className="text-[10px] text-muted-foreground">{overdueClients} de {activeClients} ativos</p>
+          </div>
+        </CardContent>
+      </Card>
+
 
       {/* Quick actions */}
       <Card className="border-0 shadow-sm">
@@ -352,37 +298,9 @@ export function DashboardEnhancements({
         </CardContent>
       </Card>
 
-      {/* At risk + Top */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* At risk */}
-        <Card className="border-0 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 bg-destructive/10 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-destructive" />
-            <h3 className="font-semibold text-sm">Clientes em Risco</h3>
-          </div>
-          <CardContent className="p-0">
-            {atRisk.length === 0 ? (
-              <p className="text-center text-xs text-muted-foreground py-6">Nenhum cliente em risco</p>
-            ) : (
-              <ul className="divide-y">
-                {atRisk.map((c) => (
-                  <li key={c.id} className="px-4 py-2.5 flex items-center justify-between gap-2 hover:bg-muted/30">
-                    <button onClick={() => onOpenClient(c.id)} className="text-left flex-1 min-w-0">
-                      <p className="text-sm font-medium text-primary truncate hover:underline">{c.name}</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        Último pagto.: {fmtDate(c.lastPaid)}
-                      </p>
-                    </button>
-                    <div className="text-right shrink-0">
-                      <Badge variant="destructive" className="text-[10px]">{c.daysLate}d atraso</Badge>
-                      <p className="text-xs font-semibold mt-0.5">{fmt(c.due)}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+      {/* Top clientes */}
+      <div className="grid grid-cols-1 gap-4">
+
 
         {/* Top */}
         <Card className="border-0 shadow-sm overflow-hidden">
