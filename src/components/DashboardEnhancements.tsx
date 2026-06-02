@@ -138,53 +138,9 @@ export function DashboardEnhancements({
     },
   });
 
-  // Clients at risk — overdue, ordered by days late
-  const { data: atRisk = [] } = useQuery({
-    queryKey: ["dashboard-at-risk", organizationId],
-    enabled: !!organizationId,
-    queryFn: async () => {
-      const today = new Date().toISOString().split("T")[0];
-      const { data } = await supabase
-        .from("invoices")
-        .select("id, amount, due_date, client_id, clients(name)")
-        .eq("organization_id", organizationId!)
-        .eq("status", "aberto")
-        .lt("due_date", today)
-        .order("due_date", { ascending: true })
-        .limit(200);
-      // group by client
-      const byClient = new Map<string, { name: string; oldest: string; due: number }>();
-      for (const r of data || []) {
-        if (!r.client_id) continue;
-        const name = (r as any).clients?.name || "—";
-        const cur = byClient.get(r.client_id) || { name, oldest: r.due_date as string, due: 0 };
-        if ((r.due_date as string) < cur.oldest) cur.oldest = r.due_date as string;
-        cur.due += Number(r.amount);
-        byClient.set(r.client_id, cur);
-      }
-      // last payment per client
-      const ids = Array.from(byClient.keys());
-      let lastPaidMap = new Map<string, string>();
-      if (ids.length) {
-        const { data: paid } = await supabase
-          .from("invoices")
-          .select("client_id, paid_date")
-          .eq("organization_id", organizationId!)
-          .eq("status", "pago")
-          .in("client_id", ids)
-          .order("paid_date", { ascending: false });
-        for (const r of paid || []) {
-          if (r.paid_date && !lastPaidMap.has(r.client_id!)) lastPaidMap.set(r.client_id!, r.paid_date as string);
-        }
-      }
-      const now = Date.now();
-      return Array.from(byClient.entries()).map(([id, v]) => ({
-        id, name: v.name, due: v.due,
-        daysLate: Math.floor((now - parseDateLocal(v.oldest).getTime()) / (24 * 3600 * 1000)),
-        lastPaid: lastPaidMap.get(id) || null,
-      })).sort((a, b) => b.daysLate - a.daysLate).slice(0, 10);
-    },
-  });
+  // (Lista "Clientes em Risco" foi consolidada na tabela "Clientes com Plano Vencido" da página)
+
+
 
   // Upcoming due — buckets
   const { data: upcoming = [] } = useQuery({
