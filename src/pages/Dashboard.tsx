@@ -364,31 +364,8 @@ export default function Dashboard() {
     enabled: !!organizationId,
   });
 
-  // Active reminders (clients notified 10 days before due date)
-  const { data: activeReminders } = useQuery({
-    queryKey: ["dashboard-active-reminders", organizationId],
-    queryFn: async () => {
-      if (!organizationId) return [];
-      const now = new Date();
-      const tenDaysFromNow = new Date(now);
-      tenDaysFromNow.setDate(tenDaysFromNow.getDate() + 10);
-      const todayStr = now.toISOString().split("T")[0];
-      const futureStr = tenDaysFromNow.toISOString().split("T")[0];
+  // (Lembretes ativos foram consolidados nos "Alertas de Vencimento" do painel gerencial)
 
-      const { data, error } = await supabase
-        .from("invoices")
-        .select("id, amount, due_date, client_id, clients(name, phone), plans(name)")
-        .eq("organization_id", organizationId)
-        .eq("status", "aberto")
-        .gt("due_date", todayStr)
-        .lte("due_date", futureStr)
-        .order("due_date", { ascending: true })
-        .limit(20);
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!organizationId,
-  });
 
 
 
