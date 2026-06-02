@@ -18,7 +18,6 @@ import {
   TrendingDown,
   Zap,
   Trophy,
-  AlertTriangle,
   Clock,
 } from "lucide-react";
 import {
