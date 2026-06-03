@@ -223,6 +223,17 @@ function PillarBar({ label, value }: { label: string; value: number }) {
 }
 
 export default function SystemHealth() {
+  const { user } = useAuthGuard();
+  const { data: isAdmin, isLoading: checkingAdmin } = useQuery({
+    queryKey: ["is-admin-health", user?.id],
+    queryFn: async () => {
+      if (!user) return false;
+      const { data } = await supabase.rpc("has_role", { _user_id: user.id, _role: "admin" });
+      return !!data;
+    },
+    enabled: !!user,
+  });
+
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [noc, setNoc] = useState(false);
   const [orgFilter, setOrgFilter] = useState<string>("all");
@@ -230,6 +241,7 @@ export default function SystemHealth() {
   const [logSearch, setLogSearch] = useState("");
   const [logSev, setLogSev] = useState<"all" | "critical" | "warning">("all");
   const containerRef = useRef<HTMLDivElement>(null);
+
 
   const { data: rows = [], refetch, dataUpdatedAt, isLoading } = useQuery({
     queryKey: ["system-health"],
