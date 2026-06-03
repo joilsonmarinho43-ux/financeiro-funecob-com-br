@@ -438,20 +438,6 @@ export default function Dashboard() {
 
       {/* Saldos com toggle de visibilidade (Mês + Ano) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Card className="border-0 shadow-sm overflow-hidden">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">Saldo Líquido do Mês</p>
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                {monthNames[now.getMonth()].slice(0, 3)}
-              </Badge>
-            </div>
-            <div className="flex items-center justify-between mt-2">
-              <DollarSign className="h-6 w-6 text-primary shrink-0" />
-              {loadingFinancial ? (
-                <Skeleton className="h-6 w-24" />
-      {/* Saldos com toggle de visibilidade (Mês + Ano) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Card
           onClick={() => navigate("/movimentacoes")}
           className="border-0 shadow-sm overflow-hidden cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-md active:scale-[0.99]"
