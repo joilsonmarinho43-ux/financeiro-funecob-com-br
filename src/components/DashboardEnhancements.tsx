@@ -181,7 +181,10 @@ export function DashboardEnhancements({
   return (
     <>
       {/* Executive: Inadimplência */}
-      <Card className="border-0 shadow-sm">
+      <Card
+        onClick={() => navigate("/relatorios")}
+        className="border-0 shadow-sm cursor-pointer transition-transform hover:scale-[1.01] hover:shadow-md active:scale-[0.99]"
+      >
         <CardContent className="p-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <TrendingDown className="h-3.5 w-3.5" /> Taxa de Inadimplência
