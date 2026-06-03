@@ -13,6 +13,8 @@ import {
   Search, Download, ShieldCheck, Bell, Clock, Server,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Navigate } from "react-router-dom";
 
 type Health = {
   organization_id: string;
@@ -223,6 +225,17 @@ function PillarBar({ label, value }: { label: string; value: number }) {
 }
 
 export default function SystemHealth() {
+  const { user } = useAuth();
+  const { data: isAdmin, isLoading: checkingAdmin } = useQuery({
+    queryKey: ["is-admin-health", user?.id],
+    queryFn: async () => {
+      if (!user) return false;
+      const { data } = await supabase.rpc("has_role", { _user_id: user.id, _role: "admin" });
+      return !!data;
+    },
+    enabled: !!user,
+  });
+
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [noc, setNoc] = useState(false);
   const [orgFilter, setOrgFilter] = useState<string>("all");
@@ -230,6 +243,7 @@ export default function SystemHealth() {
   const [logSearch, setLogSearch] = useState("");
   const [logSev, setLogSev] = useState<"all" | "critical" | "warning">("all");
   const containerRef = useRef<HTMLDivElement>(null);
+
 
   const { data: rows = [], refetch, dataUpdatedAt, isLoading } = useQuery({
     queryKey: ["system-health"],
@@ -653,6 +667,11 @@ export default function SystemHealth() {
       </Tabs>
     </div>
   );
+
+  if (checkingAdmin) {
+    return <AppLayout><div className="flex items-center justify-center min-h-[50vh]"><div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></AppLayout>;
+  }
+  if (!isAdmin) return <Navigate to="/" replace />;
 
   if (noc) return body;
   return <AppLayout>{body}</AppLayout>;
