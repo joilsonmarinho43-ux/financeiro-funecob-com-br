@@ -13,6 +13,8 @@ import {
   Search, Download, ShieldCheck, Bell, Clock, Server,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Navigate } from "react-router-dom";
 
 type Health = {
   organization_id: string;
