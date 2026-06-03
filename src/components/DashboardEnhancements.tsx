@@ -227,7 +227,10 @@ export function DashboardEnhancements({
       </Card>
 
       {/* PIX Central */}
-      <Card className="border-0 shadow-sm overflow-hidden">
+      <Card
+        onClick={() => navigate("/admin/auto-settlement")}
+        className="border-0 shadow-sm overflow-hidden cursor-pointer transition-transform hover:scale-[1.005] hover:shadow-md"
+      >
         <div className="px-4 py-3 bg-primary/10 flex items-center gap-2">
           <Zap className="h-4 w-4 text-primary" />
           <h3 className="font-semibold text-sm">Central PIX</h3>
@@ -235,15 +238,20 @@ export function DashboardEnhancements({
         </div>
         <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "PIX Recebidos Hoje", value: pixStats?.total ?? "—", color: "text-foreground" },
-            { label: "Reconhecidos Auto.", value: pixStats?.conciliated ?? "—", color: "text-success" },
-            { label: "Processando", value: pixStats?.processing ?? "—", color: "text-primary" },
-            { label: "Aguardando Conferência", value: pixStats?.pending ?? "—", color: "text-warning" },
+            { label: "PIX Recebidos Hoje", value: pixStats?.total ?? "—", color: "text-foreground", to: "/admin/auto-settlement" },
+            { label: "Reconhecidos Auto.", value: pixStats?.conciliated ?? "—", color: "text-success", to: "/admin/auto-settlement?status=conciliado" },
+            { label: "Processando", value: pixStats?.processing ?? "—", color: "text-primary", to: "/admin/auto-settlement?status=processando" },
+            { label: "Aguardando Conferência", value: pixStats?.pending ?? "—", color: "text-warning", to: "/admin/auto-settlement?status=pendente_revisao" },
           ].map((p) => (
-            <div key={p.label} className="rounded-lg border p-3">
+            <button
+              key={p.label}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); navigate(p.to); }}
+              className="rounded-lg border p-3 text-left hover:bg-muted/40 transition-colors"
+            >
               <p className="text-[11px] text-muted-foreground">{p.label}</p>
               <p className={`text-2xl font-bold mt-1 ${p.color}`}>{p.value}</p>
-            </div>
+            </button>
           ))}
         </CardContent>
       </Card>
