@@ -223,7 +223,7 @@ function PillarBar({ label, value }: { label: string; value: number }) {
 }
 
 export default function SystemHealth() {
-  const { user } = useAuthGuard();
+  const { user } = useAuth();
   const { data: isAdmin, isLoading: checkingAdmin } = useQuery({
     queryKey: ["is-admin-health", user?.id],
     queryFn: async () => {
