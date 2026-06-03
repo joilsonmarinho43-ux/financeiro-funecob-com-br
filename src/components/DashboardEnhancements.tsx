@@ -181,7 +181,10 @@ export function DashboardEnhancements({
   return (
     <>
       {/* Executive: Inadimplência */}
-      <Card className="border-0 shadow-sm">
+      <Card
+        onClick={() => navigate("/relatorios")}
+        className="border-0 shadow-sm cursor-pointer transition-transform hover:scale-[1.01] hover:shadow-md active:scale-[0.99]"
+      >
         <CardContent className="p-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <TrendingDown className="h-3.5 w-3.5" /> Taxa de Inadimplência
@@ -224,7 +227,10 @@ export function DashboardEnhancements({
       </Card>
 
       {/* PIX Central */}
-      <Card className="border-0 shadow-sm overflow-hidden">
+      <Card
+        onClick={() => navigate("/admin/auto-settlement")}
+        className="border-0 shadow-sm overflow-hidden cursor-pointer transition-transform hover:scale-[1.005] hover:shadow-md"
+      >
         <div className="px-4 py-3 bg-primary/10 flex items-center gap-2">
           <Zap className="h-4 w-4 text-primary" />
           <h3 className="font-semibold text-sm">Central PIX</h3>
@@ -232,21 +238,29 @@ export function DashboardEnhancements({
         </div>
         <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "PIX Recebidos Hoje", value: pixStats?.total ?? "—", color: "text-foreground" },
-            { label: "Reconhecidos Auto.", value: pixStats?.conciliated ?? "—", color: "text-success" },
-            { label: "Processando", value: pixStats?.processing ?? "—", color: "text-primary" },
-            { label: "Aguardando Conferência", value: pixStats?.pending ?? "—", color: "text-warning" },
+            { label: "PIX Recebidos Hoje", value: pixStats?.total ?? "—", color: "text-foreground", to: "/admin/auto-settlement" },
+            { label: "Reconhecidos Auto.", value: pixStats?.conciliated ?? "—", color: "text-success", to: "/admin/auto-settlement?status=conciliado" },
+            { label: "Processando", value: pixStats?.processing ?? "—", color: "text-primary", to: "/admin/auto-settlement?status=processando" },
+            { label: "Aguardando Conferência", value: pixStats?.pending ?? "—", color: "text-warning", to: "/admin/auto-settlement?status=pendente_revisao" },
           ].map((p) => (
-            <div key={p.label} className="rounded-lg border p-3">
+            <button
+              key={p.label}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); navigate(p.to); }}
+              className="rounded-lg border p-3 text-left hover:bg-muted/40 transition-colors"
+            >
               <p className="text-[11px] text-muted-foreground">{p.label}</p>
               <p className={`text-2xl font-bold mt-1 ${p.color}`}>{p.value}</p>
-            </div>
+            </button>
           ))}
         </CardContent>
       </Card>
 
       {/* Revenue chart */}
-      <Card className="border-0 shadow-sm">
+      <Card
+        onClick={() => navigate("/relatorios")}
+        className="border-0 shadow-sm cursor-pointer transition-transform hover:scale-[1.005] hover:shadow-md"
+      >
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-sm">Faturamento — Últimos 6 meses</h3>
@@ -281,18 +295,23 @@ export function DashboardEnhancements({
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              { key: "hoje", label: "🔴 Vencem Hoje", color: "border-destructive/40 bg-destructive/5", count: buckets.hoje },
-              { key: "d3", label: "🟠 Em até 3 dias", color: "border-orange-400/40 bg-orange-400/5", count: buckets.d3 },
-              { key: "d7", label: "🟡 Em até 7 dias", color: "border-yellow-400/40 bg-yellow-400/5", count: buckets.d7 },
-              { key: "d10", label: "🟢 Em até 10 dias", color: "border-success/40 bg-success/5", count: buckets.d10 },
+              { key: "hoje", label: "🔴 Vencem Hoje", color: "border-destructive/40 bg-destructive/5", count: buckets.hoje, to: "/financeiro?vencimento=hoje" },
+              { key: "d3", label: "🟠 Em até 3 dias", color: "border-orange-400/40 bg-orange-400/5", count: buckets.d3, to: "/financeiro?vencimento=3" },
+              { key: "d7", label: "🟡 Em até 7 dias", color: "border-yellow-400/40 bg-yellow-400/5", count: buckets.d7, to: "/financeiro?vencimento=7" },
+              { key: "d10", label: "🟢 Em até 10 dias", color: "border-success/40 bg-success/5", count: buckets.d10, to: "/financeiro?vencimento=10" },
             ].map((b) => (
-              <div key={b.key} className={`rounded-lg border p-3 ${b.color}`}>
+              <button
+                key={b.key}
+                type="button"
+                onClick={() => navigate(b.to)}
+                className={`rounded-lg border p-3 text-left transition-transform hover:scale-[1.02] hover:shadow-sm active:scale-[0.99] ${b.color}`}
+              >
                 <p className="text-[11px] font-medium">{b.label}</p>
                 <p className="text-2xl font-bold mt-1">{b.count.length}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
                   {fmt(b.count.reduce((s: number, i: any) => s + Number(i.amount), 0))}
                 </p>
-              </div>
+              </button>
             ))}
           </div>
         </CardContent>

@@ -1,6 +1,7 @@
 import { Users, UserX, UserMinus, Eye, EyeOff, DollarSign, Send, MessageSquare, Loader2, CheckCircle2, PlusCircle, CalendarIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -37,6 +38,7 @@ export default function Dashboard() {
   const { organizationId } = useOrganization();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
 
   // Fetch WhatsApp instance for sending
@@ -379,7 +381,10 @@ export default function Dashboard() {
       {/* KPIs de Clientes — 3 cards (responsivo) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Clientes Ativos */}
-        <Card className="border-0 shadow-sm overflow-hidden bg-primary">
+        <Card
+          onClick={() => navigate("/clientes?status=ativo")}
+          className="border-0 shadow-sm overflow-hidden bg-primary cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-md active:scale-[0.99]"
+        >
           <CardContent className="p-4 flex items-center gap-3">
             <Users className="h-8 w-8 text-primary-foreground/80 shrink-0" />
             <div className="min-w-0">
@@ -394,7 +399,10 @@ export default function Dashboard() {
         </Card>
 
         {/* Clientes Vencidos */}
-        <Card className="border-0 shadow-sm overflow-hidden bg-destructive">
+        <Card
+          onClick={() => navigate("/financeiro?status=vencido")}
+          className="border-0 shadow-sm overflow-hidden bg-destructive cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-md active:scale-[0.99]"
+        >
           <CardContent className="p-4 flex items-center gap-3">
             <UserX className="h-8 w-8 text-destructive-foreground/80 shrink-0" />
             <div className="min-w-0">
@@ -409,7 +417,11 @@ export default function Dashboard() {
         </Card>
 
         {/* Clientes Desativados */}
-        <Card className="border-0 shadow-sm overflow-hidden" style={{ background: "hsl(var(--sidebar-background))" }}>
+        <Card
+          onClick={() => navigate("/clientes?status=inativo")}
+          className="border-0 shadow-sm overflow-hidden cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-md active:scale-[0.99]"
+          style={{ background: "hsl(var(--sidebar-background))" }}
+        >
           <CardContent className="p-4 flex items-center gap-3">
             <UserMinus className="h-8 w-8 text-muted-foreground shrink-0" />
             <div className="min-w-0">
@@ -426,7 +438,10 @@ export default function Dashboard() {
 
       {/* Saldos com toggle de visibilidade (Mês + Ano) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Card className="border-0 shadow-sm overflow-hidden">
+        <Card
+          onClick={() => navigate("/movimentacoes")}
+          className="border-0 shadow-sm overflow-hidden cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-md active:scale-[0.99]"
+        >
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Saldo Líquido do Mês</p>
@@ -439,7 +454,10 @@ export default function Dashboard() {
               {loadingFinancial ? (
                 <Skeleton className="h-6 w-24" />
               ) : (
-                <button onClick={() => setShowValues(!showValues)} className="flex items-center gap-1.5 text-foreground">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowValues(!showValues); }}
+                  className="flex items-center gap-1.5 text-foreground"
+                >
                   <span className="text-financial">
                     {showValues ? formatCurrency(financialStats?.monthBalance ?? 0) : "••••••"}
                   </span>
@@ -450,7 +468,10 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm overflow-hidden">
+        <Card
+          onClick={() => navigate("/relatorios")}
+          className="border-0 shadow-sm overflow-hidden cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-md active:scale-[0.99]"
+        >
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Saldo Líquido do Ano</p>
@@ -463,7 +484,10 @@ export default function Dashboard() {
               {loadingFinancial ? (
                 <Skeleton className="h-6 w-28" />
               ) : (
-                <button onClick={() => setShowValues(!showValues)} className="flex items-center gap-1.5 text-foreground">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowValues(!showValues); }}
+                  className="flex items-center gap-1.5 text-foreground"
+                >
                   <span className="text-financial">
                     {showValues ? formatCurrency(financialStats?.yearBalance ?? 0) : "••••••"}
                   </span>
