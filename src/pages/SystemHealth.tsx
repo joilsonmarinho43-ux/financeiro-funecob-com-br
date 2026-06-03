@@ -668,6 +668,11 @@ export default function SystemHealth() {
     </div>
   );
 
+  if (checkingAdmin) {
+    return <AppLayout><div className="flex items-center justify-center min-h-[50vh]"><div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></AppLayout>;
+  }
+  if (!isAdmin) return <Navigate to="/" replace />;
+
   if (noc) return body;
   return <AppLayout>{body}</AppLayout>;
 }
