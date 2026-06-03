@@ -257,7 +257,10 @@ export function DashboardEnhancements({
       </Card>
 
       {/* Revenue chart */}
-      <Card className="border-0 shadow-sm">
+      <Card
+        onClick={() => navigate("/relatorios")}
+        className="border-0 shadow-sm cursor-pointer transition-transform hover:scale-[1.005] hover:shadow-md"
+      >
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-sm">Faturamento — Últimos 6 meses</h3>
@@ -292,18 +295,23 @@ export function DashboardEnhancements({
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              { key: "hoje", label: "🔴 Vencem Hoje", color: "border-destructive/40 bg-destructive/5", count: buckets.hoje },
-              { key: "d3", label: "🟠 Em até 3 dias", color: "border-orange-400/40 bg-orange-400/5", count: buckets.d3 },
-              { key: "d7", label: "🟡 Em até 7 dias", color: "border-yellow-400/40 bg-yellow-400/5", count: buckets.d7 },
-              { key: "d10", label: "🟢 Em até 10 dias", color: "border-success/40 bg-success/5", count: buckets.d10 },
+              { key: "hoje", label: "🔴 Vencem Hoje", color: "border-destructive/40 bg-destructive/5", count: buckets.hoje, to: "/financeiro?vencimento=hoje" },
+              { key: "d3", label: "🟠 Em até 3 dias", color: "border-orange-400/40 bg-orange-400/5", count: buckets.d3, to: "/financeiro?vencimento=3" },
+              { key: "d7", label: "🟡 Em até 7 dias", color: "border-yellow-400/40 bg-yellow-400/5", count: buckets.d7, to: "/financeiro?vencimento=7" },
+              { key: "d10", label: "🟢 Em até 10 dias", color: "border-success/40 bg-success/5", count: buckets.d10, to: "/financeiro?vencimento=10" },
             ].map((b) => (
-              <div key={b.key} className={`rounded-lg border p-3 ${b.color}`}>
+              <button
+                key={b.key}
+                type="button"
+                onClick={() => navigate(b.to)}
+                className={`rounded-lg border p-3 text-left transition-transform hover:scale-[1.02] hover:shadow-sm active:scale-[0.99] ${b.color}`}
+              >
                 <p className="text-[11px] font-medium">{b.label}</p>
                 <p className="text-2xl font-bold mt-1">{b.count.length}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
                   {fmt(b.count.reduce((s: number, i: any) => s + Number(i.amount), 0))}
                 </p>
-              </div>
+              </button>
             ))}
           </div>
         </CardContent>
