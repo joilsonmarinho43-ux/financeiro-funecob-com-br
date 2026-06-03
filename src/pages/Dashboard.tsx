@@ -38,6 +38,7 @@ export default function Dashboard() {
   const { organizationId } = useOrganization();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
 
   // Fetch WhatsApp instance for sending
