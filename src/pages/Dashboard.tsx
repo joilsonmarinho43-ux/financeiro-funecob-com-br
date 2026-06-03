@@ -450,8 +450,28 @@ export default function Dashboard() {
               <DollarSign className="h-6 w-6 text-primary shrink-0" />
               {loadingFinancial ? (
                 <Skeleton className="h-6 w-24" />
+      {/* Saldos com toggle de visibilidade (Mês + Ano) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Card
+          onClick={() => navigate("/movimentacoes")}
+          className="border-0 shadow-sm overflow-hidden cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-md active:scale-[0.99]"
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">Saldo Líquido do Mês</p>
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                {monthNames[now.getMonth()].slice(0, 3)}
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <DollarSign className="h-6 w-6 text-primary shrink-0" />
+              {loadingFinancial ? (
+                <Skeleton className="h-6 w-24" />
               ) : (
-                <button onClick={() => setShowValues(!showValues)} className="flex items-center gap-1.5 text-foreground">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowValues(!showValues); }}
+                  className="flex items-center gap-1.5 text-foreground"
+                >
                   <span className="text-financial">
                     {showValues ? formatCurrency(financialStats?.monthBalance ?? 0) : "••••••"}
                   </span>
@@ -462,7 +482,10 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm overflow-hidden">
+        <Card
+          onClick={() => navigate("/relatorios")}
+          className="border-0 shadow-sm overflow-hidden cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-md active:scale-[0.99]"
+        >
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Saldo Líquido do Ano</p>
@@ -475,7 +498,10 @@ export default function Dashboard() {
               {loadingFinancial ? (
                 <Skeleton className="h-6 w-28" />
               ) : (
-                <button onClick={() => setShowValues(!showValues)} className="flex items-center gap-1.5 text-foreground">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowValues(!showValues); }}
+                  className="flex items-center gap-1.5 text-foreground"
+                >
                   <span className="text-financial">
                     {showValues ? formatCurrency(financialStats?.yearBalance ?? 0) : "••••••"}
                   </span>
