@@ -381,7 +381,10 @@ export default function Dashboard() {
       {/* KPIs de Clientes — 3 cards (responsivo) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Clientes Ativos */}
-        <Card className="border-0 shadow-sm overflow-hidden bg-primary">
+        <Card
+          onClick={() => navigate("/clientes?status=ativo")}
+          className="border-0 shadow-sm overflow-hidden bg-primary cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-md active:scale-[0.99]"
+        >
           <CardContent className="p-4 flex items-center gap-3">
             <Users className="h-8 w-8 text-primary-foreground/80 shrink-0" />
             <div className="min-w-0">
@@ -396,7 +399,10 @@ export default function Dashboard() {
         </Card>
 
         {/* Clientes Vencidos */}
-        <Card className="border-0 shadow-sm overflow-hidden bg-destructive">
+        <Card
+          onClick={() => navigate("/financeiro?status=vencido")}
+          className="border-0 shadow-sm overflow-hidden bg-destructive cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-md active:scale-[0.99]"
+        >
           <CardContent className="p-4 flex items-center gap-3">
             <UserX className="h-8 w-8 text-destructive-foreground/80 shrink-0" />
             <div className="min-w-0">
@@ -411,7 +417,11 @@ export default function Dashboard() {
         </Card>
 
         {/* Clientes Desativados */}
-        <Card className="border-0 shadow-sm overflow-hidden" style={{ background: "hsl(var(--sidebar-background))" }}>
+        <Card
+          onClick={() => navigate("/clientes?status=inativo")}
+          className="border-0 shadow-sm overflow-hidden cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-md active:scale-[0.99]"
+          style={{ background: "hsl(var(--sidebar-background))" }}
+        >
           <CardContent className="p-4 flex items-center gap-3">
             <UserMinus className="h-8 w-8 text-muted-foreground shrink-0" />
             <div className="min-w-0">
