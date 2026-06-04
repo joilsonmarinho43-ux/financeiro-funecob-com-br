@@ -12,12 +12,42 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 async function sendPaymentConfirmation(
-  supabase: any, organizationId: string, clientId: string, amount: number
+  supabase: any,
+  organizationId: string,
+  clientId: string,
+  amount: number,
+  originPhone: string,
+  eventId: string,
 ) {
+  // ===== CONTEXTO TRAVADO =====
+  // Destinatário = SEMPRE o WhatsApp de origem (ev.phone). Nunca o cadastro.
   try {
+    const originDigits = (originPhone || "").replace(/\D/g, "");
+    if (!originDigits || originDigits.length < 10 || originDigits.length >= 14) {
+      console.error("[assign-client][DESTINATARIO_DIVERGENTE] origem inválida/LID", { eventId, clientId, originDigits });
+      await supabase.from("auto_settlement_logs").insert({
+        organization_id: organizationId, event_id: eventId, client_id: clientId,
+        action: "confirmation_blocked",
+        details: { reason: "origem_invalida_ou_lid", origin: originDigits, status: "DESTINATARIO_DIVERGENTE" },
+      });
+      return false;
+    }
+
     const { data: client } = await supabase
       .from("clients").select("name, phone").eq("id", clientId).single();
-    if (!client?.phone) return false;
+    if (!client) return false;
+
+    const cadastroDigits = (client.phone || "").replace(/\D/g, "");
+    const tail = (s: string) => s.slice(-8);
+    const divergente = !!cadastroDigits && tail(cadastroDigits) !== tail(originDigits);
+    if (divergente) {
+      console.warn("[assign-client][DIVERGENCIA_CADASTRO]", { eventId, clientId, cadastro: cadastroDigits, origem: originDigits });
+      await supabase.from("auto_settlement_logs").insert({
+        organization_id: organizationId, event_id: eventId, client_id: clientId,
+        action: "destinatario_divergente_cadastro",
+        details: { cadastro_phone: client.phone, origem_phone: originPhone, decisao: "envia_para_origem", status: "DIVERGENCIA_CADASTRO" },
+      });
+    }
 
     const { data: settings } = await supabase
       .from("billing_settings")
@@ -54,8 +84,17 @@ async function sendPaymentConfirmation(
     const instanceName = instance?.name || gs.default_instance_name || "";
     if (!instanceName || !apiUrl || !apiKey) return false;
 
-    const _d = (client.phone || "").replace(/\D/g, "");
-    const cleanPhone = (_d.startsWith("55") && (_d.length === 12 || _d.length === 13)) ? _d : ((_d.length === 10 || _d.length === 11) ? "55" + _d : _d);
+    // ===== DESTINO IMUTÁVEL = origem =====
+    const _d = originDigits;
+    const cleanPhone = (_d.startsWith("55") && (_d.length === 12 || _d.length === 13))
+      ? _d
+      : ((_d.length === 10 || _d.length === 11) ? "55" + _d : _d);
+
+    console.log("[assign-client][confirmation-send]", {
+      eventId, clientId, origem: originDigits, cadastro: cadastroDigits,
+      destino_final: cleanPhone, divergente,
+    });
+
     const res = await fetch(`${apiUrl}/message/sendText/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: apiKey },
@@ -64,13 +103,23 @@ async function sendPaymentConfirmation(
     const ok = res.ok;
     await supabase.from("whatsapp_messages").insert({
       organization_id: organizationId,
-      phone: client.phone,
+      phone: originPhone,
       message,
       direction: "outgoing",
       status: ok ? "sent" : "failed",
       instance_id: instance?.id || null,
       client_id: clientId,
       sent_at: new Date().toISOString(),
+    });
+    await supabase.from("auto_settlement_logs").insert({
+      organization_id: organizationId, event_id: eventId, client_id: clientId,
+      action: "confirmation_sent",
+      details: {
+        payment_event_id: eventId, client_id_baixa: clientId, client_id_destino: clientId,
+        telefone_origem: originPhone, telefone_destino: cleanPhone, telefone_cadastro: client.phone,
+        divergente_cadastro: divergente, status_envio: ok ? "sent" : "failed",
+        timestamp: new Date().toISOString(),
+      },
     });
     return ok;
   } catch (e) {
@@ -176,8 +225,10 @@ Deno.serve(async (req) => {
     // Envia confirmação WhatsApp (não bloqueante)
     let whatsapp_sent = false;
     if (ev.amount_detected) {
+      // Trava o contexto: destino = ev.phone (origem do comprovante), nunca cadastro
       whatsapp_sent = await sendPaymentConfirmation(
-        supabase, ev.organization_id, client_id, Number(ev.amount_detected)
+        supabase, ev.organization_id, client_id, Number(ev.amount_detected),
+        ev.phone || "", event_id,
       );
     }
 

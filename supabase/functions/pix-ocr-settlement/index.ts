@@ -74,11 +74,74 @@ async function runOcr(imageUrl: string): Promise<any> {
   try { return JSON.parse(txt); } catch { return { raw_text: txt }; }
 }
 
-async function sendPaymentConfirmation(supabase: any, organizationId: string, clientId: string, amount: number) {
+async function sendPaymentConfirmation(
+  supabase: any,
+  organizationId: string,
+  clientId: string,
+  amount: number,
+  originPhone: string,
+  eventId: string,
+) {
+  // ===== CONTEXTO TRAVADO =====
+  // O destinatário DEVE ser sempre o número de WhatsApp que originou o
+  // comprovante (originPhone = ev.phone). NUNCA o telefone cadastrado do
+  // cliente — esse caminho já causou envio para cliente errado quando o
+  // cadastro estava desatualizado / trocado.
   try {
+    const originDigits = (originPhone || "").replace(/\D/g, "");
+    // Fail-safe 1: precisamos de um número de origem.
+    if (!originDigits) {
+      console.error("[pix-ocr][DESTINATARIO_DIVERGENTE] origem ausente", { eventId, clientId });
+      await supabase.from("auto_settlement_logs").insert({
+        organization_id: organizationId, event_id: eventId, client_id: clientId,
+        action: "confirmation_blocked",
+        details: { reason: "origem_ausente", status: "DESTINATARIO_DIVERGENTE" },
+      });
+      return;
+    }
+    // Fail-safe 2: LID anônimo (>=14 dígitos) não é um número real de WhatsApp.
+    if (originDigits.length >= 14) {
+      console.error("[pix-ocr][DESTINATARIO_DIVERGENTE] origem é LID anônimo", { eventId, clientId, originDigits });
+      await supabase.from("auto_settlement_logs").insert({
+        organization_id: organizationId, event_id: eventId, client_id: clientId,
+        action: "confirmation_blocked",
+        details: { reason: "origem_lid", origin: originDigits, status: "DESTINATARIO_DIVERGENTE" },
+      });
+      return;
+    }
+    // Fail-safe 3: dígitos insuficientes.
+    if (originDigits.length < 10) {
+      console.error("[pix-ocr][DESTINATARIO_DIVERGENTE] origem inválida", { eventId, clientId, originDigits });
+      await supabase.from("auto_settlement_logs").insert({
+        organization_id: organizationId, event_id: eventId, client_id: clientId,
+        action: "confirmation_blocked",
+        details: { reason: "origem_invalida", origin: originDigits, status: "DESTINATARIO_DIVERGENTE" },
+      });
+      return;
+    }
+
     const { data: client } = await supabase
       .from("clients").select("name, phone").eq("id", clientId).single();
-    if (!client?.phone) return;
+    if (!client) return;
+
+    // ===== Validação: cadastro vs origem (últimos 8 dígitos, tolera DDI/9º) =====
+    const cadastroDigits = (client.phone || "").replace(/\D/g, "");
+    const tail = (s: string) => s.slice(-8);
+    const divergente = !!cadastroDigits && tail(cadastroDigits) !== tail(originDigits);
+    if (divergente) {
+      console.warn("[pix-ocr][DIVERGENCIA_CADASTRO]", {
+        eventId, clientId, cadastro: cadastroDigits, origem: originDigits,
+        action: "enviando_para_origem",
+      });
+      await supabase.from("auto_settlement_logs").insert({
+        organization_id: organizationId, event_id: eventId, client_id: clientId,
+        action: "destinatario_divergente_cadastro",
+        details: {
+          cadastro_phone: client.phone, origem_phone: originPhone,
+          decisao: "envia_para_origem", status: "DIVERGENCIA_CADASTRO",
+        },
+      });
+    }
 
     const { data: settings } = await supabase
       .from("billing_settings")
@@ -121,8 +184,17 @@ async function sendPaymentConfirmation(supabase: any, organizationId: string, cl
       return;
     }
 
-    const _d = (client.phone || "").replace(/\D/g, "");
-    const cleanPhone = (_d.startsWith("55") && (_d.length === 12 || _d.length === 13)) ? _d : ((_d.length === 10 || _d.length === 11) ? "55" + _d : _d);
+    // ===== DESTINO IMUTÁVEL = origem do comprovante =====
+    const _d = originDigits;
+    const cleanPhone = (_d.startsWith("55") && (_d.length === 12 || _d.length === 13))
+      ? _d
+      : ((_d.length === 10 || _d.length === 11) ? "55" + _d : _d);
+
+    console.log("[pix-ocr][confirmation-send]", {
+      eventId, clientId, origem: originDigits, cadastro: cadastroDigits,
+      destino_final: cleanPhone, divergente,
+    });
+
     const res = await fetch(`${apiUrl}/message/sendText/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: apiKey },
@@ -133,13 +205,29 @@ async function sendPaymentConfirmation(supabase: any, organizationId: string, cl
 
     await supabase.from("whatsapp_messages").insert({
       organization_id: organizationId,
-      phone: client.phone,
+      phone: originPhone,
       message,
       direction: "outgoing",
       status: ok ? "sent" : "failed",
       instance_id: instance?.id || null,
       client_id: clientId,
       sent_at: new Date().toISOString(),
+    });
+
+    await supabase.from("auto_settlement_logs").insert({
+      organization_id: organizationId, event_id: eventId, client_id: clientId,
+      action: "confirmation_sent",
+      details: {
+        payment_event_id: eventId,
+        client_id_baixa: clientId,
+        client_id_destino: clientId,
+        telefone_origem: originPhone,
+        telefone_destino: cleanPhone,
+        telefone_cadastro: client.phone,
+        divergente_cadastro: divergente,
+        status_envio: ok ? "sent" : "failed",
+        timestamp: new Date().toISOString(),
+      },
     });
   } catch (e) {
     console.error("[pix-ocr] sendPaymentConfirmation error (non-blocking)", e);
@@ -161,7 +249,11 @@ async function processEvent(supabase: any, eventId: string, organizationId: stri
 
     // After successful settlement, send WhatsApp confirmation (non-blocking, mirrors baixa-manual)
     if (result?.success && ev.client_id && ev.amount_detected) {
-      await sendPaymentConfirmation(supabase, organizationId, ev.client_id, Number(ev.amount_detected));
+      // Trava o contexto: origem = ev.phone (NUNCA refazer lookup para definir destino)
+      await sendPaymentConfirmation(
+        supabase, organizationId, ev.client_id, Number(ev.amount_detected),
+        ev.phone || "", ev.id,
+      );
     }
   } catch (e: any) {
     console.error("process error", e);
