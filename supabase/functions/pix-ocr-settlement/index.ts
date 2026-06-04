@@ -249,7 +249,11 @@ async function processEvent(supabase: any, eventId: string, organizationId: stri
 
     // After successful settlement, send WhatsApp confirmation (non-blocking, mirrors baixa-manual)
     if (result?.success && ev.client_id && ev.amount_detected) {
-      await sendPaymentConfirmation(supabase, organizationId, ev.client_id, Number(ev.amount_detected));
+      // Trava o contexto: origem = ev.phone (NUNCA refazer lookup para definir destino)
+      await sendPaymentConfirmation(
+        supabase, organizationId, ev.client_id, Number(ev.amount_detected),
+        ev.phone || "", ev.id,
+      );
     }
   } catch (e: any) {
     console.error("process error", e);
