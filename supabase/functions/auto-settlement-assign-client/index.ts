@@ -225,8 +225,10 @@ Deno.serve(async (req) => {
     // Envia confirmação WhatsApp (não bloqueante)
     let whatsapp_sent = false;
     if (ev.amount_detected) {
+      // Trava o contexto: destino = ev.phone (origem do comprovante), nunca cadastro
       whatsapp_sent = await sendPaymentConfirmation(
-        supabase, ev.organization_id, client_id, Number(ev.amount_detected)
+        supabase, ev.organization_id, client_id, Number(ev.amount_detected),
+        ev.phone || "", event_id,
       );
     }
 
