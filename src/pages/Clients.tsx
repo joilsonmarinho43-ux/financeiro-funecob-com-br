@@ -310,8 +310,8 @@ export default function Clients() {
         const updatePayload: any = {
           name: form.name,
           email: form.email || null,
-          phone: form.phone || null,
-          document: form.document || null,
+          phone: (form.phone || "").replace(/\D/g, "") || null,
+          document: (form.document || "").replace(/\D/g, "") || null,
           address: form.address || null,
           client_code: form.client_code || null,
           status: form.status || "ativo",
@@ -323,6 +323,22 @@ export default function Clients() {
           .eq("id", editingClient.id)
           .eq("organization_id", organizationId);
         if (error) throw error;
+
+        // P1: auditLog do update com diff de campos alterados
+        const diff: Record<string, { from: any; to: any }> = {};
+        const trackFields: (keyof typeof updatePayload)[] = ["name", "email", "phone", "document", "address", "client_code", "status"];
+        for (const f of trackFields) {
+          const before = (editingClient as any)[f] ?? null;
+          const after = updatePayload[f] ?? null;
+          if (before !== after) diff[f as string] = { from: before, to: after };
+        }
+        if (Object.keys(diff).length > 0) {
+          auditLog({
+            action: "client.update",
+            organizationId,
+            details: { client_id: editingClient.id, diff },
+          });
+        }
 
         // Update next invoice (due date and/or plan/value) if changed
         if (editNextInvoice?.id) {
