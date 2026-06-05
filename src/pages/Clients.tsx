@@ -106,6 +106,84 @@ export default function Clients() {
   const [invForm, setInvForm] = useState<{ description: string; amount: string; due_date: Date | undefined }>({ description: "Mensalidade", amount: "", due_date: new Date() });
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [quickGenState, setQuickGenState] = useState<Record<string, "loading" | "success">>({});
+  // P2: endereço estruturado (composto em string única ao salvar)
+  const [addr, setAddr] = useState({ cep: "", street: "", number: "", complement: "", neighborhood: "", city: "", state: "" });
+  const [cepLoading, setCepLoading] = useState(false);
+  const [collectorId, setCollectorId] = useState<string>("");
+
+  // P2.3: admin check (admin pode atribuir collector_id manualmente)
+  const { data: isAdmin = false } = useQuery({
+    queryKey: ["is-admin", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return false;
+      const { data } = await supabase.rpc("has_role", { _user_id: user.id, _role: "admin" });
+      return !!data;
+    },
+    enabled: !!user?.id,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // P2.3: lista de cobradores da organização (para admin reatribuir)
+  const { data: collectors = [] } = useQuery({
+    queryKey: ["org-collectors", organizationId],
+    queryFn: async () => {
+      if (!organizationId || !isAdmin) return [];
+      const { data: members } = await supabase
+        .from("organization_members")
+        .select("user_id, role")
+        .eq("organization_id", organizationId);
+      if (!members?.length) return [];
+      const ids = members.map((m: any) => m.user_id);
+      const { data: profs } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", ids);
+      return (profs || []).map((p: any) => ({
+        id: p.id,
+        name: p.full_name || p.id.slice(0, 8),
+        role: members.find((m: any) => m.user_id === p.id)?.role || "user",
+      }));
+    },
+    enabled: !!organizationId && isAdmin,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // P2.2: busca CEP via ViaCEP (gratuito, sem token)
+  const lookupCep = async (cep: string) => {
+    const digits = cep.replace(/\D/g, "");
+    if (digits.length !== 8) return;
+    setCepLoading(true);
+    try {
+      const r = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const j = await r.json();
+      if (j && !j.erro) {
+        setAddr((a) => ({
+          ...a,
+          cep: digits,
+          street: j.logradouro || a.street,
+          neighborhood: j.bairro || a.neighborhood,
+          city: j.localidade || a.city,
+          state: j.uf || a.state,
+        }));
+      } else {
+        toast({ title: "CEP não encontrado", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erro ao consultar CEP", variant: "destructive" });
+    } finally {
+      setCepLoading(false);
+    }
+  };
+
+  const composeAddress = () => {
+    const parts: string[] = [];
+    if (addr.street) parts.push(addr.street + (addr.number ? `, ${addr.number}` : ""));
+    if (addr.complement) parts.push(addr.complement);
+    if (addr.neighborhood) parts.push(addr.neighborhood);
+    if (addr.city || addr.state) parts.push(`${addr.city}${addr.state ? "/" + addr.state : ""}`);
+    if (addr.cep) parts.push(`CEP ${addr.cep.replace(/(\d{5})(\d{3})/, "$1-$2")}`);
+    return parts.join(" — ");
+  };
 
   const quickGenerateInvoice = async (client: Client) => {
     if (!organizationId) return;
