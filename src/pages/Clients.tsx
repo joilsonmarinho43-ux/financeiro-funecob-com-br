@@ -340,23 +340,44 @@ export default function Clients() {
           });
         }
 
-        // Update next invoice (due date and/or plan/value) if changed
-        if (editNextInvoice?.id) {
-          const invUpdate: any = {};
-          if (form.due_date_full) invUpdate.due_date = form.due_date_full;
-          if (form.plan_id && form.plan_id !== editNextInvoice.plan_id) {
-            const newPlan = plans.find((p) => p.id === form.plan_id);
-            if (newPlan) {
-              invUpdate.plan_id = form.plan_id;
-              invUpdate.amount = Number(newPlan.price);
-              invUpdate.description = `${newPlan.name} - Mensalidade`;
-            }
-          } else if (!form.plan_id && editNextInvoice.plan_id) {
-            invUpdate.plan_id = null;
+        // Update next invoice due date (apenas a próxima)
+        if (editNextInvoice?.id && form.due_date_full) {
+          await supabase
+            .from("invoices")
+            .update({ due_date: form.due_date_full })
+            .eq("id", editNextInvoice.id);
+        }
+
+        // P2: troca de plano propaga para TODAS faturas em aberto do cliente
+        if (editNextInvoice?.id && form.plan_id && form.plan_id !== editNextInvoice.plan_id) {
+          const newPlan = plans.find((p) => p.id === form.plan_id);
+          if (newPlan) {
+            const { error: bulkErr } = await supabase
+              .from("invoices")
+              .update({
+                plan_id: form.plan_id,
+                amount: Number(newPlan.price),
+                description: `${newPlan.name} - Mensalidade`,
+              })
+              .eq("organization_id", organizationId)
+              .eq("client_id", editingClient.id)
+              .eq("status", "aberto");
+            if (bulkErr) throw bulkErr;
+            auditLog({
+              action: "client.plan_change_bulk",
+              organizationId,
+              details: {
+                client_id: editingClient.id,
+                new_plan_id: form.plan_id,
+                new_amount: Number(newPlan.price),
+              },
+            });
           }
-          if (Object.keys(invUpdate).length > 0) {
-            await supabase.from("invoices").update(invUpdate).eq("id", editNextInvoice.id);
-          }
+        } else if (editNextInvoice?.id && !form.plan_id && editNextInvoice.plan_id) {
+          await supabase
+            .from("invoices")
+            .update({ plan_id: null })
+            .eq("id", editNextInvoice.id);
         }
       } else {
         // === INSERT: full payload with creator info ===
