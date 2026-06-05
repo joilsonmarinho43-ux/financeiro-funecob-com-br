@@ -647,12 +647,17 @@ export default function Clients() {
 
   const filtered = clients.filter((c) => {
     if (statusFilter !== "all" && c.status !== statusFilter) return false;
-    const q = search.toLowerCase();
+    const q = search.toLowerCase().trim();
     if (!q) return true;
+    // P1: busca por dígitos (telefone/documento) quando termo é numérico
+    const qDigits = q.replace(/\D/g, "");
+    const phoneDigits = (c.phone || "").replace(/\D/g, "");
+    const docDigits = (c.document || "").replace(/\D/g, "");
     return (
       c.name.toLowerCase().includes(q) ||
       c.email?.toLowerCase().includes(q) ||
-      c.document?.toLowerCase().includes(q)
+      c.document?.toLowerCase().includes(q) ||
+      (qDigits.length >= 3 && (phoneDigits.includes(qDigits) || docDigits.includes(qDigits)))
     );
   });
   const visible = filtered.slice(0, visibleCount);
