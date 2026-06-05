@@ -53,12 +53,12 @@ export function DashboardEnhancements({
 
   const inadimplencia = activeClients > 0 ? (overdueClients / activeClients) * 100 : 0;
 
-  // PIX central (today)
+  // PIX central — últimos 7 dias (evita zerar o painel quando não há PIX hoje)
   const { data: pixStats } = useQuery({
-    queryKey: ["dashboard-pix-stats", organizationId],
+    queryKey: ["dashboard-pix-stats-7d", organizationId],
     enabled: !!organizationId,
     queryFn: async () => {
-      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const start = new Date(); start.setDate(start.getDate() - 7); start.setHours(0, 0, 0, 0);
       const { data } = await supabase
         .from("auto_settlement_events")
         .select("status")
@@ -75,6 +75,7 @@ export function DashboardEnhancements({
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
+
 
   // Revenue chart — last 6 months (paid invoices)
   const { data: chartData = [] } = useQuery({
@@ -234,11 +235,12 @@ export function DashboardEnhancements({
         <div className="px-4 py-3 bg-primary/10 flex items-center gap-2">
           <Zap className="h-4 w-4 text-primary" />
           <h3 className="font-semibold text-sm">Central PIX</h3>
-          <Badge variant="secondary" className="text-[10px] ml-auto">tempo real</Badge>
+          <Badge variant="secondary" className="text-[10px] ml-auto">últimos 7 dias</Badge>
         </div>
         <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "PIX Recebidos Hoje", value: pixStats?.total ?? "—", color: "text-foreground", to: "/admin/auto-settlement" },
+            { label: "PIX Recebidos (7d)", value: pixStats?.total ?? "—", color: "text-foreground", to: "/admin/auto-settlement" },
+
             { label: "Reconhecidos Auto.", value: pixStats?.conciliated ?? "—", color: "text-success", to: "/admin/auto-settlement?status=conciliado" },
             { label: "Processando", value: pixStats?.processing ?? "—", color: "text-primary", to: "/admin/auto-settlement?status=processando" },
             { label: "Aguardando Conferência", value: pixStats?.pending ?? "—", color: "text-warning", to: "/admin/auto-settlement?status=pendente_revisao" },
