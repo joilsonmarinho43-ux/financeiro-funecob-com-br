@@ -709,6 +709,8 @@ export default function Clients() {
     setDialogOpen(false);
     setEditingClient(null);
     setForm(emptyForm);
+    setAddr({ cep: "", street: "", number: "", complement: "", neighborhood: "", city: "", state: "" });
+    setCollectorId("");
   };
 
   const openEdit = (client: Client) => {
@@ -723,6 +725,8 @@ export default function Clients() {
       client_code: (client as any).client_code || "",
       status: client.status || "ativo",
     });
+    setAddr({ cep: "", street: "", number: "", complement: "", neighborhood: "", city: "", state: "" });
+    setCollectorId((client as any).collector_id || "");
     setDialogOpen(true);
   };
 
