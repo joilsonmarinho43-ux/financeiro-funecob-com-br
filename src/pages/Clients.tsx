@@ -106,6 +106,84 @@ export default function Clients() {
   const [invForm, setInvForm] = useState<{ description: string; amount: string; due_date: Date | undefined }>({ description: "Mensalidade", amount: "", due_date: new Date() });
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [quickGenState, setQuickGenState] = useState<Record<string, "loading" | "success">>({});
+  // P2: endereço estruturado (composto em string única ao salvar)
+  const [addr, setAddr] = useState({ cep: "", street: "", number: "", complement: "", neighborhood: "", city: "", state: "" });
+  const [cepLoading, setCepLoading] = useState(false);
+  const [collectorId, setCollectorId] = useState<string>("");
+
+  // P2.3: admin check (admin pode atribuir collector_id manualmente)
+  const { data: isAdmin = false } = useQuery({
+    queryKey: ["is-admin", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return false;
+      const { data } = await supabase.rpc("has_role", { _user_id: user.id, _role: "admin" });
+      return !!data;
+    },
+    enabled: !!user?.id,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // P2.3: lista de cobradores da organização (para admin reatribuir)
+  const { data: collectors = [] } = useQuery({
+    queryKey: ["org-collectors", organizationId],
+    queryFn: async () => {
+      if (!organizationId || !isAdmin) return [];
+      const { data: members } = await supabase
+        .from("organization_members")
+        .select("user_id, role")
+        .eq("organization_id", organizationId);
+      if (!members?.length) return [];
+      const ids = members.map((m: any) => m.user_id);
+      const { data: profs } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", ids);
+      return (profs || []).map((p: any) => ({
+        id: p.id,
+        name: p.full_name || p.id.slice(0, 8),
+        role: members.find((m: any) => m.user_id === p.id)?.role || "user",
+      }));
+    },
+    enabled: !!organizationId && isAdmin,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // P2.2: busca CEP via ViaCEP (gratuito, sem token)
+  const lookupCep = async (cep: string) => {
+    const digits = cep.replace(/\D/g, "");
+    if (digits.length !== 8) return;
+    setCepLoading(true);
+    try {
+      const r = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const j = await r.json();
+      if (j && !j.erro) {
+        setAddr((a) => ({
+          ...a,
+          cep: digits,
+          street: j.logradouro || a.street,
+          neighborhood: j.bairro || a.neighborhood,
+          city: j.localidade || a.city,
+          state: j.uf || a.state,
+        }));
+      } else {
+        toast({ title: "CEP não encontrado", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erro ao consultar CEP", variant: "destructive" });
+    } finally {
+      setCepLoading(false);
+    }
+  };
+
+  const composeAddress = () => {
+    const parts: string[] = [];
+    if (addr.street) parts.push(addr.street + (addr.number ? `, ${addr.number}` : ""));
+    if (addr.complement) parts.push(addr.complement);
+    if (addr.neighborhood) parts.push(addr.neighborhood);
+    if (addr.city || addr.state) parts.push(`${addr.city}${addr.state ? "/" + addr.state : ""}`);
+    if (addr.cep) parts.push(`CEP ${addr.cep.replace(/(\d{5})(\d{3})/, "$1-$2")}`);
+    return parts.join(" — ");
+  };
 
   const quickGenerateInvoice = async (client: Client) => {
     if (!organizationId) return;
@@ -305,18 +383,26 @@ export default function Clients() {
 
       let clientId = editingClient?.id;
 
+      // P2: se usuário preencheu endereço estruturado, ele substitui o campo livre
+      const composed = composeAddress();
+      const finalAddress = composed || form.address || null;
+
       if (editingClient) {
-        // === EDIT: only update mutable fields. Preserve created_by/collector_id ===
+        // === EDIT: only update mutable fields. Preserve created_by ===
         const updatePayload: any = {
           name: form.name,
           email: form.email || null,
           phone: (form.phone || "").replace(/\D/g, "") || null,
           document: (form.document || "").replace(/\D/g, "") || null,
-          address: form.address || null,
+          address: finalAddress,
           client_code: form.client_code || null,
           status: form.status || "ativo",
           updated_at: new Date().toISOString(),
         };
+        // P2.3: admin pode reatribuir collector_id
+        if (isAdmin) {
+          updatePayload.collector_id = collectorId || null;
+        }
         const { error } = await supabase
           .from("clients")
           .update(updatePayload)
@@ -340,23 +426,44 @@ export default function Clients() {
           });
         }
 
-        // Update next invoice (due date and/or plan/value) if changed
-        if (editNextInvoice?.id) {
-          const invUpdate: any = {};
-          if (form.due_date_full) invUpdate.due_date = form.due_date_full;
-          if (form.plan_id && form.plan_id !== editNextInvoice.plan_id) {
-            const newPlan = plans.find((p) => p.id === form.plan_id);
-            if (newPlan) {
-              invUpdate.plan_id = form.plan_id;
-              invUpdate.amount = Number(newPlan.price);
-              invUpdate.description = `${newPlan.name} - Mensalidade`;
-            }
-          } else if (!form.plan_id && editNextInvoice.plan_id) {
-            invUpdate.plan_id = null;
+        // Update next invoice due date (apenas a próxima)
+        if (editNextInvoice?.id && form.due_date_full) {
+          await supabase
+            .from("invoices")
+            .update({ due_date: form.due_date_full })
+            .eq("id", editNextInvoice.id);
+        }
+
+        // P2: troca de plano propaga para TODAS faturas em aberto do cliente
+        if (editNextInvoice?.id && form.plan_id && form.plan_id !== editNextInvoice.plan_id) {
+          const newPlan = plans.find((p) => p.id === form.plan_id);
+          if (newPlan) {
+            const { error: bulkErr } = await supabase
+              .from("invoices")
+              .update({
+                plan_id: form.plan_id,
+                amount: Number(newPlan.price),
+                description: `${newPlan.name} - Mensalidade`,
+              })
+              .eq("organization_id", organizationId)
+              .eq("client_id", editingClient.id)
+              .eq("status", "aberto");
+            if (bulkErr) throw bulkErr;
+            auditLog({
+              action: "client.plan_change_bulk",
+              organizationId,
+              details: {
+                client_id: editingClient.id,
+                new_plan_id: form.plan_id,
+                new_amount: Number(newPlan.price),
+              },
+            });
           }
-          if (Object.keys(invUpdate).length > 0) {
-            await supabase.from("invoices").update(invUpdate).eq("id", editNextInvoice.id);
-          }
+        } else if (editNextInvoice?.id && !form.plan_id && editNextInvoice.plan_id) {
+          await supabase
+            .from("invoices")
+            .update({ plan_id: null })
+            .eq("id", editNextInvoice.id);
         }
       } else {
         // === INSERT: full payload with creator info ===
@@ -388,17 +495,20 @@ export default function Clients() {
           }
         }
 
+        // P2.3: admin → collector_id escolhido (ou null para "não atribuído")
+        //        cobrador → sempre o próprio user.id (preserva RLS)
+        const finalCollector = isAdmin ? (collectorId || null) : user.id;
         const insertPayload: any = {
           name: form.name,
           email: form.email || null,
           phone: phoneDigits || null,
           document: docDigits || null,
-          address: form.address || null,
+          address: finalAddress,
           client_code: form.client_code || null,
           status: form.status || "ativo",
           created_by: user.id,
           organization_id: organizationId,
-          collector_id: user.id,
+          collector_id: finalCollector,
         };
         const { data, error } = await supabase
           .from("clients")
@@ -610,6 +720,8 @@ export default function Clients() {
     setDialogOpen(false);
     setEditingClient(null);
     setForm(emptyForm);
+    setAddr({ cep: "", street: "", number: "", complement: "", neighborhood: "", city: "", state: "" });
+    setCollectorId("");
   };
 
   const openEdit = (client: Client) => {
@@ -624,6 +736,8 @@ export default function Clients() {
       client_code: (client as any).client_code || "",
       status: client.status || "ativo",
     });
+    setAddr({ cep: "", street: "", number: "", complement: "", neighborhood: "", city: "", state: "" });
+    setCollectorId((client as any).collector_id || "");
     setDialogOpen(true);
   };
 
@@ -720,9 +834,84 @@ export default function Clients() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="address">Endereço</Label>
-                    <Input id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+                    <Label htmlFor="address">Endereço completo (livre)</Label>
+                    <Input id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Ou preencha os campos estruturados abaixo" />
                   </div>
+
+                  {/* P2.2: Endereço estruturado com ViaCEP */}
+                  <div className="rounded-lg border border-border p-3 space-y-3 bg-muted/30">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Endereço estruturado (opcional — sobrescreve o campo acima)
+                    </p>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-2 col-span-1">
+                        <Label htmlFor="cep">CEP</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="cep"
+                            inputMode="numeric"
+                            placeholder="00000-000"
+                            value={addr.cep ? addr.cep.replace(/(\d{5})(\d{0,3}).*/, "$1-$2").replace(/-$/, "") : ""}
+                            onChange={(e) => {
+                              const d = e.target.value.replace(/\D/g, "").slice(0, 8);
+                              setAddr((a) => ({ ...a, cep: d }));
+                              if (d.length === 8) lookupCep(d);
+                            }}
+                          />
+                          {cepLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mt-3" />}
+                        </div>
+                      </div>
+                      <div className="space-y-2 col-span-2">
+                        <Label htmlFor="street">Rua/Logradouro</Label>
+                        <Input id="street" value={addr.street} onChange={(e) => setAddr((a) => ({ ...a, street: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="number">Número</Label>
+                        <Input id="number" value={addr.number} onChange={(e) => setAddr((a) => ({ ...a, number: e.target.value }))} />
+                      </div>
+                      <div className="space-y-2 col-span-2">
+                        <Label htmlFor="complement">Complemento</Label>
+                        <Input id="complement" value={addr.complement} onChange={(e) => setAddr((a) => ({ ...a, complement: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="neighborhood">Bairro</Label>
+                        <Input id="neighborhood" value={addr.neighborhood} onChange={(e) => setAddr((a) => ({ ...a, neighborhood: e.target.value }))} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="city">Cidade</Label>
+                        <Input id="city" value={addr.city} onChange={(e) => setAddr((a) => ({ ...a, city: e.target.value }))} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="state">UF</Label>
+                        <Input id="state" maxLength={2} value={addr.state} onChange={(e) => setAddr((a) => ({ ...a, state: e.target.value.toUpperCase() }))} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* P2.3: admin pode atribuir/reatribuir o cobrador responsável */}
+                  {isAdmin && (
+                    <div className="space-y-2">
+                      <Label>Cobrador responsável</Label>
+                      <Select value={collectorId || "none"} onValueChange={(v) => setCollectorId(v === "none" ? "" : v)}>
+                        <SelectTrigger><SelectValue placeholder="Não atribuído" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Não atribuído (visível para todos da org)</SelectItem>
+                          {collectors.map((c: any) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name} {c.role === "cobrador" ? "(cobrador)" : `(${c.role})`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Apenas administradores. Deixe em branco para cliente atribuível depois.
+                      </p>
+                    </div>
+                  )}
                   {/* Status - visible when editing */}
                   {editingClient && (
                     <div className="space-y-2">
