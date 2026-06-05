@@ -834,9 +834,84 @@ export default function Clients() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="address">Endereço</Label>
-                    <Input id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+                    <Label htmlFor="address">Endereço completo (livre)</Label>
+                    <Input id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Ou preencha os campos estruturados abaixo" />
                   </div>
+
+                  {/* P2.2: Endereço estruturado com ViaCEP */}
+                  <div className="rounded-lg border border-border p-3 space-y-3 bg-muted/30">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Endereço estruturado (opcional — sobrescreve o campo acima)
+                    </p>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-2 col-span-1">
+                        <Label htmlFor="cep">CEP</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="cep"
+                            inputMode="numeric"
+                            placeholder="00000-000"
+                            value={addr.cep ? addr.cep.replace(/(\d{5})(\d{0,3}).*/, "$1-$2").replace(/-$/, "") : ""}
+                            onChange={(e) => {
+                              const d = e.target.value.replace(/\D/g, "").slice(0, 8);
+                              setAddr((a) => ({ ...a, cep: d }));
+                              if (d.length === 8) lookupCep(d);
+                            }}
+                          />
+                          {cepLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mt-3" />}
+                        </div>
+                      </div>
+                      <div className="space-y-2 col-span-2">
+                        <Label htmlFor="street">Rua/Logradouro</Label>
+                        <Input id="street" value={addr.street} onChange={(e) => setAddr((a) => ({ ...a, street: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="number">Número</Label>
+                        <Input id="number" value={addr.number} onChange={(e) => setAddr((a) => ({ ...a, number: e.target.value }))} />
+                      </div>
+                      <div className="space-y-2 col-span-2">
+                        <Label htmlFor="complement">Complemento</Label>
+                        <Input id="complement" value={addr.complement} onChange={(e) => setAddr((a) => ({ ...a, complement: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="neighborhood">Bairro</Label>
+                        <Input id="neighborhood" value={addr.neighborhood} onChange={(e) => setAddr((a) => ({ ...a, neighborhood: e.target.value }))} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="city">Cidade</Label>
+                        <Input id="city" value={addr.city} onChange={(e) => setAddr((a) => ({ ...a, city: e.target.value }))} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="state">UF</Label>
+                        <Input id="state" maxLength={2} value={addr.state} onChange={(e) => setAddr((a) => ({ ...a, state: e.target.value.toUpperCase() }))} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* P2.3: admin pode atribuir/reatribuir o cobrador responsável */}
+                  {isAdmin && (
+                    <div className="space-y-2">
+                      <Label>Cobrador responsável</Label>
+                      <Select value={collectorId || "none"} onValueChange={(v) => setCollectorId(v === "none" ? "" : v)}>
+                        <SelectTrigger><SelectValue placeholder="Não atribuído" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Não atribuído (visível para todos da org)</SelectItem>
+                          {collectors.map((c: any) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name} {c.role === "cobrador" ? "(cobrador)" : `(${c.role})`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Apenas administradores. Deixe em branco para cliente atribuível depois.
+                      </p>
+                    </div>
+                  )}
                   {/* Status - visible when editing */}
                   {editingClient && (
                     <div className="space-y-2">
