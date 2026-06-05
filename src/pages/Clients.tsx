@@ -732,7 +732,7 @@ export default function Clients() {
                         <SelectContent>
                           <SelectItem value="ativo">Ativo</SelectItem>
                           <SelectItem value="inativo">Inativo</SelectItem>
-                          <SelectItem value="inadimplente">Inadimplente</SelectItem>
+                          {/* "inadimplente" removido: status calculado em runtime via due_date + aberto */}
                         </SelectContent>
                       </Select>
                     </div>
