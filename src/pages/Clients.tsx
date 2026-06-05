@@ -34,7 +34,37 @@ import { StickyFilterBar } from "@/components/ui/sticky-filter-bar";
 import { StatusPill } from "@/components/ui/status-pill";
 import { DataCard } from "@/components/ui/data-card";
 import { Fab } from "@/components/ui/fab";
-import { maskPhone, maskCPFCNPJ } from "@/lib/masks";
+import { maskPhone, maskCPFCNPJ, formatPhone, formatCPFCNPJ } from "@/lib/masks";
+import { z } from "zod";
+
+// === P0 Validação: Zod schema para cadastro/edição de clientes ===
+const clientSchema = z.object({
+  name: z.string().trim().min(2, "Nome deve ter ao menos 2 caracteres").max(120, "Nome muito longo"),
+  email: z.string().trim().email("E-mail inválido").max(160).optional().or(z.literal("")),
+  phone: z
+    .string()
+    .trim()
+    .refine((v) => !v || v.replace(/\D/g, "").length >= 10, "Telefone deve ter DDD + número (10 ou 11 dígitos)")
+    .refine((v) => !v || v.replace(/\D/g, "").length <= 13, "Telefone inválido")
+    .optional()
+    .or(z.literal("")),
+  document: z
+    .string()
+    .trim()
+    .refine((v) => {
+      if (!v) return true;
+      const d = v.replace(/\D/g, "");
+      return d.length === 11 || d.length === 14;
+    }, "CPF deve ter 11 dígitos ou CNPJ 14 dígitos")
+    .optional()
+    .or(z.literal("")),
+  due_day: z
+    .string()
+    .refine((v) => {
+      const n = parseInt(v, 10);
+      return n >= 1 && n <= 31;
+    }, "Dia de vencimento deve estar entre 1 e 31"),
+});
 
 type Client = Tables<"clients">;
 type Plan = Tables<"plans">;
