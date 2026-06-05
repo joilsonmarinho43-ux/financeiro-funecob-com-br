@@ -694,7 +694,7 @@ export default function Clients() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="document">CPF/CNPJ</Label>
-                      <Input id="document" value={form.document} onChange={(e) => setForm({ ...form, document: e.target.value })} />
+                      <Input id="document" inputMode="numeric" placeholder="000.000.000-00" value={formatCPFCNPJ(form.document) || form.document} onChange={(e) => setForm({ ...form, document: e.target.value.replace(/\D/g, "").slice(0, 14) })} />
                     </div>
                   </div>
                   <div className="space-y-2">
