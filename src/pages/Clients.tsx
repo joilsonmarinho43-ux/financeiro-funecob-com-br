@@ -34,7 +34,37 @@ import { StickyFilterBar } from "@/components/ui/sticky-filter-bar";
 import { StatusPill } from "@/components/ui/status-pill";
 import { DataCard } from "@/components/ui/data-card";
 import { Fab } from "@/components/ui/fab";
-import { maskPhone, maskCPFCNPJ } from "@/lib/masks";
+import { maskPhone, maskCPFCNPJ, formatPhone, formatCPFCNPJ } from "@/lib/masks";
+import { z } from "zod";
+
+// === P0 Validação: Zod schema para cadastro/edição de clientes ===
+const clientSchema = z.object({
+  name: z.string().trim().min(2, "Nome deve ter ao menos 2 caracteres").max(120, "Nome muito longo"),
+  email: z.string().trim().email("E-mail inválido").max(160).optional().or(z.literal("")),
+  phone: z
+    .string()
+    .trim()
+    .refine((v) => !v || v.replace(/\D/g, "").length >= 10, "Telefone deve ter DDD + número (10 ou 11 dígitos)")
+    .refine((v) => !v || v.replace(/\D/g, "").length <= 13, "Telefone inválido")
+    .optional()
+    .or(z.literal("")),
+  document: z
+    .string()
+    .trim()
+    .refine((v) => {
+      if (!v) return true;
+      const d = v.replace(/\D/g, "");
+      return d.length === 11 || d.length === 14;
+    }, "CPF deve ter 11 dígitos ou CNPJ 14 dígitos")
+    .optional()
+    .or(z.literal("")),
+  due_day: z
+    .string()
+    .refine((v) => {
+      const n = parseInt(v, 10);
+      return n >= 1 && n <= 31;
+    }, "Dia de vencimento deve estar entre 1 e 31"),
+});
 
 type Client = Tables<"clients">;
 type Plan = Tables<"plans">;
@@ -313,11 +343,39 @@ export default function Clients() {
         }
       } else {
         // === INSERT: full payload with creator info ===
+        const phoneDigits = (form.phone || "").replace(/\D/g, "");
+        const docDigits = (form.document || "").replace(/\D/g, "");
+
+        // P0: bloqueia duplicidade (phone/document/client_code) no mesmo organization_id
+        // Crítico: evita baixa automática indo para cliente errado por telefone duplicado.
+        const dupChecks: Array<{ field: string; value: string }> = [];
+        if (phoneDigits) dupChecks.push({ field: "phone", value: phoneDigits });
+        if (docDigits) dupChecks.push({ field: "document", value: docDigits });
+        if (form.client_code) dupChecks.push({ field: "client_code", value: form.client_code });
+
+        for (const check of dupChecks) {
+          const query: any = supabase
+            .from("clients")
+            .select("id, name")
+            .eq("organization_id", organizationId);
+          const { data: existing, error: dupErr } = await query
+            .eq(check.field, check.value)
+            .limit(1);
+          if (dupErr) throw dupErr;
+          if (existing && existing.length > 0) {
+            throw new Error(
+              `Já existe cliente "${existing[0].name}" com este ${
+                check.field === "phone" ? "telefone" : check.field === "document" ? "CPF/CNPJ" : "código"
+              }.`
+            );
+          }
+        }
+
         const insertPayload: any = {
           name: form.name,
           email: form.email || null,
-          phone: form.phone || null,
-          document: form.document || null,
+          phone: phoneDigits || null,
+          document: docDigits || null,
           address: form.address || null,
           client_code: form.client_code || null,
           status: form.status || "ativo",
@@ -460,8 +518,41 @@ export default function Clients() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("clients").delete().eq("id", id);
+      if (!organizationId) throw new Error("Organização não encontrada");
+
+      // P0: bloqueia exclusão se houver faturas em aberto (preserva integridade financeira)
+      const { data: openInvs, error: invErr } = await supabase
+        .from("invoices")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .eq("client_id", id)
+        .eq("status", "aberto")
+        .limit(1);
+      if (invErr) throw invErr;
+      if (openInvs && openInvs.length > 0) {
+        throw new Error("Cliente possui faturas em aberto. Quite ou cancele antes de remover.");
+      }
+
+      // P0: org_id filter explícito (defesa em profundidade) + auditoria
+      const { data: snapshot } = await supabase
+        .from("clients")
+        .select("id, name, phone, document")
+        .eq("id", id)
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+
+      const { error } = await supabase
+        .from("clients")
+        .delete()
+        .eq("id", id)
+        .eq("organization_id", organizationId);
       if (error) throw error;
+
+      auditLog({
+        action: "client.delete",
+        organizationId,
+        details: { client_id: id, snapshot },
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
@@ -521,8 +612,17 @@ export default function Clients() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim()) {
-      toast({ title: "Nome é obrigatório", variant: "destructive" });
+    // P0: validação Zod completa (nome, email, telefone, CPF/CNPJ, dia de vencimento)
+    const parsed = clientSchema.safeParse({
+      name: form.name,
+      email: form.email,
+      phone: form.phone,
+      document: form.document,
+      due_day: form.due_day,
+    });
+    if (!parsed.success) {
+      const first = parsed.error.errors[0];
+      toast({ title: "Dados inválidos", description: first.message, variant: "destructive" });
       return;
     }
     upsertMutation.mutate();
@@ -584,7 +684,7 @@ export default function Clients() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="phone">Telefone</Label>
-                      <Input id="phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                      <Input id="phone" inputMode="tel" placeholder="(11) 91234-5678" value={formatPhone(form.phone) || form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "").slice(0, 13) })} />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -594,7 +694,7 @@ export default function Clients() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="document">CPF/CNPJ</Label>
-                      <Input id="document" value={form.document} onChange={(e) => setForm({ ...form, document: e.target.value })} />
+                      <Input id="document" inputMode="numeric" placeholder="000.000.000-00" value={formatCPFCNPJ(form.document) || form.document} onChange={(e) => setForm({ ...form, document: e.target.value.replace(/\D/g, "").slice(0, 14) })} />
                     </div>
                   </div>
                   <div className="space-y-2">
