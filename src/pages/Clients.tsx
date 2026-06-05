@@ -85,6 +85,7 @@ const emptyForm = {
   status: "ativo",
   observations: "",
   send_invoice_whatsapp: true,
+  consent_given: false,
 };
 
 export default function Clients() {
