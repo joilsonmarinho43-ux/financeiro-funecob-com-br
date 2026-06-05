@@ -294,13 +294,11 @@ export default function Dashboard() {
       if (!organizationId) return { active: 0, expired: 0, inactive: 0 };
       const { data, error } = await supabase
         .from("clients")
-        .select("status")
+        .select("id, status")
         .eq("organization_id", organizationId);
       if (error) throw error;
-      const active = data.filter((c) => c.status === "ativo").length;
-      const inactive = data.filter((c) => c.status === "inativo" || c.status === "desativado").length;
 
-      // Count distinct clients with overdue invoices (real metric)
+      // Distinct clients with overdue invoices (real metric)
       const todayStr = new Date().toISOString().split("T")[0];
       const { data: overdueInvoices } = await supabase
         .from("invoices")
@@ -308,13 +306,20 @@ export default function Dashboard() {
         .eq("organization_id", organizationId)
         .eq("status", "aberto")
         .lt("due_date", todayStr);
-      const uniqueOverdueClients = new Set((overdueInvoices || []).map((i) => i.client_id));
-      const expired = uniqueOverdueClients.size;
+      const overdueSet = new Set((overdueInvoices || []).map((i) => i.client_id));
+
+      // Ativos em dia = status 'ativo' e SEM faturas vencidas (evita dupla contagem)
+      const active = data.filter((c) => c.status === "ativo" && !overdueSet.has(c.id)).length;
+      const expired = data.filter((c) => overdueSet.has(c.id)).length;
+      const inactive = data.filter(
+        (c) => c.status !== "ativo" && !overdueSet.has(c.id),
+      ).length;
 
       return { active, expired, inactive };
     },
     enabled: !!organizationId,
   });
+
 
   const { data: financialStats, isLoading: loadingFinancial } = useQuery({
     queryKey: ["dashboard-financial", organizationId],
@@ -388,7 +393,7 @@ export default function Dashboard() {
           <CardContent className="p-4 flex items-center gap-3">
             <Users className="h-8 w-8 text-primary-foreground/80 shrink-0" />
             <div className="min-w-0">
-              <p className="text-xs text-primary-foreground/80">Clientes Ativos</p>
+              <p className="text-xs text-primary-foreground/80">Clientes Ativos (em dia)</p>
               {loadingClients ? (
                 <Skeleton className="h-7 w-12 mt-0.5 bg-primary-foreground/20" />
               ) : (
