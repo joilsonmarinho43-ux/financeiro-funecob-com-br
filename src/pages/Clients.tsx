@@ -897,6 +897,26 @@ export default function Clients() {
                           </div>
                         </label>
                       )}
+
+                      {/* P1: Consentimento LGPD — obrigatório para envio automático de WhatsApp */}
+                      {form.phone && (
+                        <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer hover:bg-muted/40">
+                          <input
+                            type="checkbox"
+                            className="mt-1 h-4 w-4 accent-primary"
+                            checked={form.consent_given}
+                            onChange={(e) => setForm({ ...form, consent_given: e.target.checked })}
+                          />
+                          <div className="text-sm">
+                            <p className="font-medium text-foreground">
+                              Cliente autorizou contato por WhatsApp (LGPD)
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Sem este consentimento a mensagem de boas-vindas não é enviada. As cobranças seguem o fluxo normal.
+                            </p>
+                          </div>
+                        </label>
+                      )}
                     </div>
                   </>
                 )}
