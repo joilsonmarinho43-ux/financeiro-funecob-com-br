@@ -490,8 +490,41 @@ export default function Clients() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("clients").delete().eq("id", id);
+      if (!organizationId) throw new Error("Organização não encontrada");
+
+      // P0: bloqueia exclusão se houver faturas em aberto (preserva integridade financeira)
+      const { data: openInvs, error: invErr } = await supabase
+        .from("invoices")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .eq("client_id", id)
+        .eq("status", "aberto")
+        .limit(1);
+      if (invErr) throw invErr;
+      if (openInvs && openInvs.length > 0) {
+        throw new Error("Cliente possui faturas em aberto. Quite ou cancele antes de remover.");
+      }
+
+      // P0: org_id filter explícito (defesa em profundidade) + auditoria
+      const { data: snapshot } = await supabase
+        .from("clients")
+        .select("id, name, phone, document")
+        .eq("id", id)
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+
+      const { error } = await supabase
+        .from("clients")
+        .delete()
+        .eq("id", id)
+        .eq("organization_id", organizationId);
       if (error) throw error;
+
+      auditLog({
+        action: "client.delete",
+        organizationId,
+        details: { client_id: id, snapshot },
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
