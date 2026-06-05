@@ -383,18 +383,26 @@ export default function Clients() {
 
       let clientId = editingClient?.id;
 
+      // P2: se usuário preencheu endereço estruturado, ele substitui o campo livre
+      const composed = composeAddress();
+      const finalAddress = composed || form.address || null;
+
       if (editingClient) {
-        // === EDIT: only update mutable fields. Preserve created_by/collector_id ===
+        // === EDIT: only update mutable fields. Preserve created_by ===
         const updatePayload: any = {
           name: form.name,
           email: form.email || null,
           phone: (form.phone || "").replace(/\D/g, "") || null,
           document: (form.document || "").replace(/\D/g, "") || null,
-          address: form.address || null,
+          address: finalAddress,
           client_code: form.client_code || null,
           status: form.status || "ativo",
           updated_at: new Date().toISOString(),
         };
+        // P2.3: admin pode reatribuir collector_id
+        if (isAdmin) {
+          updatePayload.collector_id = collectorId || null;
+        }
         const { error } = await supabase
           .from("clients")
           .update(updatePayload)
