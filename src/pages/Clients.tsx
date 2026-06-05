@@ -409,7 +409,7 @@ export default function Clients() {
         clientId = data.id;
 
         // Mensagem de boas-vindas — só quando há telefone
-        if (insertPayload.phone) {
+        if (insertPayload.phone && form.consent_given) {
           try {
             const { data: bs } = await supabase
               .from("billing_settings")
