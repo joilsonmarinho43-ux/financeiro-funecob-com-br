@@ -612,8 +612,17 @@ export default function Clients() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim()) {
-      toast({ title: "Nome é obrigatório", variant: "destructive" });
+    // P0: validação Zod completa (nome, email, telefone, CPF/CNPJ, dia de vencimento)
+    const parsed = clientSchema.safeParse({
+      name: form.name,
+      email: form.email,
+      phone: form.phone,
+      document: form.document,
+      due_day: form.due_day,
+    });
+    if (!parsed.success) {
+      const first = parsed.error.errors[0];
+      toast({ title: "Dados inválidos", description: first.message, variant: "destructive" });
       return;
     }
     upsertMutation.mutate();
