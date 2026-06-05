@@ -343,11 +343,38 @@ export default function Clients() {
         }
       } else {
         // === INSERT: full payload with creator info ===
+        const phoneDigits = (form.phone || "").replace(/\D/g, "");
+        const docDigits = (form.document || "").replace(/\D/g, "");
+
+        // P0: bloqueia duplicidade (phone/document/client_code) no mesmo organization_id
+        // Crítico: evita baixa automática indo para cliente errado por telefone duplicado.
+        const dupChecks: Array<{ field: string; value: string }> = [];
+        if (phoneDigits) dupChecks.push({ field: "phone", value: phoneDigits });
+        if (docDigits) dupChecks.push({ field: "document", value: docDigits });
+        if (form.client_code) dupChecks.push({ field: "client_code", value: form.client_code });
+
+        for (const check of dupChecks) {
+          const { data: existing, error: dupErr } = await supabase
+            .from("clients")
+            .select("id, name")
+            .eq("organization_id", organizationId)
+            .eq(check.field as any, check.value)
+            .limit(1);
+          if (dupErr) throw dupErr;
+          if (existing && existing.length > 0) {
+            throw new Error(
+              `Já existe cliente "${existing[0].name}" com este ${
+                check.field === "phone" ? "telefone" : check.field === "document" ? "CPF/CNPJ" : "código"
+              }.`
+            );
+          }
+        }
+
         const insertPayload: any = {
           name: form.name,
           email: form.email || null,
-          phone: form.phone || null,
-          document: form.document || null,
+          phone: phoneDigits || null,
+          document: docDigits || null,
           address: form.address || null,
           client_code: form.client_code || null,
           status: form.status || "ativo",
