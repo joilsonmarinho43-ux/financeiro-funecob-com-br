@@ -85,6 +85,7 @@ const emptyForm = {
   status: "ativo",
   observations: "",
   send_invoice_whatsapp: true,
+  consent_given: false,
 };
 
 export default function Clients() {
@@ -309,8 +310,8 @@ export default function Clients() {
         const updatePayload: any = {
           name: form.name,
           email: form.email || null,
-          phone: form.phone || null,
-          document: form.document || null,
+          phone: (form.phone || "").replace(/\D/g, "") || null,
+          document: (form.document || "").replace(/\D/g, "") || null,
           address: form.address || null,
           client_code: form.client_code || null,
           status: form.status || "ativo",
@@ -322,6 +323,22 @@ export default function Clients() {
           .eq("id", editingClient.id)
           .eq("organization_id", organizationId);
         if (error) throw error;
+
+        // P1: auditLog do update com diff de campos alterados
+        const diff: Record<string, { from: any; to: any }> = {};
+        const trackFields: (keyof typeof updatePayload)[] = ["name", "email", "phone", "document", "address", "client_code", "status"];
+        for (const f of trackFields) {
+          const before = (editingClient as any)[f] ?? null;
+          const after = updatePayload[f] ?? null;
+          if (before !== after) diff[f as string] = { from: before, to: after };
+        }
+        if (Object.keys(diff).length > 0) {
+          auditLog({
+            action: "client.update",
+            organizationId,
+            details: { client_id: editingClient.id, diff },
+          });
+        }
 
         // Update next invoice (due date and/or plan/value) if changed
         if (editNextInvoice?.id) {
@@ -392,7 +409,7 @@ export default function Clients() {
         clientId = data.id;
 
         // Mensagem de boas-vindas — só quando há telefone
-        if (insertPayload.phone) {
+        if (insertPayload.phone && form.consent_given) {
           try {
             const { data: bs } = await supabase
               .from("billing_settings")
@@ -630,12 +647,17 @@ export default function Clients() {
 
   const filtered = clients.filter((c) => {
     if (statusFilter !== "all" && c.status !== statusFilter) return false;
-    const q = search.toLowerCase();
+    const q = search.toLowerCase().trim();
     if (!q) return true;
+    // P1: busca por dígitos (telefone/documento) quando termo é numérico
+    const qDigits = q.replace(/\D/g, "");
+    const phoneDigits = (c.phone || "").replace(/\D/g, "");
+    const docDigits = (c.document || "").replace(/\D/g, "");
     return (
       c.name.toLowerCase().includes(q) ||
       c.email?.toLowerCase().includes(q) ||
-      c.document?.toLowerCase().includes(q)
+      c.document?.toLowerCase().includes(q) ||
+      (qDigits.length >= 3 && (phoneDigits.includes(qDigits) || docDigits.includes(qDigits)))
     );
   });
   const visible = filtered.slice(0, visibleCount);
@@ -710,7 +732,7 @@ export default function Clients() {
                         <SelectContent>
                           <SelectItem value="ativo">Ativo</SelectItem>
                           <SelectItem value="inativo">Inativo</SelectItem>
-                          <SelectItem value="inadimplente">Inadimplente</SelectItem>
+                          {/* "inadimplente" removido: status calculado em runtime via due_date + aberto */}
                         </SelectContent>
                       </Select>
                     </div>
@@ -871,6 +893,26 @@ export default function Clients() {
                             </p>
                             <p className="text-xs text-muted-foreground mt-0.5">
                               Manda valor, vencimento e chave PIX para o cliente assim que o cadastro for salvo.
+                            </p>
+                          </div>
+                        </label>
+                      )}
+
+                      {/* P1: Consentimento LGPD — obrigatório para envio automático de WhatsApp */}
+                      {form.phone && (
+                        <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer hover:bg-muted/40">
+                          <input
+                            type="checkbox"
+                            className="mt-1 h-4 w-4 accent-primary"
+                            checked={form.consent_given}
+                            onChange={(e) => setForm({ ...form, consent_given: e.target.checked })}
+                          />
+                          <div className="text-sm">
+                            <p className="font-medium text-foreground">
+                              Cliente autorizou contato por WhatsApp (LGPD)
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Sem este consentimento a mensagem de boas-vindas não é enviada. As cobranças seguem o fluxo normal.
                             </p>
                           </div>
                         </label>
