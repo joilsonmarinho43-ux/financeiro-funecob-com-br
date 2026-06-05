@@ -495,17 +495,20 @@ export default function Clients() {
           }
         }
 
+        // P2.3: admin → collector_id escolhido (ou null para "não atribuído")
+        //        cobrador → sempre o próprio user.id (preserva RLS)
+        const finalCollector = isAdmin ? (collectorId || null) : user.id;
         const insertPayload: any = {
           name: form.name,
           email: form.email || null,
           phone: phoneDigits || null,
           document: docDigits || null,
-          address: form.address || null,
+          address: finalAddress,
           client_code: form.client_code || null,
           status: form.status || "ativo",
           created_by: user.id,
           organization_id: organizationId,
-          collector_id: user.id,
+          collector_id: finalCollector,
         };
         const { data, error } = await supabase
           .from("clients")
