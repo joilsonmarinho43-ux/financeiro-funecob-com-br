@@ -684,7 +684,7 @@ export default function Clients() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="phone">Telefone</Label>
-                      <Input id="phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                      <Input id="phone" inputMode="tel" placeholder="(11) 91234-5678" value={formatPhone(form.phone) || form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "").slice(0, 13) })} />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
