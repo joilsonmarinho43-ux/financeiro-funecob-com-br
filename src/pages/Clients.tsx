@@ -358,7 +358,7 @@ export default function Clients() {
             .from("clients")
             .select("id, name")
             .eq("organization_id", organizationId)
-            .eq(check.field as any, check.value)
+            .eq(check.field, check.value)
             .limit(1);
           if (dupErr) throw dupErr;
           if (existing && existing.length > 0) {
