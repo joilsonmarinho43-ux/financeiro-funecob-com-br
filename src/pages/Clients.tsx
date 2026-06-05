@@ -354,10 +354,11 @@ export default function Clients() {
         if (form.client_code) dupChecks.push({ field: "client_code", value: form.client_code });
 
         for (const check of dupChecks) {
-          const { data: existing, error: dupErr } = await supabase
+          const query: any = supabase
             .from("clients")
             .select("id, name")
-            .eq("organization_id", organizationId)
+            .eq("organization_id", organizationId);
+          const { data: existing, error: dupErr } = await query
             .eq(check.field, check.value)
             .limit(1);
           if (dupErr) throw dupErr;
