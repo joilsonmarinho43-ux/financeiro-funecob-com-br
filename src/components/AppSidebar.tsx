@@ -368,7 +368,7 @@ export function AppSidebar() {
                   <KeyRound className="h-4 w-4 mr-2" />
                   Alterar senha
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={signOut} className="cursor-pointer text-destructive focus:text-destructive">
+                <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive focus:text-destructive">
                   <LogOut className="h-4 w-4 mr-2" />
                   Sair
                 </DropdownMenuItem>
@@ -376,7 +376,7 @@ export function AppSidebar() {
             </DropdownMenu>
           ) : (
             <button
-              onClick={signOut}
+              onClick={handleSignOut}
               className="text-sidebar-muted hover:text-sidebar-accent-foreground transition-colors shrink-0"
               title="Sair"
             >
