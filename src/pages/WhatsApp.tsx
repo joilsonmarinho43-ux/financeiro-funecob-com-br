@@ -288,8 +288,39 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
 
 // ─── Tab: Fila ──────────────────────────────────────────
 function QueueTab({ organizationId }: { organizationId: string }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [resetting, setResetting] = useState(false);
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["whatsapp-queue"] });
+    queryClient.invalidateQueries({ queryKey: ["whatsapp-queue-count"] });
+    queryClient.invalidateQueries({ queryKey: ["whatsapp-queue-stats"] });
+  };
+
+  const resetStuck = async () => {
+    if (!window.confirm("Resetar mensagens travadas em 'Enviando' há mais de 5 minutos para 'retry'?")) return;
+    setResetting(true);
+    try {
+      const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from("whatsapp_queue")
+        .update({ status: "retry", error_message: "Reset manual: travado em sending" } as any)
+        .eq("organization_id", organizationId)
+        .eq("status", "sending")
+        .lt("updated_at", cutoff)
+        .select("id");
+      if (error) throw error;
+      toast({ title: `${data?.length || 0} mensagem(ns) resetada(s) para retry` });
+      invalidateAll();
+    } catch (err: any) {
+      toast({ title: "Erro ao resetar", description: err.message, variant: "destructive" });
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const { data: totalCount = 0 } = useQuery({
     queryKey: ["whatsapp-queue-count", organizationId, statusFilter],
