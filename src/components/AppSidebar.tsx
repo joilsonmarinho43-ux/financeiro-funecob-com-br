@@ -273,6 +273,11 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const { user, signOut } = useAuth();
+  const handleSignOut = () => {
+    if (window.confirm("Tem certeza que deseja sair?")) {
+      signOut();
+    }
+  };
   const { organization } = useOrganization();
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
