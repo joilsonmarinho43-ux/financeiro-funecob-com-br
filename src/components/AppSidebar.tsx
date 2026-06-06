@@ -113,19 +113,24 @@ function MenuGroup({ label, items }: { label: string; items: MenuItem[] }) {
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.url}>
-              <SidebarMenuButton asChild>
+              <SidebarMenuButton asChild tooltip={item.title}>
                 <NavLink
                   to={item.url}
-                  end={item.url === "/"}
+                  end
                   className="hover:bg-sidebar-accent rounded-lg transition-colors"
                   activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
                 >
-                  <item.icon className="h-4 w-4 mr-3 shrink-0" />
-                  {!collapsed && <span className="text-sm">{item.title}</span>}
-                  {item.badge && !collapsed && (
-                    <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">
-                      {item.badge}
-                    </span>
+                  {({ isActive }: { isActive: boolean }) => (
+                    <>
+                      <item.icon className="h-4 w-4 mr-3 shrink-0" aria-hidden="true" />
+                      {!collapsed && <span className="text-sm">{item.title}</span>}
+                      {item.badge && !collapsed && (
+                        <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">
+                          {item.badge}
+                        </span>
+                      )}
+                      {isActive && <span className="sr-only">(página atual)</span>}
+                    </>
                   )}
                 </NavLink>
               </SidebarMenuButton>
@@ -145,10 +150,15 @@ function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const { updatePassword } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentPassword) {
+      toast({ title: "Senha atual obrigatória", description: "Informe sua senha atual para confirmar a alteração.", variant: "destructive" });
+      return;
+    }
     if (newPassword.length < 6) {
       toast({ title: "Senha muito curta", description: "A nova senha deve ter pelo menos 6 caracteres.", variant: "destructive" });
       return;
@@ -157,7 +167,21 @@ function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; onOpenCha
       toast({ title: "Senhas não conferem", description: "A confirmação deve ser igual à nova senha.", variant: "destructive" });
       return;
     }
+    if (currentPassword === newPassword) {
+      toast({ title: "Senha igual à atual", description: "Escolha uma nova senha diferente da atual.", variant: "destructive" });
+      return;
+    }
     setLoading(true);
+    // Re-autenticar para confirmar identidade
+    const { error: reauthError } = await supabase.auth.signInWithPassword({
+      email: user?.email ?? "",
+      password: currentPassword,
+    });
+    if (reauthError) {
+      toast({ title: "Senha atual incorreta", description: "Não foi possível validar sua senha atual.", variant: "destructive" });
+      setLoading(false);
+      return;
+    }
     const { error } = await updatePassword(newPassword);
     if (error) {
       toast({ title: "Erro ao alterar senha", description: error.message, variant: "destructive" });
@@ -249,6 +273,11 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const { user, signOut } = useAuth();
+  const handleSignOut = () => {
+    if (window.confirm("Tem certeza que deseja sair?")) {
+      signOut();
+    }
+  };
   const { organization } = useOrganization();
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
@@ -339,7 +368,7 @@ export function AppSidebar() {
                   <KeyRound className="h-4 w-4 mr-2" />
                   Alterar senha
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={signOut} className="cursor-pointer text-destructive focus:text-destructive">
+                <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive focus:text-destructive">
                   <LogOut className="h-4 w-4 mr-2" />
                   Sair
                 </DropdownMenuItem>
@@ -347,7 +376,7 @@ export function AppSidebar() {
             </DropdownMenu>
           ) : (
             <button
-              onClick={signOut}
+              onClick={handleSignOut}
               className="text-sidebar-muted hover:text-sidebar-accent-foreground transition-colors shrink-0"
               title="Sair"
             >
