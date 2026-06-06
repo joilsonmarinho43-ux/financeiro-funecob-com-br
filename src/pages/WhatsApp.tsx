@@ -144,6 +144,8 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp-messages"] });
       queryClient.invalidateQueries({ queryKey: ["whatsapp-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-queue-count"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-queue-stats"] });
       toast({ title: "Mensagem enviada para a fila de processamento!" });
       setDialogOpen(false);
       setForm({ phone: "", message: "" });
