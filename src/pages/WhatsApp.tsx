@@ -516,6 +516,8 @@ function BulkTab({ organizationId }: { organizationId: string }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-queue-count"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-queue-stats"] });
       toast({ title: `Mensagens adicionadas à fila!` });
       setForm({ ...form, phones: "", message: "" });
     },
