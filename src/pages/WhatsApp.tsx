@@ -331,19 +331,22 @@ function QueueTab({ organizationId }: { organizationId: string }) {
   const { data: stats = { queued: 0, sending: 0, sent: 0, failed: 0, retry: 0 } } = useQuery({
     queryKey: ["whatsapp-queue-stats", organizationId],
     queryFn: async () => {
-      const counts: Record<string, number> = { queued: 0, sending: 0, sent: 0, failed: 0, retry: 0 };
-      for (const status of Object.keys(counts)) {
-        const { count } = await supabase
-          .from("whatsapp_queue")
-          .select("*", { count: "exact", head: true })
-          .eq("organization_id", organizationId)
-          .eq("status", status);
-        counts[status] = count || 0;
-      }
-      return counts;
+      const statuses = ["queued", "sending", "sent", "failed", "retry"] as const;
+      const results = await Promise.all(
+        statuses.map((status) =>
+          supabase
+            .from("whatsapp_queue")
+            .select("*", { count: "exact", head: true })
+            .eq("organization_id", organizationId)
+            .eq("status", status)
+            .then(({ count }) => count || 0)
+        )
+      );
+      return statuses.reduce((acc, s, i) => ({ ...acc, [s]: results[i] }), {} as Record<string, number>);
     },
     enabled: !!organizationId,
-    staleTime: 15000,
+    staleTime: 10_000,
+    refetchInterval: 15_000,
   });
 
   useEffect(() => { setPage(1); }, [statusFilter]);
