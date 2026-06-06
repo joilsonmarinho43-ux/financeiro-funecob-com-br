@@ -386,16 +386,16 @@ function QueueTab({ organizationId }: { organizationId: string }) {
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
-          { label: "Na Fila", value: stats.queued, icon: Clock, cls: "gradient-primary" },
-          { label: "Enviando", value: stats.sending, icon: Loader2, cls: "gradient-warning" },
-          { label: "Enviados", value: stats.sent, icon: CheckCircle2, cls: "gradient-success" },
-          { label: "Falhas", value: stats.failed, icon: XCircle, cls: "gradient-danger" },
-          { label: "Retry", value: stats.retry, icon: RefreshCw, cls: "bg-muted" },
+          { label: "Na Fila", value: stats.queued, icon: Clock, cls: "gradient-primary", spin: false },
+          { label: "Enviando", value: stats.sending, icon: Loader2, cls: "gradient-warning", spin: stats.sending > 0 },
+          { label: "Enviados", value: stats.sent, icon: CheckCircle2, cls: "gradient-success", spin: false },
+          { label: "Falhas", value: stats.failed, icon: XCircle, cls: "gradient-danger", spin: false },
+          { label: "Retry", value: stats.retry, icon: RefreshCw, cls: "bg-muted", spin: false },
         ].map((s) => (
           <Card key={s.label} className="border-0 shadow-sm">
             <CardContent className="flex items-center gap-3 p-4">
               <div className={`h-9 w-9 rounded-lg ${s.cls} flex items-center justify-center`}>
-                <s.icon className="h-4 w-4 text-primary-foreground" />
+                <s.icon className={`h-4 w-4 text-primary-foreground ${s.spin ? "animate-spin" : ""}`} />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{s.label}</p>
@@ -406,7 +406,7 @@ function QueueTab({ organizationId }: { organizationId: string }) {
         ))}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Label className="text-xs">Filtrar:</Label>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[150px] h-8 text-xs"><SelectValue /></SelectTrigger>
@@ -420,7 +420,19 @@ function QueueTab({ organizationId }: { organizationId: string }) {
             <SelectItem value="paused">Pausados</SelectItem>
           </SelectContent>
         </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs ml-auto"
+          onClick={resetStuck}
+          disabled={resetting || stats.sending === 0}
+          title="Reseta mensagens travadas em 'Enviando' há mais de 5 minutos"
+        >
+          {resetting ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+          Resetar travados
+        </Button>
       </div>
+
 
       {isLoading ? (
         <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
