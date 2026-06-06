@@ -150,10 +150,15 @@ function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const { updatePassword } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentPassword) {
+      toast({ title: "Senha atual obrigatória", description: "Informe sua senha atual para confirmar a alteração.", variant: "destructive" });
+      return;
+    }
     if (newPassword.length < 6) {
       toast({ title: "Senha muito curta", description: "A nova senha deve ter pelo menos 6 caracteres.", variant: "destructive" });
       return;
@@ -162,7 +167,21 @@ function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; onOpenCha
       toast({ title: "Senhas não conferem", description: "A confirmação deve ser igual à nova senha.", variant: "destructive" });
       return;
     }
+    if (currentPassword === newPassword) {
+      toast({ title: "Senha igual à atual", description: "Escolha uma nova senha diferente da atual.", variant: "destructive" });
+      return;
+    }
     setLoading(true);
+    // Re-autenticar para confirmar identidade
+    const { error: reauthError } = await supabase.auth.signInWithPassword({
+      email: user?.email ?? "",
+      password: currentPassword,
+    });
+    if (reauthError) {
+      toast({ title: "Senha atual incorreta", description: "Não foi possível validar sua senha atual.", variant: "destructive" });
+      setLoading(false);
+      return;
+    }
     const { error } = await updatePassword(newPassword);
     if (error) {
       toast({ title: "Erro ao alterar senha", description: error.message, variant: "destructive" });
