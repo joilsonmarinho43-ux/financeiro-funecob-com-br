@@ -113,19 +113,24 @@ function MenuGroup({ label, items }: { label: string; items: MenuItem[] }) {
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.url}>
-              <SidebarMenuButton asChild>
+              <SidebarMenuButton asChild tooltip={item.title}>
                 <NavLink
                   to={item.url}
-                  end={item.url === "/"}
+                  end
                   className="hover:bg-sidebar-accent rounded-lg transition-colors"
                   activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
                 >
-                  <item.icon className="h-4 w-4 mr-3 shrink-0" />
-                  {!collapsed && <span className="text-sm">{item.title}</span>}
-                  {item.badge && !collapsed && (
-                    <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">
-                      {item.badge}
-                    </span>
+                  {({ isActive }: { isActive: boolean }) => (
+                    <>
+                      <item.icon className="h-4 w-4 mr-3 shrink-0" aria-hidden="true" />
+                      {!collapsed && <span className="text-sm">{item.title}</span>}
+                      {item.badge && !collapsed && (
+                        <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">
+                          {item.badge}
+                        </span>
+                      )}
+                      {isActive && <span className="sr-only">(página atual)</span>}
+                    </>
                   )}
                 </NavLink>
               </SidebarMenuButton>
