@@ -23,12 +23,12 @@ async function sendPaymentConfirmation(
   // Destinatário = SEMPRE o WhatsApp de origem (ev.phone). Nunca o cadastro.
   try {
     const originDigits = (originPhone || "").replace(/\D/g, "");
-    if (!originDigits || originDigits.length < 10 || originDigits.length >= 14) {
-      console.error("[assign-client][DESTINATARIO_DIVERGENTE] origem inválida/LID", { eventId, clientId, originDigits });
+    if (!originDigits || originDigits.length < 10) {
+      console.error("[assign-client][DESTINATARIO_DIVERGENTE] origem inválida", { eventId, clientId, originDigits });
       await supabase.from("auto_settlement_logs").insert({
         organization_id: organizationId, event_id: eventId, client_id: clientId,
         action: "confirmation_blocked",
-        details: { reason: "origem_invalida_ou_lid", origin: originDigits, status: "DESTINATARIO_DIVERGENTE" },
+        details: { reason: "origem_invalida", origin: originDigits, status: "DESTINATARIO_DIVERGENTE" },
       });
       return false;
     }
