@@ -42,6 +42,50 @@ function coerceAmount(v: any): number | null {
   return null;
 }
 
+function findExactCombination(amounts: number[], target: number): number[] | null {
+  if (!target || target <= 0) return null;
+  const cents = (n: number) => Math.round(Number(n) * 100);
+  const t = cents(target);
+  const arr = amounts.map(cents).filter((n) => n > 0 && n <= t);
+  const n = Math.min(arr.length, 12);
+
+  for (let i = 0; i < n; i++) if (arr[i] === t) return [amounts[i]];
+
+  for (let mask = 1; mask < (1 << n); mask++) {
+    let s = 0;
+    for (let i = 0; i < n; i++) if (mask & (1 << i)) s += arr[i];
+    if (s === t) {
+      const picks: number[] = [];
+      for (let i = 0; i < n; i++) if (mask & (1 << i)) picks.push(amounts[i]);
+      return picks;
+    }
+  }
+
+  return null;
+}
+
+async function matchesOpenInvoicesByAmount(
+  supabase: any,
+  organizationId: string,
+  clientId: string,
+  amount: number | null,
+): Promise<boolean> {
+  if (!amount) return false;
+
+  const { data: openInvs } = await supabase
+    .from("invoices")
+    .select("amount")
+    .eq("organization_id", organizationId)
+    .eq("client_id", clientId)
+    .eq("status", "aberto");
+
+  const amounts = (openInvs || []).map((i: any) => Number(i.amount));
+  const singleMatch = amounts.some((invoiceAmount) => Math.abs(invoiceAmount - Number(amount)) < 0.01);
+  if (singleMatch) return true;
+
+  return !!findExactCombination(amounts, Number(amount));
+}
+
 async function runOcr(imageUrl: string): Promise<any> {
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -99,17 +143,7 @@ async function sendPaymentConfirmation(
       });
       return;
     }
-    // Fail-safe 2: LID anônimo (>=14 dígitos) não é um número real de WhatsApp.
-    if (originDigits.length >= 14) {
-      console.error("[pix-ocr][DESTINATARIO_DIVERGENTE] origem é LID anônimo", { eventId, clientId, originDigits });
-      await supabase.from("auto_settlement_logs").insert({
-        organization_id: organizationId, event_id: eventId, client_id: clientId,
-        action: "confirmation_blocked",
-        details: { reason: "origem_lid", origin: originDigits, status: "DESTINATARIO_DIVERGENTE" },
-      });
-      return;
-    }
-    // Fail-safe 3: dígitos insuficientes.
+    // Fail-safe 2: dígitos insuficientes.
     if (originDigits.length < 10) {
       console.error("[pix-ocr][DESTINATARIO_DIVERGENTE] origem inválida", { eventId, clientId, originDigits });
       await supabase.from("auto_settlement_logs").insert({
@@ -387,15 +421,6 @@ Deno.serve(async (req) => {
         }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
       };
 
-      const candidateHasMatchingInvoice = async (clientId: string, amt: number | null) => {
-        if (!amt) return false;
-        const { data: openInvs } = await supabase
-          .from("invoices").select("amount")
-          .eq("organization_id", organization_id)
-          .eq("client_id", clientId).eq("status", "aberto");
-        return (openInvs || []).some((i: any) => Math.abs(Number(i.amount) - Number(amt)) < 0.01);
-      };
-
       const earlyAmount = coerceAmount(ocr?.amount) ?? coerceAmount(manual_amount);
       const names: Array<{ src: string; val: string }> = [];
       if (ocr?.sender_name && String(ocr.sender_name).trim()) {
@@ -411,11 +436,9 @@ Deno.serve(async (req) => {
           const cands = tryFuzzy(n.val);
           console.log("[pix-ocr][fuzzy]", n.src, JSON.stringify({ raw: n.val, top: cands.slice(0, 5).map(c => ({ id: c.c.id, name: c.c.name, score: c.score })), earlyAmount }));
           if (cands.length === 0) continue;
-          const top = cands[0];
-          const tied = cands.filter(x => x.score === top.score);
-          for (const t of tied) {
-            const ok = await candidateHasMatchingInvoice(t.c.id, earlyAmount);
-            console.log("[pix-ocr][invoice-check]", { client_id: t.c.id, name: t.c.name, amount: earlyAmount, ok });
+          for (const t of cands) {
+            const ok = await matchesOpenInvoicesByAmount(supabase, organization_id, t.c.id, earlyAmount);
+            console.log("[pix-ocr][invoice-check]", { client_id: t.c.id, name: t.c.name, amount: earlyAmount, ok, score: t.score });
             if (ok) { client = t.c; matchSource = "fuzzy_name"; break; }
           }
           if (client) break;
@@ -503,27 +526,6 @@ Deno.serve(async (req) => {
     // ===== Reconciliação: match exato (1 fatura) OU combinação exata (subset-sum) =====
     // Garante que pagamentos de múltiplas mensalidades em um único PIX (ex: 44+44+44=132)
     // sejam reconhecidos como combinação válida. Cap de 12 faturas (2^12=4096 combos) por segurança.
-    function findExactCombination(amounts: number[], target: number): number[] | null {
-      if (!target || target <= 0) return null;
-      const cents = (n: number) => Math.round(Number(n) * 100);
-      const t = cents(target);
-      const arr = amounts.map(cents).filter(n => n > 0 && n <= t);
-      const n = Math.min(arr.length, 12);
-      // Single first
-      for (let i = 0; i < n; i++) if (arr[i] === t) return [amounts[i]];
-      // Subset-sum bitmask
-      for (let mask = 1; mask < (1 << n); mask++) {
-        let s = 0;
-        for (let i = 0; i < n; i++) if (mask & (1 << i)) s += arr[i];
-        if (s === t) {
-          const picks: number[] = [];
-          for (let i = 0; i < n; i++) if (mask & (1 << i)) picks.push(amounts[i]);
-          return picks;
-        }
-      }
-      return null;
-    }
-
     let amountMatchesInvoice = false;
     let combinationPicks: number[] | null = null;
     let openInvoicesAmounts: number[] = [];
