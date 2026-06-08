@@ -164,9 +164,13 @@ async function handleEvent(payload: any) {
   // remoteJid is @lid and the OCR can't extract a sender_name from the image.
   const pushName: string = msg?.pushName || msg?.push_name || payload?.data?.pushName || "";
 
+  const documentMime: string = messageObj?.documentMessage?.mimetype || "";
+  const documentFileName: string = messageObj?.documentMessage?.fileName || "";
   const isImage = !!messageObj?.imageMessage || messageType === "imageMessage";
-  const isDocImage = !!messageObj?.documentMessage &&
-    (messageObj.documentMessage.mimetype || "").startsWith("image/");
+  const isDocImage = !!messageObj?.documentMessage && documentMime.startsWith("image/");
+  const isPdf = !!messageObj?.documentMessage && (
+    documentMime === "application/pdf" || documentFileName.toLowerCase().endsWith(".pdf")
+  );
 
   // Decision: forward to PIX-OCR if (a) image with PIX-ish caption or no caption,
   // or (b) text mentioning PIX with an amount.
@@ -187,7 +191,7 @@ async function handleEvent(payload: any) {
 
   let body: any = null;
 
-  if (isImage || isDocImage) {
+  if (isImage || isDocImage || isPdf) {
     // Evolution v2 sometimes embeds base64 directly in the payload — use it first
     const inlineB64 = msg?.message?.base64
       || msg?.base64
@@ -198,20 +202,28 @@ async function handleEvent(payload: any) {
       || (apiUrl && apiKey
         ? await fetchMediaBase64(apiUrl, apiKey, instanceName, { key, message: messageObj })
         : null);
-    if (!base64) {
-      console.error("[wa-webhook] image WITHOUT base64 — Evolution media fetch falhou", {
-        instance: instanceName, phone, messageId, hasApiCreds: !!(apiUrl && apiKey),
-      });
-      return;
-    }
+    const mediaMimeType = documentMime || (isImage ? "image/jpeg" : "application/octet-stream");
+    const fallbackRawText = caption || `Comprovante PIX recebido (${documentFileName || mediaMimeType || "arquivo"})`;
     body = {
       organization_id: instance.organization_id,
       phone,
       push_name: pushName || null,
       image_base64: base64,
+      media_mime_type: mediaMimeType,
+      receipt_hint: true,
       message_id: messageId,
-      raw_text: caption || null,
+      raw_text: fallbackRawText,
     };
+    if (!base64) {
+      console.error("[wa-webhook] media WITHOUT base64 — enviando para revisão manual", {
+        instance: instanceName,
+        phone,
+        messageId,
+        mediaMimeType,
+        hasApiCreds: !!(apiUrl && apiKey),
+      });
+      body.ocr_error = "media_fetch_failed";
+    }
   } else if ((textBody && looksLikePix(textBody))) {
     const amount = extractAmountFromText(textBody);
     if (!amount) return;
