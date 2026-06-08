@@ -203,6 +203,7 @@ async function handleEvent(payload: any) {
         ? await fetchMediaBase64(apiUrl, apiKey, instanceName, { key, message: messageObj })
         : null);
     const mediaMimeType = documentMime || (isImage ? "image/jpeg" : "application/octet-stream");
+    const fallbackRawText = caption || `Comprovante PIX recebido (${documentFileName || mediaMimeType || "arquivo"})`;
     body = {
       organization_id: instance.organization_id,
       phone,
@@ -211,7 +212,7 @@ async function handleEvent(payload: any) {
       media_mime_type: mediaMimeType,
       receipt_hint: true,
       message_id: messageId,
-      raw_text: caption || null,
+      raw_text: fallbackRawText,
     };
     if (!base64) {
       console.error("[wa-webhook] media WITHOUT base64 — enviando para revisão manual", {
