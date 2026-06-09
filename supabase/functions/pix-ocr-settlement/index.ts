@@ -218,15 +218,19 @@ async function sendPaymentConfirmation(
       return;
     }
 
-    // ===== DESTINO IMUTÁVEL = origem do comprovante =====
-    const _d = originDigits;
+    // ===== DESTINO =====
+    // Origem é prioridade; se for LID (>=14 dígitos) o WhatsApp NÃO entrega —
+    // cai para o cadastro do cliente já identificado (matchSource confiável).
+    const isLidOrigin = originDigits.length >= 14;
+    const effectiveDigits = isLidOrigin && cadastroDigits.length >= 10 ? cadastroDigits : originDigits;
+    const _d = effectiveDigits;
     const cleanPhone = (_d.startsWith("55") && (_d.length === 12 || _d.length === 13))
       ? _d
       : ((_d.length === 10 || _d.length === 11) ? "55" + _d : _d);
 
     console.log("[pix-ocr][confirmation-send]", {
       eventId, clientId, origem: originDigits, cadastro: cadastroDigits,
-      destino_final: cleanPhone, divergente,
+      destino_final: cleanPhone, divergente, lid_fallback_cadastro: isLidOrigin && effectiveDigits === cadastroDigits,
     });
 
     const res = await fetch(`${apiUrl}/message/sendText/${instanceName}`, {
