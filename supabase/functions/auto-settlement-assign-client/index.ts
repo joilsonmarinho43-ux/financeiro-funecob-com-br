@@ -107,14 +107,18 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Envia confirmação WhatsApp (não bloqueante)
+    // Envia confirmação WhatsApp + recibo PDF (não bloqueante)
     let whatsapp_sent = false;
     if (ev.amount_detected) {
-      // Trava o contexto: destino = ev.phone (origem do comprovante), nunca cadastro
-      whatsapp_sent = await sendPaymentConfirmation(
-        supabase, ev.organization_id, client_id, Number(ev.amount_detected),
-        ev.phone || "", event_id,
-      );
+      const r = await deliverPaymentConfirmation(supabase, {
+        organizationId: ev.organization_id,
+        eventId: event_id,
+        clientId: client_id,
+        originPhone: ev.phone || "",
+        totalAmount: Number(ev.amount_detected),
+        txid: ev.txid,
+      });
+      whatsapp_sent = r.ok;
     }
 
     return new Response(JSON.stringify({
