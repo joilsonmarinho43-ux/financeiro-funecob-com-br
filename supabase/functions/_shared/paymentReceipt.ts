@@ -95,7 +95,7 @@ export async function generateReceiptPdf(params: {
   // Confirmação
   y -= 30;
   page.drawText("Status:", { x: left, y, size: 10, font, color: gray });
-  page.drawText("CONFIRMADO ✓", { x: left + 50, y, size: 11, font: bold, color: rgb(0.05, 0.5, 0.15) });
+  page.drawText("CONFIRMADO", { x: left + 50, y, size: 11, font: bold, color: rgb(0.05, 0.5, 0.15) });
 
   y -= 25;
   page.drawText("Cliente:", { x: left, y, size: 10, font, color: gray });
