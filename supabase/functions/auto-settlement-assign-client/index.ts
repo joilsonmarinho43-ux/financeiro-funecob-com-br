@@ -1,6 +1,7 @@
 // Vincula manualmente um evento auto_settlement_events a um cliente
 // e dispara o processamento (quitação de faturas + WhatsApp).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { deliverPaymentConfirmation } from "../_shared/paymentReceipt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,125 +12,6 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-async function sendPaymentConfirmation(
-  supabase: any,
-  organizationId: string,
-  clientId: string,
-  amount: number,
-  originPhone: string,
-  eventId: string,
-) {
-  // ===== CONTEXTO TRAVADO =====
-  // Destinatário = SEMPRE o WhatsApp de origem (ev.phone). Nunca o cadastro.
-  try {
-    const originDigits = (originPhone || "").replace(/\D/g, "");
-    if (!originDigits || originDigits.length < 10) {
-      console.error("[assign-client][DESTINATARIO_DIVERGENTE] origem inválida", { eventId, clientId, originDigits });
-      await supabase.from("auto_settlement_logs").insert({
-        organization_id: organizationId, event_id: eventId, client_id: clientId,
-        action: "confirmation_blocked",
-        details: { reason: "origem_invalida", origin: originDigits, status: "DESTINATARIO_DIVERGENTE" },
-      });
-      return false;
-    }
-
-    const { data: client } = await supabase
-      .from("clients").select("name, phone").eq("id", clientId).single();
-    if (!client) return false;
-
-    const cadastroDigits = (client.phone || "").replace(/\D/g, "");
-    const tail = (s: string) => s.slice(-8);
-    const divergente = !!cadastroDigits && tail(cadastroDigits) !== tail(originDigits);
-    if (divergente) {
-      console.warn("[assign-client][DIVERGENCIA_CADASTRO]", { eventId, clientId, cadastro: cadastroDigits, origem: originDigits });
-      await supabase.from("auto_settlement_logs").insert({
-        organization_id: organizationId, event_id: eventId, client_id: clientId,
-        action: "destinatario_divergente_cadastro",
-        details: { cadastro_phone: client.phone, origem_phone: originPhone, decisao: "envia_para_origem", status: "DIVERGENCIA_CADASTRO" },
-      });
-    }
-
-    const { data: settings } = await supabase
-      .from("billing_settings")
-      .select("template_baixa, pix_holder_name")
-      .eq("organization_id", organizationId).maybeSingle();
-
-    const { getOrCreatePortalLink } = await import("../_shared/portalLink.ts");
-    const portalLink = await getOrCreatePortalLink(supabase, clientId, organizationId);
-
-    const valor = Number(amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-    const tpl = settings?.template_baixa
-      || "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏";
-    let message = tpl
-      .replace(/{nome}/g, client.name || "Cliente")
-      .replace(/{valor}/g, valor)
-      .replace(/{data_pagamento}/g, new Date().toLocaleDateString("pt-BR"))
-      .replace(/{titular_pix}/g, settings?.pix_holder_name || "")
-      .replace(/{link_portal}/g, portalLink);
-    if (portalLink && !tpl.includes("{link_portal}") && !message.includes(portalLink)) {
-      message += `\n\n🔗 *Acesse seu portal:* ${portalLink}`;
-    }
-
-    const { data: instance } = await supabase
-      .from("whatsapp_instances").select("*")
-      .eq("organization_id", organizationId).eq("status", "connected")
-      .limit(1).maybeSingle();
-    const { data: gsRows } = await supabase
-      .from("global_settings").select("key, value")
-      .in("key", ["api_host", "global_api_key", "default_instance_name"]);
-    const gs: Record<string, string> = {};
-    (gsRows || []).forEach((s: any) => { gs[s.key] = s.value; });
-    const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
-    const apiKey = instance?.api_key || gs.global_api_key || "";
-    const instanceName = instance?.name || gs.default_instance_name || "";
-    if (!instanceName || !apiUrl || !apiKey) return false;
-
-    // ===== DESTINO =====
-    // Origem é prioridade; se for LID (>=14 dígitos) o WhatsApp NÃO entrega — usa cadastro.
-    const isLidOrigin = originDigits.length >= 14;
-    const effectiveDigits = isLidOrigin && cadastroDigits.length >= 10 ? cadastroDigits : originDigits;
-    const _d = effectiveDigits;
-    const cleanPhone = (_d.startsWith("55") && (_d.length === 12 || _d.length === 13))
-      ? _d
-      : ((_d.length === 10 || _d.length === 11) ? "55" + _d : _d);
-
-    console.log("[assign-client][confirmation-send]", {
-      eventId, clientId, origem: originDigits, cadastro: cadastroDigits,
-      destino_final: cleanPhone, divergente, lid_fallback_cadastro: isLidOrigin && effectiveDigits === cadastroDigits,
-    });
-
-    const res = await fetch(`${apiUrl}/message/sendText/${instanceName}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: apiKey },
-      body: JSON.stringify({ number: cleanPhone, textMessage: { text: message } }),
-    });
-    const ok = res.ok;
-    await supabase.from("whatsapp_messages").insert({
-      organization_id: organizationId,
-      phone: originPhone,
-      message,
-      direction: "outgoing",
-      status: ok ? "sent" : "failed",
-      instance_id: instance?.id || null,
-      client_id: clientId,
-      sent_at: new Date().toISOString(),
-    });
-    await supabase.from("auto_settlement_logs").insert({
-      organization_id: organizationId, event_id: eventId, client_id: clientId,
-      action: "confirmation_sent",
-      details: {
-        payment_event_id: eventId, client_id_baixa: clientId, client_id_destino: clientId,
-        telefone_origem: originPhone, telefone_destino: cleanPhone, telefone_cadastro: client.phone,
-        divergente_cadastro: divergente, status_envio: ok ? "sent" : "failed",
-        timestamp: new Date().toISOString(),
-      },
-    });
-    return ok;
-  } catch (e) {
-    console.error("[assign-client] WA error", e);
-    return false;
-  }
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
