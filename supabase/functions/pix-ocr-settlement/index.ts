@@ -403,13 +403,16 @@ Deno.serve(async (req) => {
     else if (matchSource === "cpf") console.log("[document-match]", { client_id: client?.id });
     else if (matchSource === "fuzzy_name") console.log("[pix-ocr][fuzzy]", { client_id: client?.id, name: client?.name });
 
-    // ===== Regra de decisão =====
-    // - phone/lid_map/cpf : sinal confiável → auto-settle (terceiros permitidos).
-    //   Mantém comportamento atual: RPC consome faturas em ASC e gera créditos/antecipação para sobras.
-    // - fuzzy_name        : exige amountMatchesInvoice (single OU combinação) para auto-settle.
-    const requiresReview = matchSource === "fuzzy_name" && !amountMatchesInvoice;
+    // ===== Regra de decisão (POLÍTICA SEGURA) =====
+    // Auto-settle SOMENTE quando o cliente foi identificado por sinal confiável:
+    //   - phone   : telefone WhatsApp real bate com cadastro
+    //   - lid_map : LID anônimo já vinculado a este cliente em baixa anterior
+    //   - cpf     : CPF extraído do comprovante bate com o cadastro
+    // fuzzy_name (nome do pagador) NUNCA dispara baixa automática — apenas
+    // sugere candidato para revisão manual em Liquidação Automática.
+    const requiresReview = matchSource === "fuzzy_name";
     if (requiresReview) {
-      console.log("[conflict-detected]", { reason: "fuzzy_name_without_invoice_match", client_id: client?.id, amount });
+      console.log("[conflict-detected]", { reason: "fuzzy_name_sempre_revisao", client_id: client?.id, amount });
     }
 
     let eventStatus: string;
@@ -430,7 +433,13 @@ Deno.serve(async (req) => {
     }
     else if (requiresReview) {
       eventStatus = "pendente_revisao";
-      errorMessage = "match por nome sem fatura compatível — possível PIX de terceiro";
+      errorMessage = "candidato sugerido por nome — confirme manualmente (PIX pode ser de terceiro)";
+    }
+    else if (!amountMatchesInvoice) {
+      // Mesmo com telefone/CPF confiável, valor que não casa com nenhuma fatura
+      // (nem combinação) vai pra revisão — evita gerar crédito indevido.
+      eventStatus = "pendente_revisao";
+      errorMessage = "valor pago não corresponde a nenhuma fatura aberta (nem combinação) — revise";
     } else {
       eventStatus = "recebido";
     }
