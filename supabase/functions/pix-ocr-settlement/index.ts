@@ -486,14 +486,10 @@ Deno.serve(async (req) => {
       },
     });
 
-    // Only auto-settle when match is trusted (phone/cpf) OR fuzzy_name + amount matches an open invoice
-    if (client && amount && !requiresReview) {
-      // ===== Auto-learn LID → client mapping on confident match =====
-      // When we identify a client via fuzzy_name + invoice-amount match (or via CPF)
-      // and the incoming "phone" is actually a WhatsApp @lid (14+ digits),
-      // persist the mapping so future PIX from the same contact resolve instantly
-      // by lid_map (no admin click needed).
-      if (looksLikeLid && (matchSource === "fuzzy_name" || matchSource === "cpf")) {
+    // Auto-settle apenas quando match é por sinal confiável (phone/lid_map/cpf) E valor casa
+    if (client && amount && !requiresReview && eventStatus === "recebido") {
+      // Auto-learn LID → client (apenas via CPF, único sinal confiável que vem com LID)
+      if (looksLikeLid && matchSource === "cpf") {
         try {
           await supabase.from("whatsapp_lid_map").upsert({
             organization_id,
