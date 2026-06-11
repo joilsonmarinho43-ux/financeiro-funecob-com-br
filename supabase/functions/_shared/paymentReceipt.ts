@@ -286,11 +286,13 @@ export async function sendWhatsAppWithReceipt(params: {
         method: "POST", headers,
         body: JSON.stringify({
           number: params.destination,
-          mediatype: "document",
-          mimetype: "application/pdf",
-          media: params.pdfUrl,
-          fileName: `${params.receiptNo}.pdf`,
-          caption: "🧾 Seu recibo de pagamento",
+          mediaMessage: {
+            mediatype: "document",
+            mimetype: "application/pdf",
+            media: params.pdfUrl,
+            fileName: `${params.receiptNo}.pdf`,
+            caption: "🧾 Seu recibo de pagamento",
+          },
         }),
       });
       mediaSent = r.ok;
