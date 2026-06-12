@@ -99,7 +99,7 @@ async function runOcr(imageUrl: string): Promise<any> {
         {
           role: "system",
           content:
-            "Você extrai dados de comprovantes PIX brasileiros. Retorne APENAS JSON válido com as chaves: amount (number, valor em reais), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (string com texto bruto extraído). Se não for um comprovante PIX válido, retorne {\"amount\":null}.",
+            "Você extrai dados de comprovantes PIX brasileiros. Retorne APENAS JSON válido com as chaves: amount (number, valor em reais), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (string com TODO o texto bruto visível no comprovante, incluindo cabeçalhos, valores, datas, nomes). Se não for um comprovante PIX válido, retorne {\"amount\":null}.",
         },
         {
           role: "user",
@@ -116,6 +116,45 @@ async function runOcr(imageUrl: string): Promise<any> {
   const data = await res.json();
   const txt = data.choices?.[0]?.message?.content || "{}";
   try { return JSON.parse(txt); } catch { return { raw_text: txt }; }
+}
+
+// 2º passe: foco exclusivo em VALOR, usado quando o 1º passe não detectou.
+async function runOcrAmountOnly(imageUrl: string): Promise<{ amount: number | null; raw_text: string | null }> {
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Você lê comprovantes PIX. Sua ÚNICA tarefa: encontrar o VALOR em reais transferido (geralmente após 'R$', 'Valor', 'Total', 'Você transferiu'). Retorne JSON: {\"amount\": <number>, \"raw_text\": <todo o texto visível>}. Se realmente não houver valor visível, retorne {\"amount\": null, \"raw_text\": <texto>}. NUNCA invente valor.",
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Qual é o valor (R$) deste comprovante? Retorne também todo o texto visível." },
+              { type: "image_url", image_url: { url: imageUrl } },
+            ],
+          },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!res.ok) return { amount: null, raw_text: null };
+    const data = await res.json();
+    const txt = data.choices?.[0]?.message?.content || "{}";
+    const parsed = JSON.parse(txt);
+    return { amount: coerceAmount(parsed.amount), raw_text: parsed.raw_text || null };
+  } catch (e) {
+    console.warn("[pix-ocr] 2nd-pass amount-only failed (non-blocking)", e);
+    return { amount: null, raw_text: null };
+  }
 }
 
 import { deliverPaymentConfirmation } from "../_shared/paymentReceipt.ts";
