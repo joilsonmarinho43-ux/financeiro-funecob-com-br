@@ -55,6 +55,42 @@ async function fetchMediaBase64(
   }
 }
 
+// Resolve @lid → real phone via Evolution API /chat/findContacts.
+// Evolution v2 stores LID-only contacts but also keeps the real wa.net id when known.
+async function resolveLidToPhone(
+  apiUrl: string, apiKey: string, instance: string, lid: string
+): Promise<string | null> {
+  if (!apiUrl || !apiKey || !lid) return null;
+  const base = apiUrl.replace(/\/$/, "");
+  const candidates = [
+    { where: { lid: `${lid}@lid` } },
+    { where: { remoteJid: `${lid}@lid` } },
+    { where: { id: `${lid}@lid` } },
+  ];
+  for (const body of candidates) {
+    try {
+      const res = await fetch(`${base}/chat/findContacts/${instance}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: apiKey },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data?.data || data?.contacts || []);
+      for (const c of list) {
+        const realJid = c?.id || c?.remoteJid || c?.jid;
+        if (typeof realJid === "string" && realJid.endsWith("@s.whatsapp.net")) {
+          const digits = realJid.split("@")[0].replace(/\D/g, "");
+          if (digits.length >= 10 && digits.length <= 13) return digits;
+        }
+      }
+    } catch (e) {
+      console.warn("[wa-webhook] resolveLidToPhone error", e);
+    }
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") {
