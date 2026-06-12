@@ -55,6 +55,42 @@ async function fetchMediaBase64(
   }
 }
 
+// Resolve @lid → real phone via Evolution API /chat/findContacts.
+// Evolution v2 stores LID-only contacts but also keeps the real wa.net id when known.
+async function resolveLidToPhone(
+  apiUrl: string, apiKey: string, instance: string, lid: string
+): Promise<string | null> {
+  if (!apiUrl || !apiKey || !lid) return null;
+  const base = apiUrl.replace(/\/$/, "");
+  const candidates = [
+    { where: { lid: `${lid}@lid` } },
+    { where: { remoteJid: `${lid}@lid` } },
+    { where: { id: `${lid}@lid` } },
+  ];
+  for (const body of candidates) {
+    try {
+      const res = await fetch(`${base}/chat/findContacts/${instance}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: apiKey },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data?.data || data?.contacts || []);
+      for (const c of list) {
+        const realJid = c?.id || c?.remoteJid || c?.jid;
+        if (typeof realJid === "string" && realJid.endsWith("@s.whatsapp.net")) {
+          const digits = realJid.split("@")[0].replace(/\D/g, "");
+          if (digits.length >= 10 && digits.length <= 13) return digits;
+        }
+      }
+    } catch (e) {
+      console.warn("[wa-webhook] resolveLidToPhone error", e);
+    }
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") {
@@ -187,6 +223,42 @@ async function handleEvent(payload: any) {
     (gs || []).forEach((s: any) => { map[s.key] = s.value; });
     apiUrl = apiUrl || map.api_host || "";
     apiKey = apiKey || map.global_api_key || "";
+  }
+
+  // Se só temos o @lid, consultar Evolution API para resolver telefone real.
+  // Salva no whatsapp_lid_map para evitar nova chamada na próxima mensagem.
+  if (isLidOnly && apiUrl && apiKey) {
+    const lidDigits = phone;
+    const resolved = await resolveLidToPhone(apiUrl, apiKey, instanceName, lidDigits);
+    if (resolved) {
+      console.log("[wa-webhook] LID resolvido para telefone real", { lid: lidDigits, phone: resolved });
+      phone = resolved;
+      // tenta vincular LID→cliente automaticamente se o telefone bater com cadastro
+      try {
+        const last10 = resolved.replace(/^55/, "").slice(-10);
+        const { data: cli } = await supabase
+          .from("clients")
+          .select("id, phone")
+          .eq("organization_id", instance.organization_id);
+        const match = (cli || []).find((c: any) => {
+          const p = (c.phone || "").replace(/\D/g, "").replace(/^55/, "");
+          return p && (p === resolved.replace(/^55/, "") || p.slice(-10) === last10);
+        });
+        if (match) {
+          await supabase.from("whatsapp_lid_map").upsert({
+            organization_id: instance.organization_id,
+            lid: lidDigits,
+            client_id: match.id,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "organization_id,lid" });
+          console.log("[wa-webhook] LID auto-vinculado ao cliente", { client_id: match.id });
+        }
+      } catch (e) {
+        console.warn("[wa-webhook] lid auto-link failed (non-blocking)", e);
+      }
+    } else {
+      console.log("[wa-webhook] LID não resolvido pela Evolution API", { lid: lidDigits });
+    }
   }
 
   let body: any = null;
