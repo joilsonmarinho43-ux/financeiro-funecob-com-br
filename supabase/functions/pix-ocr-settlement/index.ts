@@ -251,12 +251,24 @@ Deno.serve(async (req) => {
 
     // OCR
     let ocr: any = { raw_text: raw_text || null };
-    if (image_url || image_base64) {
+    const ocrUrl = image_url || (image_base64 ? `data:image/jpeg;base64,${image_base64}` : null);
+    if (ocrUrl) {
       try {
-        const url = image_url || `data:image/jpeg;base64,${image_base64}`;
-        ocr = await runOcr(url);
+        ocr = await runOcr(ocrUrl);
       } catch (e: any) {
         ocr = { error: String(e?.message || e) };
+      }
+      // 2º passe — quando o 1º passe NÃO conseguiu extrair o valor, tenta de novo
+      // com um prompt focado exclusivamente em valor (Flash, mais barato).
+      if (!coerceAmount(ocr?.amount)) {
+        const second = await runOcrAmountOnly(ocrUrl);
+        if (second.amount) {
+          ocr.amount = second.amount;
+          ocr._second_pass_used = true;
+          console.log("[pix-ocr] 2nd-pass recuperou valor", { amount: second.amount });
+        }
+        // sempre preserva o melhor raw_text disponível para regex downstream
+        if (!ocr?.raw_text && second.raw_text) ocr.raw_text = second.raw_text;
       }
     }
 
