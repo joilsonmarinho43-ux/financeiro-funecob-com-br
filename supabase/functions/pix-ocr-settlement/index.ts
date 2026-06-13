@@ -249,17 +249,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    // OCR
-    let ocr: any = { raw_text: raw_text || null };
+    // OCR — preserva sempre o raw_text vindo do webhook (caption ou fallback),
+    // mesmo quando o OCR falha ou não devolve texto. Sem isso o regex
+    // de extração de valor (downstream) fica sem fonte e o evento vai pra revisão.
+    const webhookRawText: string | null = (typeof raw_text === "string" && raw_text.trim()) ? raw_text : null;
+    let ocr: any = { raw_text: webhookRawText };
     const ocrUrl = image_url || (image_base64 ? `data:image/jpeg;base64,${image_base64}` : null);
     if (ocrUrl) {
+      let ocrResult: any = null;
       try {
-        ocr = await runOcr(ocrUrl);
+        ocrResult = await runOcr(ocrUrl);
       } catch (e: any) {
-        ocr = { error: String(e?.message || e) };
+        console.error("[pix-ocr] 1st-pass failed", e);
+        ocrResult = { error: String(e?.message || e) };
       }
-      // 2º passe — quando o 1º passe NÃO conseguiu extrair o valor, tenta de novo
-      // com um prompt focado exclusivamente em valor (Flash, mais barato).
+      // merge — nunca perde o raw_text do webhook
+      ocr = { ...ocrResult };
+      if (!ocr.raw_text && webhookRawText) ocr.raw_text = webhookRawText;
+
+      // 2º passe — Flash focado em valor quando o 1º passe falhou
       if (!coerceAmount(ocr?.amount)) {
         const second = await runOcrAmountOnly(ocrUrl);
         if (second.amount) {
@@ -267,10 +275,11 @@ Deno.serve(async (req) => {
           ocr._second_pass_used = true;
           console.log("[pix-ocr] 2nd-pass recuperou valor", { amount: second.amount });
         }
-        // sempre preserva o melhor raw_text disponível para regex downstream
-        if (!ocr?.raw_text && second.raw_text) ocr.raw_text = second.raw_text;
+        if (!ocr.raw_text && second.raw_text) ocr.raw_text = second.raw_text;
       }
     }
+    // Garantia final: nunca devolve raw_text vazio se o webhook mandou algo
+    if (!ocr.raw_text && webhookRawText) ocr.raw_text = webhookRawText;
 
     // ===== Reject non-receipt content (raffles, ads, etc) BEFORE creating event =====
     const combinedText = `${ocr?.raw_text || ""} ${raw_text || ""}`.toLowerCase();
