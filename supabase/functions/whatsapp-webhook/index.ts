@@ -304,6 +304,21 @@ async function handleEvent(payload: any) {
       }
     } else {
       console.log("[wa-webhook] LID não resolvido pela Evolution API", { lid: lidDigits });
+      try {
+        await supabase.from("auto_settlement_logs").insert({
+          organization_id: instance.organization_id,
+          action: "lid_resolve_failed",
+          details: {
+            lid: lidDigits,
+            instance: instanceName,
+            message_id: messageId,
+            push_name: pushName || null,
+            endpoints_tried: ["findContacts", "whatsappNumbers", "fetchProfile"],
+          },
+        });
+      } catch (e) {
+        console.warn("[wa-webhook] failed to log lid_resolve_failed", e);
+      }
     }
   }
 
