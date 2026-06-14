@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Zap, RefreshCw, Eye, Copy, CheckCircle2, Webhook, Link2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
@@ -278,7 +278,10 @@ export default function AutoSettlement() {
 
         <Dialog open={!!selectedEvent} onOpenChange={(o) => !o && setSelectedEvent(null)}>
           <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader><DialogTitle>Auditoria do Evento</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Auditoria do Evento</DialogTitle>
+              <DialogDescription>Histórico completo de ações executadas neste evento de liquidação.</DialogDescription>
+            </DialogHeader>
             <div className="space-y-2">
               {logs.map((l: any) => (
                 <div key={l.id} className="text-xs border rounded p-2">
@@ -298,6 +301,7 @@ export default function AutoSettlement() {
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Vincular comprovante a um cliente</DialogTitle>
+              <DialogDescription>Busque e selecione o cliente para conciliar este comprovante PIX e disparar a baixa automática.</DialogDescription>
             </DialogHeader>
             {linkEvent && (
               <div className="space-y-3">
