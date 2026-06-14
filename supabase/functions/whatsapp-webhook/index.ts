@@ -67,6 +67,22 @@ async function resolveLidToPhone(
     { where: { remoteJid: `${lid}@lid` } },
     { where: { id: `${lid}@lid` } },
   ];
+  const tryExtractFromList = (list: any[]): string | null => {
+    for (const c of list || []) {
+      const fields = [c?.id, c?.remoteJid, c?.jid, c?.wuid, c?.number, c?.phoneNumber];
+      for (const f of fields) {
+        if (typeof f !== "string") continue;
+        const jid = f.includes("@") ? f : `${f}@s.whatsapp.net`;
+        if (jid.endsWith("@s.whatsapp.net")) {
+          const digits = jid.split("@")[0].replace(/\D/g, "");
+          if (digits.length >= 10 && digits.length <= 13) return digits;
+        }
+      }
+    }
+    return null;
+  };
+
+  // 1) findContacts (multiple where shapes)
   for (const body of candidates) {
     try {
       const res = await fetch(`${base}/chat/findContacts/${instance}`, {
@@ -77,17 +93,47 @@ async function resolveLidToPhone(
       if (!res.ok) continue;
       const data = await res.json();
       const list = Array.isArray(data) ? data : (data?.data || data?.contacts || []);
-      for (const c of list) {
-        const realJid = c?.id || c?.remoteJid || c?.jid;
-        if (typeof realJid === "string" && realJid.endsWith("@s.whatsapp.net")) {
-          const digits = realJid.split("@")[0].replace(/\D/g, "");
-          if (digits.length >= 10 && digits.length <= 13) return digits;
-        }
-      }
+      const found = tryExtractFromList(list);
+      if (found) return found;
     } catch (e) {
-      console.warn("[wa-webhook] resolveLidToPhone error", e);
+      console.warn("[wa-webhook] findContacts error", e);
     }
   }
+
+  // 2) whatsappNumbers — checa se o LID resolve para um JID real
+  try {
+    const res = await fetch(`${base}/chat/whatsappNumbers/${instance}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify({ numbers: [lid, `${lid}@lid`] }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data?.data || []);
+      const found = tryExtractFromList(list);
+      if (found) return found;
+    }
+  } catch (e) {
+    console.warn("[wa-webhook] whatsappNumbers error", e);
+  }
+
+  // 3) fetchProfile — alguns builds devolvem wuid real
+  for (const num of [`${lid}@lid`, lid]) {
+    try {
+      const res = await fetch(`${base}/chat/fetchProfile/${instance}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: apiKey },
+        body: JSON.stringify({ number: num }),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const found = tryExtractFromList([data, data?.data, data?.profile].filter(Boolean));
+      if (found) return found;
+    } catch (e) {
+      console.warn("[wa-webhook] fetchProfile error", e);
+    }
+  }
+
   return null;
 }
 
@@ -258,6 +304,21 @@ async function handleEvent(payload: any) {
       }
     } else {
       console.log("[wa-webhook] LID não resolvido pela Evolution API", { lid: lidDigits });
+      try {
+        await supabase.from("auto_settlement_logs").insert({
+          organization_id: instance.organization_id,
+          action: "lid_resolve_failed",
+          details: {
+            lid: lidDigits,
+            instance: instanceName,
+            message_id: messageId,
+            push_name: pushName || null,
+            endpoints_tried: ["findContacts", "whatsappNumbers", "fetchProfile"],
+          },
+        });
+      } catch (e) {
+        console.warn("[wa-webhook] failed to log lid_resolve_failed", e);
+      }
     }
   }
 
