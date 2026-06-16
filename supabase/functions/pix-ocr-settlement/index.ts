@@ -467,15 +467,26 @@ Deno.serve(async (req) => {
     else if (matchSource === "fuzzy_name") console.log("[pix-ocr][fuzzy]", { client_id: client?.id, name: client?.name });
 
     // ===== Regra de decisão (POLÍTICA SEGURA) =====
-    // Auto-settle SOMENTE quando o cliente foi identificado por sinal confiável:
+    // Auto-settle quando:
     //   - phone   : telefone WhatsApp real bate com cadastro
     //   - lid_map : LID anônimo já vinculado a este cliente em baixa anterior
     //   - cpf     : CPF extraído do comprovante bate com o cadastro
-    // fuzzy_name (nome do pagador) NUNCA dispara baixa automática — apenas
-    // sugere candidato para revisão manual em Liquidação Automática.
-    const requiresReview = matchSource === "fuzzy_name";
+    //   - fuzzy_name via push_name + valor exato único na org (cliente envia
+    //     o comprovante do próprio número/contato cadastrado no WhatsApp do admin
+    //     e o valor casa com 1 fatura aberta sem ambiguidade entre clientes).
+    let safeFuzzy = false;
+    if (matchSource === "fuzzy_name" && fuzzyNameSource === "push_name" && amountMatchesInvoice && amount) {
+      // Garantir unicidade: nenhum outro cliente da org tem fatura aberta com o MESMO valor exato
+      const { data: ambig } = await supabase
+        .from("invoices").select("client_id")
+        .eq("organization_id", organization_id).eq("status", "aberto").eq("amount", amount);
+      const distinct = Array.from(new Set((ambig || []).map((i: any) => i.client_id)));
+      safeFuzzy = distinct.length === 1 && distinct[0] === client?.id;
+      console.log("[fuzzy-auto-settle-check]", { client_id: client?.id, amount, distinct_clients: distinct.length, safe: safeFuzzy });
+    }
+    const requiresReview = matchSource === "fuzzy_name" && !safeFuzzy;
     if (requiresReview) {
-      console.log("[conflict-detected]", { reason: "fuzzy_name_sempre_revisao", client_id: client?.id, amount });
+      console.log("[conflict-detected]", { reason: "fuzzy_name_revisao", client_id: client?.id, amount, fuzzyNameSource });
     }
 
     let eventStatus: string;
