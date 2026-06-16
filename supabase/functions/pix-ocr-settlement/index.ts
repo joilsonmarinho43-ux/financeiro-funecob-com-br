@@ -535,6 +535,8 @@ Deno.serve(async (req) => {
           ...ocr,
           push_name: push_name || null,
           _match_source: matchSource,
+          _fuzzy_name_source: fuzzyNameSource,
+          _safe_fuzzy: safeFuzzy,
           _amount_matches_invoice: amountMatchesInvoice,
           _combination_picks: combinationPicks,
         },
@@ -554,6 +556,8 @@ Deno.serve(async (req) => {
       details: {
         phone, amount, txid, client_found: !!client,
         match_source: matchSource,
+        fuzzy_name_source: fuzzyNameSource,
+        safe_fuzzy: safeFuzzy,
         amount_matches_invoice: amountMatchesInvoice,
         combination_picks: combinationPicks,
         requires_review: requiresReview,
