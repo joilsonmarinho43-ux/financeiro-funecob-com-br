@@ -230,6 +230,9 @@ Deno.serve(async (req) => {
       return cv.some((v) => incomingVariants.includes(v));
     });
     let matchSource: "phone" | "lid_map" | "cpf" | "fuzzy_name" | null = client ? "phone" : null;
+    // Sub-fonte do fuzzy_name: push_name (WhatsApp do remetente = cliente, sinal forte)
+    // vs sender_name (nome lido do comprovante — pode ser terceiro pagador).
+    let fuzzyNameSource: "push_name" | "sender_name" | "value_fallback" | null = null;
 
     // LID resolver: Evolution v2 may send only @lid (14-16 digit anonymized id).
     // We keep a persistent (org, lid) → client map populated when an admin
@@ -352,7 +355,7 @@ Deno.serve(async (req) => {
           for (const t of cands) {
             const ok = await matchesOpenInvoicesByAmount(supabase, organization_id, t.c.id, earlyAmount);
             console.log("[pix-ocr][invoice-check]", { client_id: t.c.id, name: t.c.name, amount: earlyAmount, ok, score: t.score });
-            if (ok) { client = t.c; matchSource = "fuzzy_name"; break; }
+            if (ok) { client = t.c; matchSource = "fuzzy_name"; fuzzyNameSource = n.src as any; break; }
           }
           if (client) break;
         }
@@ -360,9 +363,9 @@ Deno.serve(async (req) => {
         if (!client) {
           for (const n of names) {
             const cands = tryFuzzy(n.val);
-            if (cands.length === 1) { client = cands[0].c; matchSource = "fuzzy_name"; break; }
+            if (cands.length === 1) { client = cands[0].c; matchSource = "fuzzy_name"; fuzzyNameSource = n.src as any; break; }
             if (cands.length > 1 && cands[0].score > cands[1].score) {
-              client = cands[0].c; matchSource = "fuzzy_name"; break;
+              client = cands[0].c; matchSource = "fuzzy_name"; fuzzyNameSource = n.src as any; break;
             }
           }
         }
@@ -387,7 +390,7 @@ Deno.serve(async (req) => {
             const candTokens = new Set(norm(cand.name || "").split(/\s+/).filter(t => t.length >= 4));
             const hasOverlap = names.some(n => norm(n.val).split(/\s+/).filter(t => t.length >= 4).some(t => candTokens.has(t)));
             if (hasOverlap) {
-              client = cand; matchSource = "fuzzy_name";
+              client = cand; matchSource = "fuzzy_name"; fuzzyNameSource = "value_fallback";
               console.log("[value-fallback] matched", { client_id: cand.id, name: cand.name });
             }
           }
@@ -464,15 +467,26 @@ Deno.serve(async (req) => {
     else if (matchSource === "fuzzy_name") console.log("[pix-ocr][fuzzy]", { client_id: client?.id, name: client?.name });
 
     // ===== Regra de decisão (POLÍTICA SEGURA) =====
-    // Auto-settle SOMENTE quando o cliente foi identificado por sinal confiável:
+    // Auto-settle quando:
     //   - phone   : telefone WhatsApp real bate com cadastro
     //   - lid_map : LID anônimo já vinculado a este cliente em baixa anterior
     //   - cpf     : CPF extraído do comprovante bate com o cadastro
-    // fuzzy_name (nome do pagador) NUNCA dispara baixa automática — apenas
-    // sugere candidato para revisão manual em Liquidação Automática.
-    const requiresReview = matchSource === "fuzzy_name";
+    //   - fuzzy_name via push_name + valor exato único na org (cliente envia
+    //     o comprovante do próprio número/contato cadastrado no WhatsApp do admin
+    //     e o valor casa com 1 fatura aberta sem ambiguidade entre clientes).
+    let safeFuzzy = false;
+    if (matchSource === "fuzzy_name" && fuzzyNameSource === "push_name" && amountMatchesInvoice && amount) {
+      // Garantir unicidade: nenhum outro cliente da org tem fatura aberta com o MESMO valor exato
+      const { data: ambig } = await supabase
+        .from("invoices").select("client_id")
+        .eq("organization_id", organization_id).eq("status", "aberto").eq("amount", amount);
+      const distinct = Array.from(new Set((ambig || []).map((i: any) => i.client_id)));
+      safeFuzzy = distinct.length === 1 && distinct[0] === client?.id;
+      console.log("[fuzzy-auto-settle-check]", { client_id: client?.id, amount, distinct_clients: distinct.length, safe: safeFuzzy });
+    }
+    const requiresReview = matchSource === "fuzzy_name" && !safeFuzzy;
     if (requiresReview) {
-      console.log("[conflict-detected]", { reason: "fuzzy_name_sempre_revisao", client_id: client?.id, amount });
+      console.log("[conflict-detected]", { reason: "fuzzy_name_revisao", client_id: client?.id, amount, fuzzyNameSource });
     }
 
     let eventStatus: string;
@@ -521,6 +535,8 @@ Deno.serve(async (req) => {
           ...ocr,
           push_name: push_name || null,
           _match_source: matchSource,
+          _fuzzy_name_source: fuzzyNameSource,
+          _safe_fuzzy: safeFuzzy,
           _amount_matches_invoice: amountMatchesInvoice,
           _combination_picks: combinationPicks,
         },
@@ -540,6 +556,8 @@ Deno.serve(async (req) => {
       details: {
         phone, amount, txid, client_found: !!client,
         match_source: matchSource,
+        fuzzy_name_source: fuzzyNameSource,
+        safe_fuzzy: safeFuzzy,
         amount_matches_invoice: amountMatchesInvoice,
         combination_picks: combinationPicks,
         requires_review: requiresReview,
@@ -548,8 +566,10 @@ Deno.serve(async (req) => {
 
     // Auto-settle apenas quando match é por sinal confiável (phone/lid_map/cpf) E valor casa
     if (client && amount && !requiresReview && eventStatus === "recebido") {
-      // Auto-learn LID → client (apenas via CPF, único sinal confiável que vem com LID)
-      if (looksLikeLid && matchSource === "cpf") {
+      // Auto-learn LID → client em sinais confiáveis (CPF) e em fuzzy seguro
+      // (push_name + valor único). Próximas mensagens do mesmo LID viram match
+      // direto (`lid_map`) sem depender de OCR/nome.
+      if (looksLikeLid && (matchSource === "cpf" || safeFuzzy)) {
         try {
           await supabase.from("whatsapp_lid_map").upsert({
             organization_id,
