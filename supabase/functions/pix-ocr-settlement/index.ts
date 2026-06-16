@@ -230,6 +230,9 @@ Deno.serve(async (req) => {
       return cv.some((v) => incomingVariants.includes(v));
     });
     let matchSource: "phone" | "lid_map" | "cpf" | "fuzzy_name" | null = client ? "phone" : null;
+    // Sub-fonte do fuzzy_name: push_name (WhatsApp do remetente = cliente, sinal forte)
+    // vs sender_name (nome lido do comprovante — pode ser terceiro pagador).
+    let fuzzyNameSource: "push_name" | "sender_name" | "value_fallback" | null = null;
 
     // LID resolver: Evolution v2 may send only @lid (14-16 digit anonymized id).
     // We keep a persistent (org, lid) → client map populated when an admin
