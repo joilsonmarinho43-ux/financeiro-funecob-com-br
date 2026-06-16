@@ -355,7 +355,7 @@ Deno.serve(async (req) => {
           for (const t of cands) {
             const ok = await matchesOpenInvoicesByAmount(supabase, organization_id, t.c.id, earlyAmount);
             console.log("[pix-ocr][invoice-check]", { client_id: t.c.id, name: t.c.name, amount: earlyAmount, ok, score: t.score });
-            if (ok) { client = t.c; matchSource = "fuzzy_name"; break; }
+            if (ok) { client = t.c; matchSource = "fuzzy_name"; fuzzyNameSource = n.src as any; break; }
           }
           if (client) break;
         }
@@ -363,9 +363,9 @@ Deno.serve(async (req) => {
         if (!client) {
           for (const n of names) {
             const cands = tryFuzzy(n.val);
-            if (cands.length === 1) { client = cands[0].c; matchSource = "fuzzy_name"; break; }
+            if (cands.length === 1) { client = cands[0].c; matchSource = "fuzzy_name"; fuzzyNameSource = n.src as any; break; }
             if (cands.length > 1 && cands[0].score > cands[1].score) {
-              client = cands[0].c; matchSource = "fuzzy_name"; break;
+              client = cands[0].c; matchSource = "fuzzy_name"; fuzzyNameSource = n.src as any; break;
             }
           }
         }
