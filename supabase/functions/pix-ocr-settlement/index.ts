@@ -562,8 +562,10 @@ Deno.serve(async (req) => {
 
     // Auto-settle apenas quando match é por sinal confiável (phone/lid_map/cpf) E valor casa
     if (client && amount && !requiresReview && eventStatus === "recebido") {
-      // Auto-learn LID → client (apenas via CPF, único sinal confiável que vem com LID)
-      if (looksLikeLid && matchSource === "cpf") {
+      // Auto-learn LID → client em sinais confiáveis (CPF) e em fuzzy seguro
+      // (push_name + valor único). Próximas mensagens do mesmo LID viram match
+      // direto (`lid_map`) sem depender de OCR/nome.
+      if (looksLikeLid && (matchSource === "cpf" || safeFuzzy)) {
         try {
           await supabase.from("whatsapp_lid_map").upsert({
             organization_id,
