@@ -390,7 +390,7 @@ Deno.serve(async (req) => {
             const candTokens = new Set(norm(cand.name || "").split(/\s+/).filter(t => t.length >= 4));
             const hasOverlap = names.some(n => norm(n.val).split(/\s+/).filter(t => t.length >= 4).some(t => candTokens.has(t)));
             if (hasOverlap) {
-              client = cand; matchSource = "fuzzy_name";
+              client = cand; matchSource = "fuzzy_name"; fuzzyNameSource = "value_fallback";
               console.log("[value-fallback] matched", { client_id: cand.id, name: cand.name });
             }
           }
