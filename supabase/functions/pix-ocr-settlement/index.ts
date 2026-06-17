@@ -86,7 +86,21 @@ async function matchesOpenInvoicesByAmount(
   return !!findExactCombination(amounts, Number(amount));
 }
 
-async function runOcr(imageUrl: string): Promise<any> {
+// Monta o bloco multimodal correto: imagem usa image_url, PDF usa file.
+// Sem isso, comprovantes em PDF chegam ao Gemini como "imagem JPEG"
+// e o OCR falha silenciosamente (1º passe vazio, baixa não acontece).
+function buildMediaBlock(dataUrl: string, mimeType: string) {
+  const isPdf = /^application\/pdf/i.test(mimeType) || /^data:application\/pdf/i.test(dataUrl);
+  if (isPdf) {
+    return {
+      type: "file",
+      file: { filename: "comprovante.pdf", file_data: dataUrl },
+    };
+  }
+  return { type: "image_url", image_url: { url: dataUrl } };
+}
+
+async function runOcr(mediaUrl: string, mimeType: string): Promise<any> {
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -99,13 +113,13 @@ async function runOcr(imageUrl: string): Promise<any> {
         {
           role: "system",
           content:
-            "Você extrai dados de comprovantes PIX brasileiros. Retorne APENAS JSON válido com as chaves: amount (number, valor em reais), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (string com TODO o texto bruto visível no comprovante, incluindo cabeçalhos, valores, datas, nomes). Se não for um comprovante PIX válido, retorne {\"amount\":null}.",
+            "Você extrai dados de comprovantes PIX brasileiros (imagem OU PDF). Retorne APENAS JSON válido com as chaves: amount (number, valor em reais), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (string com TODO o texto bruto visível no comprovante, incluindo cabeçalhos, valores, datas, nomes). Se não for um comprovante PIX válido, retorne {\"amount\":null}.",
         },
         {
           role: "user",
           content: [
             { type: "text", text: "Extraia os dados deste comprovante PIX." },
-            { type: "image_url", image_url: { url: imageUrl } },
+            buildMediaBlock(mediaUrl, mimeType),
           ],
         },
       ],
@@ -119,7 +133,7 @@ async function runOcr(imageUrl: string): Promise<any> {
 }
 
 // 2º passe: foco exclusivo em VALOR, usado quando o 1º passe não detectou.
-async function runOcrAmountOnly(imageUrl: string): Promise<{ amount: number | null; raw_text: string | null }> {
+async function runOcrAmountOnly(mediaUrl: string, mimeType: string): Promise<{ amount: number | null; raw_text: string | null }> {
   try {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -133,13 +147,13 @@ async function runOcrAmountOnly(imageUrl: string): Promise<{ amount: number | nu
           {
             role: "system",
             content:
-              "Você lê comprovantes PIX. Sua ÚNICA tarefa: encontrar o VALOR em reais transferido (geralmente após 'R$', 'Valor', 'Total', 'Você transferiu'). Retorne JSON: {\"amount\": <number>, \"raw_text\": <todo o texto visível>}. Se realmente não houver valor visível, retorne {\"amount\": null, \"raw_text\": <texto>}. NUNCA invente valor.",
+              "Você lê comprovantes PIX (imagem OU PDF). Sua ÚNICA tarefa: encontrar o VALOR em reais transferido (geralmente após 'R$', 'Valor', 'Total', 'Você transferiu'). Retorne JSON: {\"amount\": <number>, \"raw_text\": <todo o texto visível>}. Se realmente não houver valor visível, retorne {\"amount\": null, \"raw_text\": <texto>}. NUNCA invente valor.",
           },
           {
             role: "user",
             content: [
               { type: "text", text: "Qual é o valor (R$) deste comprovante? Retorne também todo o texto visível." },
-              { type: "image_url", image_url: { url: imageUrl } },
+              buildMediaBlock(mediaUrl, mimeType),
             ],
           },
         ],
