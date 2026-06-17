@@ -232,9 +232,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ===== Client identification — strict priority: phone > LID map > CPF > name(+amount) =====
-    // PIX can be sent by third parties, so name match alone is unsafe.
-    // Phone (WhatsApp) is the only fully trusted signal.
+    // ===== Identificação do cliente — PRIORIDADE ABSOLUTA DO TELEFONE =====
+    // Regra de negócio: mesmo que o PIX tenha sido pago por TERCEIRO
+    // (pai, esposa, amigo — nome diferente no comprovante), se o NÚMERO
+    // do WhatsApp que enviou está cadastrado em algum cliente, a baixa
+    // é feita NESSE cliente. Nome do comprovante NÃO sobrescreve telefone.
     const incomingVariants = phoneVariants(phone);
     const { data: clients } = await supabase
       .from("clients").select("id, phone, name, document")
@@ -244,6 +246,13 @@ Deno.serve(async (req) => {
       return cv.some((v) => incomingVariants.includes(v));
     });
     let matchSource: "phone" | "lid_map" | "cpf" | "fuzzy_name" | null = client ? "phone" : null;
+    if (matchSource === "phone") {
+      console.log("[pix-ocr] PHONE MATCH (prioridade absoluta)", {
+        client_id: client!.id, client_name: client!.name,
+        whatsapp_phone: phone, push_name, message_id,
+        nota: "ignorando nome do comprovante (PIX de terceiro é aceito)",
+      });
+    }
     // Sub-fonte do fuzzy_name: push_name (WhatsApp do remetente = cliente, sinal forte)
     // vs sender_name (nome lido do comprovante — pode ser terceiro pagador).
     let fuzzyNameSource: "push_name" | "sender_name" | "value_fallback" | null = null;
