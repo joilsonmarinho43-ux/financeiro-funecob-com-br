@@ -86,7 +86,21 @@ async function matchesOpenInvoicesByAmount(
   return !!findExactCombination(amounts, Number(amount));
 }
 
-async function runOcr(imageUrl: string): Promise<any> {
+// Monta o bloco multimodal correto: imagem usa image_url, PDF usa file.
+// Sem isso, comprovantes em PDF chegam ao Gemini como "imagem JPEG"
+// e o OCR falha silenciosamente (1º passe vazio, baixa não acontece).
+function buildMediaBlock(dataUrl: string, mimeType: string) {
+  const isPdf = /^application\/pdf/i.test(mimeType) || /^data:application\/pdf/i.test(dataUrl);
+  if (isPdf) {
+    return {
+      type: "file",
+      file: { filename: "comprovante.pdf", file_data: dataUrl },
+    };
+  }
+  return { type: "image_url", image_url: { url: dataUrl } };
+}
+
+async function runOcr(mediaUrl: string, mimeType: string): Promise<any> {
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -99,13 +113,13 @@ async function runOcr(imageUrl: string): Promise<any> {
         {
           role: "system",
           content:
-            "Você extrai dados de comprovantes PIX brasileiros. Retorne APENAS JSON válido com as chaves: amount (number, valor em reais), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (string com TODO o texto bruto visível no comprovante, incluindo cabeçalhos, valores, datas, nomes). Se não for um comprovante PIX válido, retorne {\"amount\":null}.",
+            "Você extrai dados de comprovantes PIX brasileiros (imagem OU PDF). Retorne APENAS JSON válido com as chaves: amount (number, valor em reais), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (string com TODO o texto bruto visível no comprovante, incluindo cabeçalhos, valores, datas, nomes). Se não for um comprovante PIX válido, retorne {\"amount\":null}.",
         },
         {
           role: "user",
           content: [
             { type: "text", text: "Extraia os dados deste comprovante PIX." },
-            { type: "image_url", image_url: { url: imageUrl } },
+            buildMediaBlock(mediaUrl, mimeType),
           ],
         },
       ],
@@ -119,7 +133,7 @@ async function runOcr(imageUrl: string): Promise<any> {
 }
 
 // 2º passe: foco exclusivo em VALOR, usado quando o 1º passe não detectou.
-async function runOcrAmountOnly(imageUrl: string): Promise<{ amount: number | null; raw_text: string | null }> {
+async function runOcrAmountOnly(mediaUrl: string, mimeType: string): Promise<{ amount: number | null; raw_text: string | null }> {
   try {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -133,13 +147,13 @@ async function runOcrAmountOnly(imageUrl: string): Promise<{ amount: number | nu
           {
             role: "system",
             content:
-              "Você lê comprovantes PIX. Sua ÚNICA tarefa: encontrar o VALOR em reais transferido (geralmente após 'R$', 'Valor', 'Total', 'Você transferiu'). Retorne JSON: {\"amount\": <number>, \"raw_text\": <todo o texto visível>}. Se realmente não houver valor visível, retorne {\"amount\": null, \"raw_text\": <texto>}. NUNCA invente valor.",
+              "Você lê comprovantes PIX (imagem OU PDF). Sua ÚNICA tarefa: encontrar o VALOR em reais transferido (geralmente após 'R$', 'Valor', 'Total', 'Você transferiu'). Retorne JSON: {\"amount\": <number>, \"raw_text\": <todo o texto visível>}. Se realmente não houver valor visível, retorne {\"amount\": null, \"raw_text\": <texto>}. NUNCA invente valor.",
           },
           {
             role: "user",
             content: [
               { type: "text", text: "Qual é o valor (R$) deste comprovante? Retorne também todo o texto visível." },
-              { type: "image_url", image_url: { url: imageUrl } },
+              buildMediaBlock(mediaUrl, mimeType),
             ],
           },
         ],
@@ -201,7 +215,7 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
     const body = await req.json();
-    const { organization_id, phone, push_name, image_url, image_base64, message_id, raw_text, manual_amount, manual_txid } = body;
+    const { organization_id, phone, push_name, image_url, image_base64, media_mime_type, message_id, raw_text, manual_amount, manual_txid } = body;
 
     if (!organization_id || !phone || (!image_url && !image_base64 && !raw_text && manual_amount == null)) {
       return new Response(JSON.stringify({ error: "missing organization_id, phone, or image/raw_text/manual_amount" }), {
@@ -218,9 +232,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ===== Client identification — strict priority: phone > LID map > CPF > name(+amount) =====
-    // PIX can be sent by third parties, so name match alone is unsafe.
-    // Phone (WhatsApp) is the only fully trusted signal.
+    // ===== Identificação do cliente — PRIORIDADE ABSOLUTA DO TELEFONE =====
+    // Regra de negócio: mesmo que o PIX tenha sido pago por TERCEIRO
+    // (pai, esposa, amigo — nome diferente no comprovante), se o NÚMERO
+    // do WhatsApp que enviou está cadastrado em algum cliente, a baixa
+    // é feita NESSE cliente. Nome do comprovante NÃO sobrescreve telefone.
     const incomingVariants = phoneVariants(phone);
     const { data: clients } = await supabase
       .from("clients").select("id, phone, name, document")
@@ -230,6 +246,13 @@ Deno.serve(async (req) => {
       return cv.some((v) => incomingVariants.includes(v));
     });
     let matchSource: "phone" | "lid_map" | "cpf" | "fuzzy_name" | null = client ? "phone" : null;
+    if (matchSource === "phone") {
+      console.log("[pix-ocr] PHONE MATCH (prioridade absoluta)", {
+        client_id: client!.id, client_name: client!.name,
+        whatsapp_phone: phone, push_name, message_id,
+        nota: "ignorando nome do comprovante (PIX de terceiro é aceito)",
+      });
+    }
     // Sub-fonte do fuzzy_name: push_name (WhatsApp do remetente = cliente, sinal forte)
     // vs sender_name (nome lido do comprovante — pode ser terceiro pagador).
     let fuzzyNameSource: "push_name" | "sender_name" | "value_fallback" | null = null;
@@ -257,11 +280,14 @@ Deno.serve(async (req) => {
     // de extração de valor (downstream) fica sem fonte e o evento vai pra revisão.
     const webhookRawText: string | null = (typeof raw_text === "string" && raw_text.trim()) ? raw_text : null;
     let ocr: any = { raw_text: webhookRawText };
-    const ocrUrl = image_url || (image_base64 ? `data:image/jpeg;base64,${image_base64}` : null);
+    // Mime real do anexo (webhook sabe se é image/jpeg, image/png ou application/pdf).
+    // Sem isso, PDF era enviado como "data:image/jpeg;..." e o OCR retornava vazio.
+    const resolvedMime = (typeof media_mime_type === "string" && media_mime_type) || "image/jpeg";
+    const ocrUrl = image_url || (image_base64 ? `data:${resolvedMime};base64,${image_base64}` : null);
     if (ocrUrl) {
       let ocrResult: any = null;
       try {
-        ocrResult = await runOcr(ocrUrl);
+        ocrResult = await runOcr(ocrUrl, resolvedMime);
       } catch (e: any) {
         console.error("[pix-ocr] 1st-pass failed", e);
         ocrResult = { error: String(e?.message || e) };
@@ -272,7 +298,7 @@ Deno.serve(async (req) => {
 
       // 2º passe — Flash focado em valor quando o 1º passe falhou
       if (!coerceAmount(ocr?.amount)) {
-        const second = await runOcrAmountOnly(ocrUrl);
+        const second = await runOcrAmountOnly(ocrUrl, resolvedMime);
         if (second.amount) {
           ocr.amount = second.amount;
           ocr._second_pass_used = true;
