@@ -271,11 +271,14 @@ Deno.serve(async (req) => {
     // de extração de valor (downstream) fica sem fonte e o evento vai pra revisão.
     const webhookRawText: string | null = (typeof raw_text === "string" && raw_text.trim()) ? raw_text : null;
     let ocr: any = { raw_text: webhookRawText };
-    const ocrUrl = image_url || (image_base64 ? `data:image/jpeg;base64,${image_base64}` : null);
+    // Mime real do anexo (webhook sabe se é image/jpeg, image/png ou application/pdf).
+    // Sem isso, PDF era enviado como "data:image/jpeg;..." e o OCR retornava vazio.
+    const resolvedMime = (typeof media_mime_type === "string" && media_mime_type) || "image/jpeg";
+    const ocrUrl = image_url || (image_base64 ? `data:${resolvedMime};base64,${image_base64}` : null);
     if (ocrUrl) {
       let ocrResult: any = null;
       try {
-        ocrResult = await runOcr(ocrUrl);
+        ocrResult = await runOcr(ocrUrl, resolvedMime);
       } catch (e: any) {
         console.error("[pix-ocr] 1st-pass failed", e);
         ocrResult = { error: String(e?.message || e) };
@@ -286,7 +289,7 @@ Deno.serve(async (req) => {
 
       // 2º passe — Flash focado em valor quando o 1º passe falhou
       if (!coerceAmount(ocr?.amount)) {
-        const second = await runOcrAmountOnly(ocrUrl);
+        const second = await runOcrAmountOnly(ocrUrl, resolvedMime);
         if (second.amount) {
           ocr.amount = second.amount;
           ocr._second_pass_used = true;
