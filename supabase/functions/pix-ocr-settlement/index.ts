@@ -466,51 +466,25 @@ Deno.serve(async (req) => {
     else if (matchSource === "cpf") console.log("[document-match]", { client_id: client?.id });
     else if (matchSource === "fuzzy_name") console.log("[pix-ocr][fuzzy]", { client_id: client?.id, name: client?.name });
 
-    // ===== Regra de decisão (POLÍTICA SEGURA) =====
-    // Auto-settle quando:
-    //   - phone   : telefone WhatsApp real bate com cadastro
-    //   - lid_map : LID anônimo já vinculado a este cliente em baixa anterior
-    //   - cpf     : CPF extraído do comprovante bate com o cadastro
-    //   - fuzzy_name via push_name + valor exato único na org (cliente envia
-    //     o comprovante do próprio número/contato cadastrado no WhatsApp do admin
-    //     e o valor casa com 1 fatura aberta sem ambiguidade entre clientes).
-    let safeFuzzy = false;
-    if (matchSource === "fuzzy_name" && fuzzyNameSource === "push_name" && amountMatchesInvoice && amount && client) {
-      // (A) Valor exato é único na org (nenhuma ambiguidade entre clientes)
-      const { data: ambig } = await supabase
-        .from("invoices").select("client_id")
-        .eq("organization_id", organization_id).eq("status", "aberto").eq("amount", amount);
-      const distinctAmt = Array.from(new Set((ambig || []).map((i: any) => i.client_id)));
-      const amountUnique = distinctAmt.length === 1 && distinctAmt[0] === client.id;
-
-      // (B) push_name identifica unicamente 1 cliente cadastrado
-      //     (necessário pra cliente NOVO cuja fatura tem valor padrão da org).
-      const STOPW = new Set(["maria","jose","da","de","do","das","dos","silva","santos","souza","sousa","oliveira","pereira","lima","ferreira","costa","rodrigues","almeida","gomes","ribeiro","carvalho","martins","araujo","barbosa","rocha","dias","nascimento","moreira","cardoso","fernandes","correia","mendes","freitas","cavalcante","monteiro","goncalves","pinto","ramos","azevedo","teixeira","melo","barros","vieira","reis","moura","castro","campos","cruz","alves","machado","junior","neto","filho","sobrinho","ana","jr"]);
-      const nrm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      const pushTokens = nrm(String(push_name || "")).split(/\s+/).filter(t => t.length >= 3 && !STOPW.has(t));
-      let nameUnique = false;
-      if (pushTokens.length > 0) {
-        const scored = (clients || []).map((c: any) => {
-          const ct = new Set(nrm(c.name || "").split(/\s+/).filter(Boolean));
-          return { id: c.id, score: pushTokens.filter(t => ct.has(t)).length };
-        }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
-        // único = top score >= 2 OU top é o único candidato OU top score > 2º score
-        nameUnique = scored.length === 1
-          || (scored.length > 1 && scored[0].score > scored[1].score && scored[0].id === client.id)
-          || (scored.length >= 1 && scored[0].score >= 2 && scored[0].id === client.id && (scored[1]?.score ?? 0) < scored[0].score);
-      }
-
-      safeFuzzy = amountUnique || nameUnique;
-      console.log("[fuzzy-auto-settle-check]", {
-        client_id: client.id, amount,
-        amount_unique: amountUnique, distinct_amount_clients: distinctAmt.length,
-        name_unique: nameUnique, push_tokens: pushTokens,
-        safe: safeFuzzy,
-      });
-    }
-    const requiresReview = matchSource === "fuzzy_name" && !safeFuzzy;
+    // ===== Regra de decisão (POLÍTICA ESTRITA — TELEFONE TEM PRIORIDADE ABSOLUTA) =====
+    // Auto-settle SOMENTE quando a identidade do remetente é tecnicamente confiável:
+    //   - phone   : telefone WhatsApp real bate com cadastro do cliente
+    //   - lid_map : LID anônimo já vinculado manualmente a este cliente em baixa anterior
+    //   - cpf     : CPF extraído do comprovante bate com o cadastro do cliente
+    //
+    // Match por NOME (fuzzy_name) NUNCA dispara baixa automática — vai sempre
+    // para revisão manual. Motivo: o PIX pode ser pago por terceiro (família,
+    // amigo, conta conjunta) e o nome no comprovante / push_name pode coincidir
+    // parcialmente com OUTRO cliente cadastrado, baixando na fatura errada.
+    // Para baixa automática, o cliente DEVE ter o número de WhatsApp cadastrado.
+    const safeFuzzy = false;
+    const requiresReview = matchSource === "fuzzy_name";
     if (requiresReview) {
-      console.log("[conflict-detected]", { reason: "fuzzy_name_revisao", client_id: client?.id, amount, fuzzyNameSource });
+      console.log("[conflict-detected]", {
+        reason: "fuzzy_name_revisao_obrigatoria",
+        client_id: client?.id, amount, fuzzyNameSource,
+        hint: "cadastrar número de WhatsApp do cliente para baixa automática",
+      });
     }
 
     let eventStatus: string;
