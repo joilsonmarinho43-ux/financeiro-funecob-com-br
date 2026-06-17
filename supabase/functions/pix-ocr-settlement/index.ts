@@ -510,6 +510,11 @@ Deno.serve(async (req) => {
         safe: safeFuzzy,
       });
     }
+    const requiresReview = matchSource === "fuzzy_name" && !safeFuzzy;
+    if (requiresReview) {
+      console.log("[conflict-detected]", { reason: "fuzzy_name_revisao", client_id: client?.id, amount, fuzzyNameSource });
+    }
+
 
     let eventStatus: string;
     let errorMessage: string | null = null;
