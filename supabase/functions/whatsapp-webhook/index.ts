@@ -139,30 +139,74 @@ async function resolveLidToPhone(
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const url = new URL(req.url);
+  const expectedSecret = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
+
+  // Helper: extract provided secret from accepted headers (or ?secret= for GET test)
+  const getProvided = () =>
+    req.headers.get("x-webhook-secret") ||
+    req.headers.get("x-evolution-secret") ||
+    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
+    url.searchParams.get("secret") ||
+    "";
+
+  // Healthcheck / auth test endpoint — GET ?ping=1
+  // Use to validate secret config before flipping Evolution to authenticated mode.
+  if (req.method === "GET" && url.searchParams.get("ping") === "1") {
+    if (!expectedSecret) {
+      return new Response(JSON.stringify({
+        ok: true, auth: "disabled",
+        message: "EVOLUTION_WEBHOOK_SECRET not configured — webhook accepts all calls",
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const provided = getProvided();
+    const ok = provided === expectedSecret;
+    console.log(JSON.stringify({
+      tag: "wa-webhook",
+      event: ok ? "webhook_auth_success" : "webhook_auth_failed",
+      mode: "ping",
+      ip: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || null,
+      ua: req.headers.get("user-agent") || null,
+      provided_present: provided.length > 0,
+    }));
+    return new Response(JSON.stringify({
+      ok, auth: "enabled",
+      message: ok ? "secret matches" : "secret mismatch or missing",
+    }), { status: ok ? 200 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "method not allowed" }), {
       status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  // Optional shared-secret authentication. If EVOLUTION_WEBHOOK_SECRET is set,
+  // Shared-secret authentication. If EVOLUTION_WEBHOOK_SECRET is set,
   // the webhook MUST include a matching header. Backward compatible: if the
-  // env var is absent the check is skipped, so existing Evolution installs
+  // env var is absent, the check is skipped, so existing Evolution installs
   // keep working until the secret is configured on both sides.
-  const expectedSecret = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
   if (expectedSecret) {
-    const provided =
-      req.headers.get("x-webhook-secret") ||
-      req.headers.get("x-evolution-secret") ||
-      req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
-      "";
+    const provided = getProvided();
     if (provided !== expectedSecret) {
-      console.warn("[wa-webhook] unauthorized webhook call");
+      console.warn(JSON.stringify({
+        tag: "wa-webhook",
+        event: "webhook_auth_failed",
+        ip: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || null,
+        ua: req.headers.get("user-agent") || null,
+        provided_present: provided.length > 0,
+      }));
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    console.log(JSON.stringify({
+      tag: "wa-webhook",
+      event: "webhook_auth_success",
+      ip: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || null,
+    }));
   }
+
 
   let payload: any;
   try { payload = await req.json(); }
