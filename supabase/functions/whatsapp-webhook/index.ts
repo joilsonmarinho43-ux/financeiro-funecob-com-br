@@ -145,6 +145,25 @@ Deno.serve(async (req) => {
     });
   }
 
+  // Optional shared-secret authentication. If EVOLUTION_WEBHOOK_SECRET is set,
+  // the webhook MUST include a matching header. Backward compatible: if the
+  // env var is absent the check is skipped, so existing Evolution installs
+  // keep working until the secret is configured on both sides.
+  const expectedSecret = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
+  if (expectedSecret) {
+    const provided =
+      req.headers.get("x-webhook-secret") ||
+      req.headers.get("x-evolution-secret") ||
+      req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
+      "";
+    if (provided !== expectedSecret) {
+      console.warn("[wa-webhook] unauthorized webhook call");
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+
   let payload: any;
   try { payload = await req.json(); }
   catch { return new Response(JSON.stringify({ error: "invalid json" }), { status: 400, headers: corsHeaders }); }
