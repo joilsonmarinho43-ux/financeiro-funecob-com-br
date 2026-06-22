@@ -344,53 +344,95 @@ async function handleEvent(payload: any) {
     apiKey = apiKey || map.global_api_key || "";
   }
 
-  // Se só temos o @lid, consultar Evolution API para resolver telefone real.
-  // Salva no whatsapp_lid_map para evitar nova chamada na próxima mensagem.
+  // Se só temos o @lid, tenta resolver para telefone real.
+  // Ordem: (1) cache whatsapp_lid_map → (2) Evolution API fallbacks.
   if (isLidOnly && apiUrl && apiKey) {
     const lidDigits = phone;
-    const resolved = await resolveLidToPhone(apiUrl, apiKey, instanceName, lidDigits);
-    if (resolved) {
-      console.log("[wa-webhook] LID resolvido para telefone real", { lid: lidDigits, phone: resolved });
-      phone = resolved;
-      // tenta vincular LID→cliente automaticamente se o telefone bater com cadastro
-      try {
-        const last10 = resolved.replace(/^55/, "").slice(-10);
+    const orgId = instance.organization_id;
+
+    // ===== 1) Cache lookup =====
+    let cacheHit = false;
+    try {
+      const { data: cached } = await supabase
+        .from("whatsapp_lid_map")
+        .select("client_id, lid")
+        .eq("organization_id", orgId)
+        .eq("lid", lidDigits)
+        .maybeSingle();
+      if (cached?.client_id) {
+        cacheHit = true;
+        console.log(JSON.stringify({
+          tag: "wa-webhook", event: "lid_cache_hit",
+          lid: lidDigits, client_id: cached.client_id, instance: instanceName,
+        }));
+        // Tenta recuperar o telefone real do cliente vinculado para os passos seguintes
         const { data: cli } = await supabase
-          .from("clients")
-          .select("id, phone")
-          .eq("organization_id", instance.organization_id);
-        const match = (cli || []).find((c: any) => {
-          const p = (c.phone || "").replace(/\D/g, "").replace(/^55/, "");
-          return p && (p === resolved.replace(/^55/, "") || p.slice(-10) === last10);
-        });
-        if (match) {
-          await supabase.from("whatsapp_lid_map").upsert({
-            organization_id: instance.organization_id,
-            lid: lidDigits,
-            client_id: match.id,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: "organization_id,lid" });
-          console.log("[wa-webhook] LID auto-vinculado ao cliente", { client_id: match.id });
-        }
-      } catch (e) {
-        console.warn("[wa-webhook] lid auto-link failed (non-blocking)", e);
+          .from("clients").select("phone").eq("id", cached.client_id).maybeSingle();
+        const phoneDigits = (cli?.phone || "").replace(/\D/g, "");
+        if (phoneDigits.length >= 10) phone = phoneDigits;
+      } else {
+        console.log(JSON.stringify({
+          tag: "wa-webhook", event: "lid_cache_miss",
+          lid: lidDigits, instance: instanceName,
+        }));
       }
-    } else {
-      console.log("[wa-webhook] LID não resolvido pela Evolution API", { lid: lidDigits });
-      try {
-        await supabase.from("auto_settlement_logs").insert({
-          organization_id: instance.organization_id,
-          action: "lid_resolve_failed",
-          details: {
-            lid: lidDigits,
-            instance: instanceName,
-            message_id: messageId,
-            push_name: pushName || null,
-            endpoints_tried: ["findContacts", "whatsappNumbers", "fetchProfile"],
-          },
-        });
-      } catch (e) {
-        console.warn("[wa-webhook] failed to log lid_resolve_failed", e);
+    } catch (e) {
+      console.warn("[wa-webhook] lid cache lookup failed (non-blocking)", e);
+    }
+
+    // ===== 2) Evolution API fallbacks (só se cache miss) =====
+    if (!cacheHit) {
+      const { phone: resolved, endpoint } = await resolveLidToPhone(apiUrl, apiKey, instanceName, lidDigits);
+      if (resolved) {
+        console.log(JSON.stringify({
+          tag: "wa-webhook", event: "lid_resolve_success",
+          lid: lidDigits, phone: resolved, endpoint, instance: instanceName,
+        }));
+        phone = resolved;
+        // Auto-vincula LID→cliente se o telefone bate com algum cadastro
+        try {
+          const last10 = resolved.replace(/^55/, "").slice(-10);
+          const { data: cli } = await supabase
+            .from("clients").select("id, phone").eq("organization_id", orgId);
+          const match = (cli || []).find((c: any) => {
+            const p = (c.phone || "").replace(/\D/g, "").replace(/^55/, "");
+            return p && (p === resolved.replace(/^55/, "") || p.slice(-10) === last10);
+          });
+          if (match) {
+            await supabase.from("whatsapp_lid_map").upsert({
+              organization_id: orgId,
+              lid: lidDigits,
+              client_id: match.id,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "organization_id,lid" });
+            console.log(JSON.stringify({
+              tag: "wa-webhook", event: "lid_auto_linked",
+              lid: lidDigits, client_id: match.id,
+            }));
+          }
+        } catch (e) {
+          console.warn("[wa-webhook] lid auto-link failed (non-blocking)", e);
+        }
+      } else {
+        console.warn(JSON.stringify({
+          tag: "wa-webhook", event: "lid_resolve_failed",
+          lid: lidDigits, instance: instanceName, message_id: messageId,
+          push_name: pushName || null,
+          endpoints_tried: ["findContacts", "whatsappNumbers", "fetchProfile", "findChats"],
+        }));
+        try {
+          await supabase.from("auto_settlement_logs").insert({
+            organization_id: orgId,
+            action: "lid_resolve_failed",
+            details: {
+              lid: lidDigits, instance: instanceName, message_id: messageId,
+              push_name: pushName || null,
+              endpoints_tried: ["findContacts", "whatsappNumbers", "fetchProfile", "findChats"],
+            },
+          });
+        } catch (e) {
+          console.warn("[wa-webhook] failed to log lid_resolve_failed", e);
+        }
       }
     }
   }
