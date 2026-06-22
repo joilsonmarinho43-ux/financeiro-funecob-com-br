@@ -55,21 +55,18 @@ async function fetchMediaBase64(
   }
 }
 
-// Resolve @lid → real phone via Evolution API /chat/findContacts.
-// Evolution v2 stores LID-only contacts but also keeps the real wa.net id when known.
+// Resolve @lid → real phone via Evolution API.
+// Tries findContacts → whatsappNumbers → fetchProfile → findChats.
+// Returns { phone, endpoint } indicating which fallback succeeded.
 async function resolveLidToPhone(
   apiUrl: string, apiKey: string, instance: string, lid: string
-): Promise<string | null> {
-  if (!apiUrl || !apiKey || !lid) return null;
+): Promise<{ phone: string | null; endpoint: string | null }> {
+  if (!apiUrl || !apiKey || !lid) return { phone: null, endpoint: null };
   const base = apiUrl.replace(/\/$/, "");
-  const candidates = [
-    { where: { lid: `${lid}@lid` } },
-    { where: { remoteJid: `${lid}@lid` } },
-    { where: { id: `${lid}@lid` } },
-  ];
+
   const tryExtractFromList = (list: any[]): string | null => {
     for (const c of list || []) {
-      const fields = [c?.id, c?.remoteJid, c?.jid, c?.wuid, c?.number, c?.phoneNumber];
+      const fields = [c?.id, c?.remoteJid, c?.jid, c?.wuid, c?.number, c?.phoneNumber, c?.owner];
       for (const f of fields) {
         if (typeof f !== "string") continue;
         const jid = f.includes("@") ? f : `${f}@s.whatsapp.net`;
@@ -82,8 +79,12 @@ async function resolveLidToPhone(
     return null;
   };
 
-  // 1) findContacts (multiple where shapes)
-  for (const body of candidates) {
+  // 1) findContacts — multiple where shapes
+  for (const body of [
+    { where: { lid: `${lid}@lid` } },
+    { where: { remoteJid: `${lid}@lid` } },
+    { where: { id: `${lid}@lid` } },
+  ]) {
     try {
       const res = await fetch(`${base}/chat/findContacts/${instance}`, {
         method: "POST",
@@ -94,13 +95,11 @@ async function resolveLidToPhone(
       const data = await res.json();
       const list = Array.isArray(data) ? data : (data?.data || data?.contacts || []);
       const found = tryExtractFromList(list);
-      if (found) return found;
-    } catch (e) {
-      console.warn("[wa-webhook] findContacts error", e);
-    }
+      if (found) return { phone: found, endpoint: "findContacts" };
+    } catch (e) { console.warn("[wa-webhook] findContacts error", e); }
   }
 
-  // 2) whatsappNumbers — checa se o LID resolve para um JID real
+  // 2) whatsappNumbers
   try {
     const res = await fetch(`${base}/chat/whatsappNumbers/${instance}`, {
       method: "POST",
@@ -111,13 +110,11 @@ async function resolveLidToPhone(
       const data = await res.json();
       const list = Array.isArray(data) ? data : (data?.data || []);
       const found = tryExtractFromList(list);
-      if (found) return found;
+      if (found) return { phone: found, endpoint: "whatsappNumbers" };
     }
-  } catch (e) {
-    console.warn("[wa-webhook] whatsappNumbers error", e);
-  }
+  } catch (e) { console.warn("[wa-webhook] whatsappNumbers error", e); }
 
-  // 3) fetchProfile — alguns builds devolvem wuid real
+  // 3) fetchProfile
   for (const num of [`${lid}@lid`, lid]) {
     try {
       const res = await fetch(`${base}/chat/fetchProfile/${instance}`, {
@@ -128,13 +125,26 @@ async function resolveLidToPhone(
       if (!res.ok) continue;
       const data = await res.json();
       const found = tryExtractFromList([data, data?.data, data?.profile].filter(Boolean));
-      if (found) return found;
-    } catch (e) {
-      console.warn("[wa-webhook] fetchProfile error", e);
-    }
+      if (found) return { phone: found, endpoint: "fetchProfile" };
+    } catch (e) { console.warn("[wa-webhook] fetchProfile error", e); }
   }
 
-  return null;
+  // 4) findChats — Evolution persists chats in store (DATABASE_SAVE_DATA_CHATS)
+  try {
+    const res = await fetch(`${base}/chat/findChats/${instance}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify({ where: { remoteJid: `${lid}@lid` } }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data?.data || data?.chats || []);
+      const found = tryExtractFromList(list);
+      if (found) return { phone: found, endpoint: "findChats" };
+    }
+  } catch (e) { console.warn("[wa-webhook] findChats error", e); }
+
+  return { phone: null, endpoint: null };
 }
 
 Deno.serve(async (req) => {
