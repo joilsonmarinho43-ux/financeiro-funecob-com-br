@@ -29,6 +29,7 @@ import GlobalSettings from "./pages/GlobalSettings";
 import RecurrenceAudit from "./pages/RecurrenceAudit";
 import AutoSettlement from "./pages/AutoSettlement";
 import PhoneAudit from "./pages/PhoneAudit";
+import MissedSettlements from "./pages/MissedSettlements";
 import SystemHealth from "./pages/SystemHealth";
 import SandboxTests from "./pages/SandboxTests";
 import NotFound from "./pages/NotFound";
