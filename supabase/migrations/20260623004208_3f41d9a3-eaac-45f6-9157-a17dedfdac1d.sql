@@ -1,0 +1,1 @@
+UPDATE public.clients SET phone = '5591988902637' WHERE id = '9a83d18a-0a2d-495f-9441-4b8f75b39ea4' AND phone = '559188902637';
