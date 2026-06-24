@@ -191,7 +191,10 @@ export function buildConfirmationText(params: {
   customTemplate?: string | null;
   pixHolderName?: string | null;
 }): string {
-  const valor = fmtBRL(params.totalAmount);
+  const valorFull = fmtBRL(params.totalAmount);
+  // {valor} é entregue sem "R$ " para evitar duplicidade quando o template
+  // já contém o prefixo (ex.: "Valor: R$ {valor}").
+  const valor = valorFull.replace(/^R\$\s?/, "");
   const dataPgto = fmtDateBR(params.paymentDate);
   const venc = params.paidInvoices.map(i => fmtDateBR(i.due_date)).join(", ");
   const comp = params.paidInvoices.map(i => competenciaBR(i.due_date)).join(", ");
@@ -219,7 +222,7 @@ export function buildConfirmationText(params: {
 
 Seu pagamento foi identificado e registrado com sucesso. ✅
 
-💰 Valor pago: ${valor}
+💰 Valor pago: ${valorFull}
 📅 Data do pagamento: ${dataPgto}
 📌 Vencimento da mensalidade: ${venc}
 🗓️ Competência: ${comp}

@@ -75,10 +75,28 @@ Deno.serve(async (req) => {
           .eq("organization_id", organization_id)
           .maybeSingle();
 
+        // Buscar fatura para extrair vencimento/competência
+        const { data: invRow } = await supabase
+          .from("invoices")
+          .select("id, due_date, amount")
+          .eq("id", invoice_id)
+          .maybeSingle();
+
+        // {valor} sem prefixo "R$" para evitar duplicidade em templates
+        // que já contêm "R$ {valor}".
         const amount = Number(result.amount).toLocaleString("pt-BR", {
-          style: "currency",
-          currency: "BRL",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
         });
+        const dueDate: string | null = (invRow?.due_date as string) || null;
+        const vencimentoBR = dueDate ? dueDate.split("-").reverse().join("/") : "";
+        let competenciaBR = "";
+        if (dueDate) {
+          const dt = new Date(dueDate + "T12:00:00");
+          competenciaBR = dt.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+        }
+        const reciboNo = "REC-" + String(invoice_id).replace(/-/g, "").slice(0, 10).toUpperCase();
+
         const template =
           settings?.template_baixa ||
           "Pagamento confirmado! ✅\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}";
@@ -87,6 +105,9 @@ Deno.serve(async (req) => {
           .replace(/{nome}/g, client.name || "Cliente")
           .replace(/{valor}/g, amount)
           .replace(/{data_pagamento}/g, paid_date.split("-").reverse().join("/"))
+          .replace(/{data_vencimento}/g, vencimentoBR || paid_date.split("-").reverse().join("/"))
+          .replace(/{competencia}/g, competenciaBR)
+          .replace(/{recibo}/g, reciboNo)
           .replace(/{titular_pix}/g, (settings as any)?.pix_holder_name || "")
           .replace(/{link_portal}/g, portalLink);
 
