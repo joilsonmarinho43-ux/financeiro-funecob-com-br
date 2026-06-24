@@ -170,7 +170,8 @@ export default function MissedSettlements() {
         r.phone || "",
         r.amount_detected != null ? `R$ ${Number(r.amount_detected).toFixed(2)}` : "",
         statusLabel[r.status]?.label || r.status,
-        (r.error_message || "").replace(/;/g, ","),
+        reasonMeta[r._reasonCat as ReasonCategory].label,
+        (r._reasonDetail || r.error_message || "").replace(/;/g, ","),
         raw.replace(/;/g, ","),
       ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";"));
     }
