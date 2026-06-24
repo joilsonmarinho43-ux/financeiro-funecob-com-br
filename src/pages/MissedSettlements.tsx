@@ -21,6 +21,71 @@ const statusLabel: Record<string, { label: string; variant: any }> = {
   recebido: { label: "Não processado", variant: "secondary" },
 };
 
+type ReasonCategory =
+  | "sem_cliente"
+  | "telefone_invalido"
+  | "valor_nao_detectado"
+  | "sem_fatura_compativel"
+  | "ocr_falhou"
+  | "template_placeholder"
+  | "duplicado"
+  | "erro_envio"
+  | "nao_processado"
+  | "outro";
+
+const reasonMeta: Record<ReasonCategory, { label: string; variant: any; hint: string }> = {
+  sem_cliente:           { label: "Cliente não vinculado",      variant: "destructive", hint: "Telefone do remetente não bate com nenhum cliente cadastrado." },
+  telefone_invalido:     { label: "Telefone inválido",          variant: "destructive", hint: "Número malformado ou faltando DDI/DDD/9." },
+  valor_nao_detectado:   { label: "Valor não detectado",        variant: "destructive", hint: "OCR não conseguiu extrair o valor do comprovante." },
+  sem_fatura_compativel: { label: "Sem fatura compatível",      variant: "destructive", hint: "Nenhuma fatura aberta com o valor recebido." },
+  ocr_falhou:            { label: "Falha de OCR",               variant: "destructive", hint: "Imagem ilegível, sem texto ou OCR retornou vazio." },
+  template_placeholder:  { label: "Template/placeholder",       variant: "destructive", hint: "Mensagem com '{variavel}' não substituída, 'R$ R$' duplicado ou texto cru." },
+  duplicado:             { label: "Duplicado / já processado",  variant: "secondary",   hint: "Comprovante igual já recebido — ignorado por idempotência." },
+  erro_envio:            { label: "Erro de envio WhatsApp",     variant: "destructive", hint: "Falha ao enviar confirmação (instância offline, API, timeout)." },
+  nao_processado:        { label: "Não processado",             variant: "secondary",   hint: "Evento recebido mas o robô ainda não rodou nele." },
+  outro:                 { label: "Outro / inspecionar",        variant: "outline",     hint: "Não classificado automaticamente — abra os detalhes." },
+};
+
+function classifyReason(e: any): { category: ReasonCategory; detail: string } {
+  const msg = String(e.error_message || "").toLowerCase();
+  const raw = String(e.raw_text || e.ocr_payload?.raw_text || "");
+  const status = e.status as string;
+
+  // Heurísticas específicas (ordem importa — mais específicas primeiro)
+  if (/r\$\s*r\$/i.test(raw) || /\{[a-z_]+\}/i.test(raw)) {
+    const placeholders = Array.from(raw.matchAll(/\{([a-z_]+)\}/gi)).map((m) => m[1]);
+    const issues: string[] = [];
+    if (/r\$\s*r\$/i.test(raw)) issues.push("'R$ R$' duplicado");
+    if (placeholders.length) issues.push(`placeholders não substituídos: ${[...new Set(placeholders)].join(", ")}`);
+    return { category: "template_placeholder", detail: issues.join(" · ") };
+  }
+  if (/duplic|idempot|already.*processed|já.*process/i.test(msg)) {
+    return { category: "duplicado", detail: e.error_message || "Mensagem WhatsApp duplicada" };
+  }
+  if (/sem fatura|no.*match|nenhuma fatura|invoice.*not.*found|sem invoice/i.test(msg)) {
+    return { category: "sem_fatura_compativel", detail: e.error_message || "Nenhuma fatura aberta com esse valor" };
+  }
+  if (/invalid amount|valor.*nul|valor.*inval|amount.*null/i.test(msg) || e.amount_detected == null) {
+    if (e.amount_detected == null) return { category: "valor_nao_detectado", detail: e.error_message || "OCR não extraiu o valor" };
+  }
+  if (/ocr|texto vazio|empty.*text|no.*text/i.test(msg)) {
+    return { category: "ocr_falhou", detail: e.error_message || "OCR sem texto" };
+  }
+  if (/telefone|phone|lid|destination|number.*invalid|número.*inv/i.test(msg)) {
+    return { category: "telefone_invalido", detail: e.error_message || "Telefone do remetente sem match" };
+  }
+  if (/send|envio|whatsapp.*fail|instance.*offline|timeout|evolution/i.test(msg)) {
+    return { category: "erro_envio", detail: e.error_message || "Falha ao enviar confirmação" };
+  }
+  if (status === "pendente_revisao" || (!e.client_id && status !== "conciliado")) {
+    return { category: "sem_cliente", detail: e.error_message || `Telefone ${e.phone || "?"} sem cliente vinculado` };
+  }
+  if (status === "recebido") {
+    return { category: "nao_processado", detail: e.error_message || "Evento ainda não passou pelo robô" };
+  }
+  return { category: "outro", detail: e.error_message || "Sem mensagem de erro" };
+}
+
 function toLocalISO(d: Date) {
   const tz = d.getTimezoneOffset() * 60000;
   return new Date(d.getTime() - tz).toISOString().slice(0, 10);
