@@ -222,7 +222,7 @@ export function buildConfirmationText(params: {
 
 Seu pagamento foi identificado e registrado com sucesso. ✅
 
-💰 Valor pago: ${valor}
+💰 Valor pago: ${valorFull}
 📅 Data do pagamento: ${dataPgto}
 📌 Vencimento da mensalidade: ${venc}
 🗓️ Competência: ${comp}
