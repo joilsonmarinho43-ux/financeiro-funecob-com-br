@@ -312,7 +312,16 @@ export default function MissedSettlements() {
                   <div><strong>Telefone:</strong> {viewEvent.phone || "—"}</div>
                   <div><strong>Valor:</strong> {viewEvent.amount_detected != null ? `R$ ${Number(viewEvent.amount_detected).toFixed(2)}` : "—"}</div>
                   <div><strong>Status:</strong> {statusLabel[viewEvent.status]?.label || viewEvent.status}</div>
-                  <div className="col-span-2"><strong>Motivo:</strong> {viewEvent.error_message || "—"}</div>
+                  <div className="col-span-2">
+                    <strong>Categoria:</strong>{" "}
+                    <Badge variant={reasonMeta[viewEvent._reasonCat as ReasonCategory].variant}>
+                      {reasonMeta[viewEvent._reasonCat as ReasonCategory].label}
+                    </Badge>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {reasonMeta[viewEvent._reasonCat as ReasonCategory].hint}
+                    </div>
+                  </div>
+                  <div className="col-span-2"><strong>Motivo detalhado:</strong> {viewEvent._reasonDetail || viewEvent.error_message || "—"}</div>
                   {viewEvent.whatsapp_message_id && (
                     <div className="col-span-2 font-mono text-xs">
                       <strong>WA Message ID:</strong> {viewEvent.whatsapp_message_id}
