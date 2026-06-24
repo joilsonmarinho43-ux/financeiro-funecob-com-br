@@ -142,15 +142,24 @@ export default function MissedSettlements() {
   const rows = events.map((e: any) => {
     const client = e.client_id ? clientMap[e.client_id] : null;
     const senderName = e.ocr_payload?.push_name || e.ocr_payload?.sender_name;
+    const reason = classifyReason(e);
     return {
       ...e,
       _clientName: client?.name || senderName || "—",
       _orgName: orgMap[e.organization_id] || "—",
+      _reasonCat: reason.category,
+      _reasonDetail: reason.detail,
     };
   });
 
+  const reasonSummary = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const r of rows) counts[r._reasonCat] = (counts[r._reasonCat] || 0) + 1;
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [rows]);
+
   const exportCSV = () => {
-    const header = ["Data/Hora", "Organização", "Cliente", "Telefone", "Valor", "Status", "Motivo", "Comprovante (trecho)"];
+    const header = ["Data/Hora", "Organização", "Cliente", "Telefone", "Valor", "Status", "Categoria", "Motivo detalhado", "Comprovante (trecho)"];
     const lines = [header.join(";")];
     for (const r of rows) {
       const raw = (r.raw_text || r.ocr_payload?.raw_text || "").toString().replace(/\s+/g, " ").slice(0, 200);
