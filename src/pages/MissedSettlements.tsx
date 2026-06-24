@@ -21,6 +21,71 @@ const statusLabel: Record<string, { label: string; variant: any }> = {
   recebido: { label: "Não processado", variant: "secondary" },
 };
 
+type ReasonCategory =
+  | "sem_cliente"
+  | "telefone_invalido"
+  | "valor_nao_detectado"
+  | "sem_fatura_compativel"
+  | "ocr_falhou"
+  | "template_placeholder"
+  | "duplicado"
+  | "erro_envio"
+  | "nao_processado"
+  | "outro";
+
+const reasonMeta: Record<ReasonCategory, { label: string; variant: any; hint: string }> = {
+  sem_cliente:           { label: "Cliente não vinculado",      variant: "destructive", hint: "Telefone do remetente não bate com nenhum cliente cadastrado." },
+  telefone_invalido:     { label: "Telefone inválido",          variant: "destructive", hint: "Número malformado ou faltando DDI/DDD/9." },
+  valor_nao_detectado:   { label: "Valor não detectado",        variant: "destructive", hint: "OCR não conseguiu extrair o valor do comprovante." },
+  sem_fatura_compativel: { label: "Sem fatura compatível",      variant: "destructive", hint: "Nenhuma fatura aberta com o valor recebido." },
+  ocr_falhou:            { label: "Falha de OCR",               variant: "destructive", hint: "Imagem ilegível, sem texto ou OCR retornou vazio." },
+  template_placeholder:  { label: "Template/placeholder",       variant: "destructive", hint: "Mensagem com '{variavel}' não substituída, 'R$ R$' duplicado ou texto cru." },
+  duplicado:             { label: "Duplicado / já processado",  variant: "secondary",   hint: "Comprovante igual já recebido — ignorado por idempotência." },
+  erro_envio:            { label: "Erro de envio WhatsApp",     variant: "destructive", hint: "Falha ao enviar confirmação (instância offline, API, timeout)." },
+  nao_processado:        { label: "Não processado",             variant: "secondary",   hint: "Evento recebido mas o robô ainda não rodou nele." },
+  outro:                 { label: "Outro / inspecionar",        variant: "outline",     hint: "Não classificado automaticamente — abra os detalhes." },
+};
+
+function classifyReason(e: any): { category: ReasonCategory; detail: string } {
+  const msg = String(e.error_message || "").toLowerCase();
+  const raw = String(e.raw_text || e.ocr_payload?.raw_text || "");
+  const status = e.status as string;
+
+  // Heurísticas específicas (ordem importa — mais específicas primeiro)
+  if (/r\$\s*r\$/i.test(raw) || /\{[a-z_]+\}/i.test(raw)) {
+    const placeholders = Array.from(raw.matchAll(/\{([a-z_]+)\}/gi)).map((m) => m[1]);
+    const issues: string[] = [];
+    if (/r\$\s*r\$/i.test(raw)) issues.push("'R$ R$' duplicado");
+    if (placeholders.length) issues.push(`placeholders não substituídos: ${[...new Set(placeholders)].join(", ")}`);
+    return { category: "template_placeholder", detail: issues.join(" · ") };
+  }
+  if (/duplic|idempot|already.*processed|já.*process/i.test(msg)) {
+    return { category: "duplicado", detail: e.error_message || "Mensagem WhatsApp duplicada" };
+  }
+  if (/sem fatura|no.*match|nenhuma fatura|invoice.*not.*found|sem invoice/i.test(msg)) {
+    return { category: "sem_fatura_compativel", detail: e.error_message || "Nenhuma fatura aberta com esse valor" };
+  }
+  if (/invalid amount|valor.*nul|valor.*inval|amount.*null/i.test(msg) || e.amount_detected == null) {
+    if (e.amount_detected == null) return { category: "valor_nao_detectado", detail: e.error_message || "OCR não extraiu o valor" };
+  }
+  if (/ocr|texto vazio|empty.*text|no.*text/i.test(msg)) {
+    return { category: "ocr_falhou", detail: e.error_message || "OCR sem texto" };
+  }
+  if (/telefone|phone|lid|destination|number.*invalid|número.*inv/i.test(msg)) {
+    return { category: "telefone_invalido", detail: e.error_message || "Telefone do remetente sem match" };
+  }
+  if (/send|envio|whatsapp.*fail|instance.*offline|timeout|evolution/i.test(msg)) {
+    return { category: "erro_envio", detail: e.error_message || "Falha ao enviar confirmação" };
+  }
+  if (status === "pendente_revisao" || (!e.client_id && status !== "conciliado")) {
+    return { category: "sem_cliente", detail: e.error_message || `Telefone ${e.phone || "?"} sem cliente vinculado` };
+  }
+  if (status === "recebido") {
+    return { category: "nao_processado", detail: e.error_message || "Evento ainda não passou pelo robô" };
+  }
+  return { category: "outro", detail: e.error_message || "Sem mensagem de erro" };
+}
+
 function toLocalISO(d: Date) {
   const tz = d.getTimezoneOffset() * 60000;
   return new Date(d.getTime() - tz).toISOString().slice(0, 10);
@@ -77,15 +142,24 @@ export default function MissedSettlements() {
   const rows = events.map((e: any) => {
     const client = e.client_id ? clientMap[e.client_id] : null;
     const senderName = e.ocr_payload?.push_name || e.ocr_payload?.sender_name;
+    const reason = classifyReason(e);
     return {
       ...e,
       _clientName: client?.name || senderName || "—",
       _orgName: orgMap[e.organization_id] || "—",
+      _reasonCat: reason.category,
+      _reasonDetail: reason.detail,
     };
   });
 
+  const reasonSummary = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const r of rows) counts[r._reasonCat] = (counts[r._reasonCat] || 0) + 1;
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [rows]);
+
   const exportCSV = () => {
-    const header = ["Data/Hora", "Organização", "Cliente", "Telefone", "Valor", "Status", "Motivo", "Comprovante (trecho)"];
+    const header = ["Data/Hora", "Organização", "Cliente", "Telefone", "Valor", "Status", "Categoria", "Motivo detalhado", "Comprovante (trecho)"];
     const lines = [header.join(";")];
     for (const r of rows) {
       const raw = (r.raw_text || r.ocr_payload?.raw_text || "").toString().replace(/\s+/g, " ").slice(0, 200);
@@ -96,7 +170,8 @@ export default function MissedSettlements() {
         r.phone || "",
         r.amount_detected != null ? `R$ ${Number(r.amount_detected).toFixed(2)}` : "",
         statusLabel[r.status]?.label || r.status,
-        (r.error_message || "").replace(/;/g, ","),
+        reasonMeta[r._reasonCat as ReasonCategory].label,
+        (r._reasonDetail || r.error_message || "").replace(/;/g, ","),
         raw.replace(/;/g, ","),
       ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";"));
     }
@@ -147,57 +222,80 @@ export default function MissedSettlements() {
                 ✅ Nenhum comprovante pendente nesta data. Todos foram conciliados automaticamente.
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Hora</TableHead>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Telefone</TableHead>
-                      <TableHead className="text-right">Valor</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Motivo</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rows.map((r: any) => (
-                      <TableRow key={r.id}>
-                        <TableCell className="text-xs">{format(new Date(r.created_at), "HH:mm")}</TableCell>
-                        <TableCell className="font-medium">
-                          {r._clientName}
-                          {!r.client_id && <Badge variant="outline" className="ml-2 text-[10px]">não vinculado</Badge>}
-                          <div className="text-[11px] text-muted-foreground">{r._orgName}</div>
-                        </TableCell>
-                        <TableCell className="text-xs font-mono">{r.phone || "—"}</TableCell>
-                        <TableCell className="text-right font-mono">
-                          {r.amount_detected != null ? `R$ ${Number(r.amount_detected).toFixed(2)}` : "—"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={statusLabel[r.status]?.variant || "secondary"}>
-                            {statusLabel[r.status]?.label || r.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs max-w-[260px] truncate" title={r.error_message || ""}>
-                          {r.error_message || "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button size="sm" variant="ghost" onClick={() => setViewEvent(r)}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost" asChild>
-                              <Link to="/admin/auto-settlement" title="Abrir em Liquidação Auto">
-                                <ExternalLink className="h-4 w-4" />
-                              </Link>
-                            </Button>
-                          </div>
-                        </TableCell>
+              <>
+                {reasonSummary.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b">
+                    {reasonSummary.map(([cat, count]) => {
+                      const meta = reasonMeta[cat as ReasonCategory];
+                      return (
+                        <Badge key={cat} variant={meta.variant} title={meta.hint} className="cursor-help">
+                          {meta.label}: {count}
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Hora</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Telefone</TableHead>
+                        <TableHead className="text-right">Valor</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Categoria do erro</TableHead>
+                        <TableHead>Motivo detalhado</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {rows.map((r: any) => {
+                        const meta = reasonMeta[r._reasonCat as ReasonCategory];
+                        return (
+                          <TableRow key={r.id}>
+                            <TableCell className="text-xs">{format(new Date(r.created_at), "HH:mm")}</TableCell>
+                            <TableCell className="font-medium">
+                              {r._clientName}
+                              {!r.client_id && <Badge variant="outline" className="ml-2 text-[10px]">não vinculado</Badge>}
+                              <div className="text-[11px] text-muted-foreground">{r._orgName}</div>
+                            </TableCell>
+                            <TableCell className="text-xs font-mono">{r.phone || "—"}</TableCell>
+                            <TableCell className="text-right font-mono">
+                              {r.amount_detected != null ? `R$ ${Number(r.amount_detected).toFixed(2)}` : "—"}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={statusLabel[r.status]?.variant || "secondary"}>
+                                {statusLabel[r.status]?.label || r.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={meta.variant} title={meta.hint} className="cursor-help whitespace-nowrap">
+                                {meta.label}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs max-w-[280px] truncate" title={r._reasonDetail || ""}>
+                              {r._reasonDetail || "—"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button size="sm" variant="ghost" onClick={() => setViewEvent(r)}>
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button size="sm" variant="ghost" asChild>
+                                  <Link to="/admin/auto-settlement" title="Abrir em Liquidação Auto">
+                                    <ExternalLink className="h-4 w-4" />
+                                  </Link>
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
@@ -214,7 +312,16 @@ export default function MissedSettlements() {
                   <div><strong>Telefone:</strong> {viewEvent.phone || "—"}</div>
                   <div><strong>Valor:</strong> {viewEvent.amount_detected != null ? `R$ ${Number(viewEvent.amount_detected).toFixed(2)}` : "—"}</div>
                   <div><strong>Status:</strong> {statusLabel[viewEvent.status]?.label || viewEvent.status}</div>
-                  <div className="col-span-2"><strong>Motivo:</strong> {viewEvent.error_message || "—"}</div>
+                  <div className="col-span-2">
+                    <strong>Categoria:</strong>{" "}
+                    <Badge variant={reasonMeta[viewEvent._reasonCat as ReasonCategory].variant}>
+                      {reasonMeta[viewEvent._reasonCat as ReasonCategory].label}
+                    </Badge>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {reasonMeta[viewEvent._reasonCat as ReasonCategory].hint}
+                    </div>
+                  </div>
+                  <div className="col-span-2"><strong>Motivo detalhado:</strong> {viewEvent._reasonDetail || viewEvent.error_message || "—"}</div>
                   {viewEvent.whatsapp_message_id && (
                     <div className="col-span-2 font-mono text-xs">
                       <strong>WA Message ID:</strong> {viewEvent.whatsapp_message_id}
