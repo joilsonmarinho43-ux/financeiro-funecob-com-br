@@ -509,9 +509,10 @@ Deno.serve(async (req) => {
           .replace(/{link_portal}/g, portalLink);
       } else if (action === "remarcacao") {
         const tpl = billingSettings?.template_remarcar || "Olá {nome}! 📅\n\nSua fatura no valor de R$ {valor} foi remarcada.\nNova data de vencimento: {nova_data}\n\nQualquer dúvida, estamos à disposição!";
+        const valorFmt = Number(invoice?.amount || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         message = tpl
           .replace(/{nome}/g, client.name)
-          .replace(/{valor}/g, Number(invoice?.amount || 0).toFixed(2))
+          .replace(/{valor}/g, valorFmt)
           .replace(/{nova_data}/g, new_due_date ? new_due_date.split("-").reverse().join("/") : "")
           .replace(/{link_portal}/g, portalLink);
       } else {
