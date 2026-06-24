@@ -495,10 +495,17 @@ Deno.serve(async (req) => {
       const portalLink = await getOrCreatePortalLink(supabase, client.id, organizationId);
       if (action === "baixa") {
         const tpl = billingSettings?.template_baixa || "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏";
+        const valorFmt = Number(invoice?.amount || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const vencBR = invoice?.due_date ? String(invoice.due_date).split("-").reverse().join("/") : "";
+        const compBR = invoice?.due_date ? new Date(invoice.due_date + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" }) : "";
+        const reciboNo = "REC-" + String(invoice?.id || "").replace(/-/g, "").slice(0, 10).toUpperCase();
         message = tpl
           .replace(/{nome}/g, client.name)
-          .replace(/{valor}/g, Number(invoice?.amount || 0).toFixed(2))
+          .replace(/{valor}/g, valorFmt)
           .replace(/{data_pagamento}/g, paidDate.split("-").reverse().join("/"))
+          .replace(/{data_vencimento}/g, vencBR || paidDate.split("-").reverse().join("/"))
+          .replace(/{competencia}/g, compBR)
+          .replace(/{recibo}/g, reciboNo)
           .replace(/{link_portal}/g, portalLink);
       } else if (action === "remarcacao") {
         const tpl = billingSettings?.template_remarcar || "Olá {nome}! 📅\n\nSua fatura no valor de R$ {valor} foi remarcada.\nNova data de vencimento: {nova_data}\n\nQualquer dúvida, estamos à disposição!";
