@@ -245,10 +245,17 @@ Deno.serve(async (req) => {
         const tpl = billingSettings.template_baixa ||
           "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏";
         const portalLink = await getOrCreatePortalLink(supabase, client.id, orgParam);
+        const valorFmt = Number(invoice.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const vencBR = invoice.due_date ? String(invoice.due_date).split("-").reverse().join("/") : "";
+        const compBR = invoice.due_date ? new Date(invoice.due_date + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" }) : "";
+        const reciboNo = "REC-" + String(invoice.id).replace(/-/g, "").slice(0, 10).toUpperCase();
         const message = tpl
           .replace(/{nome}/g, client.name || "Cliente")
-          .replace(/{valor}/g, Number(invoice.amount).toFixed(2))
+          .replace(/{valor}/g, valorFmt)
           .replace(/{data_pagamento}/g, paidDate.split("-").reverse().join("/"))
+          .replace(/{data_vencimento}/g, vencBR || paidDate.split("-").reverse().join("/"))
+          .replace(/{competencia}/g, compBR)
+          .replace(/{recibo}/g, reciboNo)
           .replace(/{link_portal}/g, portalLink);
 
         let directSent = false;
