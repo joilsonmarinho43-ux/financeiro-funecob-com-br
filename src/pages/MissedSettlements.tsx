@@ -222,57 +222,80 @@ export default function MissedSettlements() {
                 ✅ Nenhum comprovante pendente nesta data. Todos foram conciliados automaticamente.
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Hora</TableHead>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Telefone</TableHead>
-                      <TableHead className="text-right">Valor</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Motivo</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rows.map((r: any) => (
-                      <TableRow key={r.id}>
-                        <TableCell className="text-xs">{format(new Date(r.created_at), "HH:mm")}</TableCell>
-                        <TableCell className="font-medium">
-                          {r._clientName}
-                          {!r.client_id && <Badge variant="outline" className="ml-2 text-[10px]">não vinculado</Badge>}
-                          <div className="text-[11px] text-muted-foreground">{r._orgName}</div>
-                        </TableCell>
-                        <TableCell className="text-xs font-mono">{r.phone || "—"}</TableCell>
-                        <TableCell className="text-right font-mono">
-                          {r.amount_detected != null ? `R$ ${Number(r.amount_detected).toFixed(2)}` : "—"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={statusLabel[r.status]?.variant || "secondary"}>
-                            {statusLabel[r.status]?.label || r.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs max-w-[260px] truncate" title={r.error_message || ""}>
-                          {r.error_message || "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button size="sm" variant="ghost" onClick={() => setViewEvent(r)}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost" asChild>
-                              <Link to="/admin/auto-settlement" title="Abrir em Liquidação Auto">
-                                <ExternalLink className="h-4 w-4" />
-                              </Link>
-                            </Button>
-                          </div>
-                        </TableCell>
+              <>
+                {reasonSummary.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b">
+                    {reasonSummary.map(([cat, count]) => {
+                      const meta = reasonMeta[cat as ReasonCategory];
+                      return (
+                        <Badge key={cat} variant={meta.variant} title={meta.hint} className="cursor-help">
+                          {meta.label}: {count}
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Hora</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Telefone</TableHead>
+                        <TableHead className="text-right">Valor</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Categoria do erro</TableHead>
+                        <TableHead>Motivo detalhado</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {rows.map((r: any) => {
+                        const meta = reasonMeta[r._reasonCat as ReasonCategory];
+                        return (
+                          <TableRow key={r.id}>
+                            <TableCell className="text-xs">{format(new Date(r.created_at), "HH:mm")}</TableCell>
+                            <TableCell className="font-medium">
+                              {r._clientName}
+                              {!r.client_id && <Badge variant="outline" className="ml-2 text-[10px]">não vinculado</Badge>}
+                              <div className="text-[11px] text-muted-foreground">{r._orgName}</div>
+                            </TableCell>
+                            <TableCell className="text-xs font-mono">{r.phone || "—"}</TableCell>
+                            <TableCell className="text-right font-mono">
+                              {r.amount_detected != null ? `R$ ${Number(r.amount_detected).toFixed(2)}` : "—"}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={statusLabel[r.status]?.variant || "secondary"}>
+                                {statusLabel[r.status]?.label || r.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={meta.variant} title={meta.hint} className="cursor-help whitespace-nowrap">
+                                {meta.label}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs max-w-[280px] truncate" title={r._reasonDetail || ""}>
+                              {r._reasonDetail || "—"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button size="sm" variant="ghost" onClick={() => setViewEvent(r)}>
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button size="sm" variant="ghost" asChild>
+                                  <Link to="/admin/auto-settlement" title="Abrir em Liquidação Auto">
+                                    <ExternalLink className="h-4 w-4" />
+                                  </Link>
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
