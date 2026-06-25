@@ -1,0 +1,1 @@
+CREATE POLICY "Admins can view all clients" ON public.clients FOR SELECT USING (has_role(auth.uid(), 'admin'::app_role));
