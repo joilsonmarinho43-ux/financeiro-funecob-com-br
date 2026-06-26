@@ -111,33 +111,59 @@ function isAiCreditError(err: any): boolean {
   return s.includes("402") || s.includes("payment_required") || s.includes("not enough credits") || s.includes("insufficient credits");
 }
 
+function parseJsonObject(text: string): any {
+  const raw = String(text || "").trim();
+  if (!raw) return {};
+  try { return JSON.parse(raw); } catch {}
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1];
+  if (fenced) {
+    try { return JSON.parse(fenced); } catch {}
+  }
+  const first = raw.indexOf("{");
+  const last = raw.lastIndexOf("}");
+  if (first >= 0 && last > first) {
+    try { return JSON.parse(raw.slice(first, last + 1)); } catch {}
+  }
+  return { raw_text: raw };
+}
+
 async function runGeminiDirectOcr(mediaUrl: string, mimeType: string, amountOnly = false): Promise<any> {
-  if (!GEMINI_API_KEY) throw new Error("OCR fallback indisponível: GEMINI_API_KEY/GOOGLE_API_KEY não configurada");
+  if (!GEMINI_API_KEY) throw new Error("credito_ocr_esgotado: AI Gateway sem crédito e GEMINI_API_KEY/GOOGLE_API_KEY não configurada para fallback direto");
 
   const prompt = amountOnly
     ? "Leia este comprovante PIX brasileiro e retorne APENAS JSON válido: {\"amount\": <number|null>, \"raw_text\": <todo o texto visível>}. Encontre o valor transferido em reais. Não invente valor."
     : "Extraia dados deste comprovante PIX brasileiro e retorne APENAS JSON válido com: amount (number|null), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (todo o texto visível). Não invente dados.";
 
   const isPdf = /^application\/pdf/i.test(mimeType || "");
-  const model = isPdf ? "gemini-1.5-pro" : "gemini-1.5-flash";
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{
-        role: "user",
-        parts: [
-          { text: prompt },
-          { inline_data: { mime_type: mimeType || "image/jpeg", data: dataUrlToBase64(mediaUrl) } },
-        ],
-      }],
-      generationConfig: { response_mime_type: "application/json" },
-    }),
-  });
-  if (!res.ok) throw new Error(`Gemini direct OCR failed [${res.status}]: ${await res.text()}`);
-  const data = await res.json();
-  const txt = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "{}";
-  try { return JSON.parse(txt); } catch { return { raw_text: txt }; }
+  const models = isPdf
+    ? ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
+    : ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+  let lastErr = "";
+  for (const model of models) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          role: "user",
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: mimeType || "image/jpeg", data: dataUrlToBase64(mediaUrl) } },
+          ],
+        }],
+        generationConfig: { response_mime_type: "application/json" },
+      }),
+    });
+    if (!res.ok) {
+      lastErr = `Gemini ${model} failed [${res.status}]: ${(await res.text()).slice(0, 500)}`;
+      console.warn("[pix-ocr] Gemini model failed", lastErr);
+      continue;
+    }
+    const data = await res.json();
+    const txt = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "{}";
+    return { ...parseJsonObject(txt), _gemini_model: model };
+  }
+  throw new Error(lastErr || "Gemini direct OCR failed");
 }
 
 async function runOcr(mediaUrl: string, mimeType: string): Promise<any> {
@@ -280,7 +306,7 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
     const body = await req.json();
-    const { organization_id, phone, push_name, image_url, image_base64, media_mime_type, message_id, raw_text, manual_amount, manual_txid, force_reprocess } = body;
+    const { organization_id, phone, push_name, image_url, image_base64, media_mime_type, message_id, raw_text, manual_amount, manual_txid, force_reprocess, ocr_error } = body;
 
     if (!organization_id || !phone || (!image_url && !image_base64 && !raw_text && manual_amount == null)) {
       return new Response(JSON.stringify({ error: "missing organization_id, phone, or image/raw_text/manual_amount" }), {
@@ -345,6 +371,7 @@ Deno.serve(async (req) => {
     // de extração de valor (downstream) fica sem fonte e o evento vai pra revisão.
     const webhookRawText: string | null = (typeof raw_text === "string" && raw_text.trim()) ? raw_text : null;
     let ocr: any = { raw_text: webhookRawText };
+    if (ocr_error) ocr.error = String(ocr_error);
     // Mime real do anexo (webhook sabe se é image/jpeg, image/png ou application/pdf).
     // Sem isso, PDF era enviado como "data:image/jpeg;..." e o OCR retornava vazio.
     const resolvedMime = (typeof media_mime_type === "string" && media_mime_type) || "image/jpeg";
@@ -357,8 +384,8 @@ Deno.serve(async (req) => {
         console.error("[pix-ocr] 1st-pass failed", e);
         ocrResult = { error: String(e?.message || e) };
       }
-      // merge — nunca perde o raw_text do webhook
-      ocr = { ...ocrResult };
+      // merge — nunca perde o raw_text do webhook nem erro prévio do webhook
+      ocr = { ...(ocr_error ? { webhook_error: String(ocr_error) } : {}), ...ocrResult };
       if (!ocr.raw_text && webhookRawText) ocr.raw_text = webhookRawText;
 
       // 2º passe — Flash focado em valor quando o 1º passe falhou
