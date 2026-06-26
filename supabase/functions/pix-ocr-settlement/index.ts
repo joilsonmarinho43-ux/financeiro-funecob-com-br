@@ -306,7 +306,7 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
     const body = await req.json();
-    const { organization_id, phone, push_name, image_url, image_base64, media_mime_type, message_id, raw_text, manual_amount, manual_txid, force_reprocess, ocr_error } = body;
+    const { organization_id, phone, push_name, image_url, image_base64, media_mime_type, message_id, raw_text, manual_amount, manual_txid, force_reprocess, ocr_error, remote_jid } = body;
 
     if (!organization_id || !phone || (!image_url && !image_base64 && !raw_text && manual_amount == null)) {
       return new Response(JSON.stringify({ error: "missing organization_id, phone, or image/raw_text/manual_amount" }), {
@@ -706,6 +706,7 @@ Deno.serve(async (req) => {
         _amount_matches_invoice: amountMatchesInvoice,
         _combination_picks: combinationPicks,
         _force_reprocessed_at: force_reprocess ? new Date().toISOString() : null,
+        remote_jid: remote_jid || null,
       },
       txid,
       pix_end_to_end_id: ocr?.end_to_end_id || null,
