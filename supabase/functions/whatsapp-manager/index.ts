@@ -13,6 +13,129 @@ function resolveApiUrl(instanceUrl: string | null, globalHost: string | null): s
   return url;
 }
 
+const PIX_WEBHOOK_EVENTS = ["MESSAGES_UPSERT"];
+
+function webhookPayloads(targetUrl: string) {
+  const flat = {
+    url: targetUrl,
+    enabled: true,
+    webhookByEvents: false,
+    webhookBase64: true,
+    events: PIX_WEBHOOK_EVENTS,
+  };
+  return [
+    flat,
+    { webhook: flat },
+    {
+      webhook: {
+        enabled: true,
+        url: targetUrl,
+        byEvents: false,
+        base64: true,
+        events: PIX_WEBHOOK_EVENTS,
+      },
+    },
+  ];
+}
+
+function normalizeEventName(event: string) {
+  return String(event || "").toLowerCase().replace(/_/g, ".");
+}
+
+function asArray<T = any>(value: T | T[] | null | undefined): T[] {
+  if (Array.isArray(value)) return value;
+  return value == null ? [] : [value];
+}
+
+function extractMessages(payload: any): any[] {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload.flatMap(extractMessages);
+  if (payload.key || payload.messageType || payload.message) return [payload];
+  const candidates = [
+    payload.messages,
+    payload.data?.messages,
+    payload.data,
+    payload.rows,
+    payload.result,
+    payload.response,
+  ];
+  for (const c of candidates) {
+    if (Array.isArray(c)) return c;
+  }
+  return [];
+}
+
+function messageLooksLikeReceipt(msg: any): boolean {
+  const m = msg?.message || msg;
+  const caption =
+    m?.imageMessage?.caption ||
+    m?.documentMessage?.caption ||
+    m?.documentWithCaptionMessage?.message?.documentMessage?.caption ||
+    msg?.caption ||
+    "";
+  const text = m?.conversation || m?.extendedTextMessage?.text || msg?.text || "";
+  const mime = m?.documentMessage?.mimetype || msg?.mimetype || "";
+  const fileName = m?.documentMessage?.fileName || msg?.fileName || "";
+  const hasImage = !!m?.imageMessage || msg?.messageType === "imageMessage";
+  const hasPdf = mime === "application/pdf" || String(fileName).toLowerCase().endsWith(".pdf");
+  const t = `${caption} ${text}`.toLowerCase();
+  return hasImage || hasPdf || /pix|comprovante|transfer[eê]ncia|pagamento|recibo|r\$\s*\d/i.test(t);
+}
+
+async function fetchRecentMessages(apiCall: (url: string, options: RequestInit) => Promise<Response>, baseUrl: string, apiKey: string, instanceName: string, hours: number) {
+  const since = Date.now() - Math.max(1, hours) * 60 * 60 * 1000;
+  const attempts = [
+    { path: `/chat/findMessages/${encodeURIComponent(instanceName)}`, body: { where: { messageTimestamp: { gte: Math.floor(since / 1000) } }, limit: 100 } },
+    { path: `/chat/findMessages/${encodeURIComponent(instanceName)}`, body: { limit: 100 } },
+    { path: `/chat/findChats/${encodeURIComponent(instanceName)}`, body: { limit: 100 } },
+  ];
+  const details: any[] = [];
+  for (const a of attempts) {
+    try {
+      const res = await apiCall(`${baseUrl}${a.path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: apiKey },
+        body: JSON.stringify(a.body),
+      });
+      const text = await res.text();
+      details.push({ path: a.path, status: res.status, ok: res.ok, body: text.slice(0, 200) });
+      if (!res.ok) continue;
+      const json = text ? JSON.parse(text) : null;
+      const messages = extractMessages(json).filter((m: any) => {
+        const ts = Number(m?.messageTimestamp || m?.timestamp || m?.createdAt || 0);
+        const ms = ts > 0 && ts < 10_000_000_000 ? ts * 1000 : ts;
+        return !ms || ms >= since;
+      });
+      if (messages.length > 0) return { messages, details };
+    } catch (e) {
+      details.push({ path: a.path, ok: false, error: String(e instanceof Error ? e.message : e) });
+    }
+  }
+  return { messages: [], details };
+}
+
+async function ensurePixWebhook(
+  apiUrl: string,
+  apiKey: string,
+  instanceName: string,
+  targetUrl: string,
+  apiCall: (url: string, options: RequestInit) => Promise<Response>,
+) {
+  const base = apiUrl.replace(/\/$/, "");
+  const attempts: any[] = [];
+  for (const payload of webhookPayloads(targetUrl)) {
+    const resp = await apiCall(`${base}/webhook/set/${encodeURIComponent(instanceName)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify(payload),
+    });
+    const text = await resp.text();
+    attempts.push({ ok: resp.ok, status: resp.status, body: text.slice(0, 300), shape: payload.webhook ? "nested" : "flat" });
+    if (resp.ok) return { ok: true, attempts };
+  }
+  return { ok: false, attempts };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -65,7 +188,7 @@ Deno.serve(async (req) => {
 
     const apiHost = gs.api_host;
     const globalApiKey = gs.global_api_key;
-    const webhookUrl = gs.webhook_url;
+    const pixWebhookUrl = `${supabaseUrl}/functions/v1/whatsapp-webhook`;
 
     if (!apiHost || !globalApiKey) {
       return new Response(JSON.stringify({ 
@@ -110,9 +233,10 @@ Deno.serve(async (req) => {
           instanceName: instance_name,
           qrcode: true,
           integration: "WHATSAPP-BAILEYS",
-          webhook: webhookUrl || undefined,
-          webhookByEvents: true,
-          webhookEvents: ["CONNECTION_UPDATE", "MESSAGES_UPSERT", "QRCODE_UPDATED"],
+          webhook: pixWebhookUrl,
+          webhookByEvents: false,
+          webhookBase64: true,
+          webhookEvents: PIX_WEBHOOK_EVENTS,
         }),
       });
 
@@ -147,6 +271,29 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: dbErr.message }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      try {
+        const wh = await ensurePixWebhook(baseUrl, globalApiKey, instance_name, pixWebhookUrl, apiCall);
+        await supabase.from("global_settings").upsert({
+          key: "webhook_url",
+          value: pixWebhookUrl,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "key" });
+        if (!wh.ok) {
+          await supabase.from("system_logs").insert({
+            action: "whatsapp_pix_webhook_config_failed",
+            organization_id,
+            details: { instance_name, attempts: wh.attempts },
+          });
+        }
+      } catch (e) {
+        console.error("PIX webhook setup failed:", e);
+        await supabase.from("system_logs").insert({
+          action: "whatsapp_pix_webhook_config_error",
+          organization_id,
+          details: { instance_name, error: String(e instanceof Error ? e.message : e) },
         });
       }
 
@@ -286,9 +433,90 @@ Deno.serve(async (req) => {
 
       await supabase.from("whatsapp_instances").update({ status: mappedStatus }).eq("id", instance_id);
 
+      // Connected instances must always point to the PIX OCR webhook. This
+      // self-heals older instances that were created before the webhook fix.
+      if (mappedStatus === "connected") {
+        try {
+          const wh = await ensurePixWebhook(instApiUrl, instApiKey, inst.name, pixWebhookUrl, apiCall);
+          await supabase.from("global_settings").upsert({
+            key: "webhook_url",
+            value: pixWebhookUrl,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "key" });
+          if (!wh.ok) {
+            await supabase.from("system_logs").insert({
+              action: "whatsapp_pix_webhook_config_failed",
+              organization_id: inst.organization_id,
+              details: { instance_name: inst.name, attempts: wh.attempts },
+            });
+          }
+        } catch (e) {
+          console.error("PIX webhook self-heal failed:", e);
+          await supabase.from("system_logs").insert({
+            action: "whatsapp_pix_webhook_config_error",
+            organization_id: inst.organization_id,
+            details: { instance_name: inst.name, error: String(e instanceof Error ? e.message : e) },
+          });
+        }
+      }
+
       return new Response(JSON.stringify({
         success: true, status: mappedStatus, raw_state: state, instance_name: inst.name,
       }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ─── RECOVER MISSED PIX RECEIPTS ───
+    if (action === "recover_pix_receipts") {
+      const hours = Number(body.hours || 24);
+      const targetInstances = instance_id
+        ? (await supabase.from("whatsapp_instances").select("*").eq("id", instance_id)).data || []
+        : (await supabase.from("whatsapp_instances").select("*").eq("organization_id", organization_id)).data || [];
+
+      const results: any[] = [];
+      for (const inst of targetInstances || []) {
+        const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
+        const instApiKey = inst.api_key || globalApiKey;
+        const wh = await ensurePixWebhook(instApiUrl, instApiKey, inst.name, pixWebhookUrl, apiCall);
+        const { messages, details } = await fetchRecentMessages(apiCall, instApiUrl.replace(/\/$/, ""), instApiKey, inst.name, hours);
+        let forwarded = 0;
+        let skippedExisting = 0;
+        let candidates = 0;
+        for (const msg of messages) {
+          if (!messageLooksLikeReceipt(msg)) continue;
+          candidates++;
+          const key = msg.key || msg.message?.key || {};
+          const id = key.id || msg.messageId || msg.id || null;
+          if (id) {
+            const { data: existing } = await supabase
+              .from("auto_settlement_events")
+              .select("id, status")
+              .eq("organization_id", inst.organization_id)
+              .eq("whatsapp_message_id", id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (existing?.id && !body.force_reprocess) { skippedExisting++; continue; }
+          }
+
+          const payload = { event: "messages.upsert", instance: inst.name, data: msg, force_reprocess: !!body.force_reprocess };
+          const res = await fetch(`${supabaseUrl}/functions/v1/whatsapp-webhook`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceRoleKey}` },
+            body: JSON.stringify(payload),
+          });
+          forwarded += res.ok ? 1 : 0;
+        }
+        await supabase.from("system_logs").insert({
+          action: "whatsapp_pix_receipt_recovery",
+          organization_id: inst.organization_id,
+          details: { instance_name: inst.name, hours, webhook: wh, fetched: messages.length, candidates, forwarded, skippedExisting, fetch_attempts: details },
+        });
+        results.push({ instance: inst.name, webhook_ok: wh.ok, fetched: messages.length, candidates, forwarded, skippedExisting, fetch_attempts: details });
+      }
+
+      return new Response(JSON.stringify({ success: true, hours, results }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

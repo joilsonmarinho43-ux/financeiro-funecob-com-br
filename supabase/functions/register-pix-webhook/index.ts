@@ -13,25 +13,50 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 const WEBHOOK_TARGET = `${SUPABASE_URL}/functions/v1/whatsapp-webhook`;
+const WEBHOOK_EVENTS = ["MESSAGES_UPSERT"];
 
-async function setWebhook(apiUrl: string, apiKey: string, instance: string) {
-  const base = apiUrl.replace(/\/$/, "");
-  // Evolution API expects a FLAT payload (url at root level)
-  const payload = {
+function webhookPayloads() {
+  const flat = {
     url: WEBHOOK_TARGET,
     enabled: true,
     webhookByEvents: false,
     webhookBase64: true,
-    events: ["MESSAGES_UPSERT"],
+    events: WEBHOOK_EVENTS,
   };
-  // Evolution v2 endpoint
-  const res = await fetch(`${base}/webhook/set/${encodeURIComponent(instance)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", apikey: apiKey },
-    body: JSON.stringify(payload),
-  });
-  const text = await res.text();
-  return { ok: res.ok, status: res.status, body: text.slice(0, 400) };
+
+  // Evolution installations vary between v1.6/v2 and between flat vs nested
+  // payloads. Try both shapes and keep the first accepted response.
+  return [
+    flat,
+    { webhook: flat },
+    {
+      webhook: {
+        enabled: true,
+        url: WEBHOOK_TARGET,
+        byEvents: false,
+        base64: true,
+        events: WEBHOOK_EVENTS,
+      },
+    },
+  ];
+}
+
+async function setWebhook(apiUrl: string, apiKey: string, instance: string) {
+  const base = apiUrl.replace(/\/$/, "");
+  const attempts: any[] = [];
+
+  for (const payload of webhookPayloads()) {
+    const res = await fetch(`${base}/webhook/set/${encodeURIComponent(instance)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify(payload),
+    });
+    const text = await res.text();
+    attempts.push({ ok: res.ok, status: res.status, body: text.slice(0, 400), shape: payload.webhook ? "nested" : "flat" });
+    if (res.ok) return { ok: true, status: res.status, body: text.slice(0, 400), attempts };
+  }
+
+  return { ok: false, status: attempts.at(-1)?.status || 0, body: attempts.at(-1)?.body || "no response", attempts };
 }
 
 Deno.serve(async (req) => {
@@ -81,6 +106,12 @@ Deno.serve(async (req) => {
         results.push({ instance: inst.name, ok: false, error: String(e?.message || e) });
       }
     }
+
+    await supabase.from("global_settings").upsert({
+      key: "webhook_url",
+      value: WEBHOOK_TARGET,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "key" });
 
     return new Response(JSON.stringify({
       webhook_url: WEBHOOK_TARGET,

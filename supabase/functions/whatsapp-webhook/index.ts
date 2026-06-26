@@ -32,6 +32,100 @@ function extractAmountFromText(text: string): number | null {
   return isNaN(v) ? null : v;
 }
 
+function normalizeEventName(event: string) {
+  return String(event || "").toLowerCase().replace(/_/g, ".");
+}
+
+function asArray<T = any>(value: T | T[] | null | undefined): T[] {
+  if (Array.isArray(value)) return value;
+  return value == null ? [] : [value];
+}
+
+function jidToDigits(j: any): string {
+  if (!j || typeof j !== "string") return "";
+  return j.split("@")[0].replace(/:\d+$/, "").replace(/\D/g, "");
+}
+
+function looksLikeBrazilianPhone(d: string): boolean {
+  const n = String(d || "").replace(/\D/g, "").replace(/^55/, "");
+  // DDD + fixo/celular. Reject long Baileys/LID identifiers.
+  return n.length === 10 || n.length === 11;
+}
+
+async function logWebhookReceipt(supabase: any, organizationId: string, event: string, payload: any, responseStatus = 200, responseBody = "received") {
+  try {
+    await supabase.from("webhook_logs").insert({
+      organization_id: organizationId,
+      event,
+      payload,
+      response_status: responseStatus,
+      response_body: responseBody,
+    });
+  } catch (e) {
+    console.warn("[wa-webhook] failed to persist webhook_logs", e);
+  }
+}
+
+async function logAutoSettlement(supabase: any, organizationId: string, action: string, details: Record<string, any>) {
+  try {
+    await supabase.from("auto_settlement_logs").insert({
+      organization_id: organizationId,
+      action,
+      details,
+    });
+  } catch (e) {
+    console.warn(`[wa-webhook] failed to log ${action}`, e);
+  }
+}
+
+async function createFallbackEvent(supabase: any, body: any, status: string, errorMessage: string) {
+  if (!body?.organization_id || !body?.phone) return null;
+
+  const txid = body.manual_txid || (body.message_id ? `WA-MSG-${body.message_id}` : null);
+
+  try {
+    if (body.message_id) {
+      const { data: existing } = await supabase
+        .from("auto_settlement_events")
+        .select("id")
+        .eq("organization_id", body.organization_id)
+        .eq("whatsapp_message_id", body.message_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (existing?.id) return existing.id;
+    }
+
+    const { data, error } = await supabase.from("auto_settlement_events").insert({
+      organization_id: body.organization_id,
+      phone: body.phone,
+      raw_text: body.raw_text || null,
+      ocr_payload: {
+        push_name: body.push_name || null,
+        webhook_error: errorMessage,
+        media_mime_type: body.media_mime_type || null,
+        receipt_hint: !!body.receipt_hint,
+      },
+      txid,
+      amount_detected: body.manual_amount || extractAmountFromText(body.raw_text || "") || null,
+      whatsapp_message_id: body.message_id || null,
+      status,
+      error_message: errorMessage,
+    }).select("id").single();
+
+    if (error) throw error;
+    await logAutoSettlement(supabase, body.organization_id, "webhook_fallback_event_created", {
+      event_id: data?.id,
+      message_id: body.message_id || null,
+      error: errorMessage,
+    });
+    return data?.id || null;
+  } catch (e) {
+    console.error("[wa-webhook] fallback event insert failed", e);
+    return null;
+  }
+}
+
 // Fetch base64 of media from Evolution API
 async function fetchMediaBase64(
   apiUrl: string, apiKey: string, instance: string, messageObj: any
@@ -66,13 +160,19 @@ async function resolveLidToPhone(
 
   const tryExtractFromList = (list: any[]): string | null => {
     for (const c of list || []) {
-      const fields = [c?.id, c?.remoteJid, c?.jid, c?.wuid, c?.number, c?.phoneNumber, c?.owner];
+      // Some Evolution endpoints ignore unsupported filters and return the
+      // whole contacts table. Never accept the first phone blindly; the record
+      // must mention the requested LID in one of its identifiers.
+      const recordText = JSON.stringify(c || {}).replace(/\D/g, "");
+      if (!recordText.includes(lid)) continue;
+
+      const fields = [c?.remoteJid, c?.jid, c?.wuid, c?.number, c?.phoneNumber, c?.phone, c?.participant, c?.participantPn, c?.remoteJidAlt];
       for (const f of fields) {
         if (typeof f !== "string") continue;
         const jid = f.includes("@") ? f : `${f}@s.whatsapp.net`;
         if (jid.endsWith("@s.whatsapp.net")) {
           const digits = jid.split("@")[0].replace(/\D/g, "");
-          if (digits.length >= 10 && digits.length <= 13) return digits;
+          if (digits !== lid && looksLikeBrazilianPhone(digits)) return digits;
         }
       }
     }
@@ -238,15 +338,21 @@ async function handleEvent(payload: any) {
 
   // Evolution API v2 envelope: { event, instance, data: {...} }
   const event = payload?.event || payload?.type;
-  const instanceName = payload?.instance || payload?.instanceName || payload?.data?.instance;
+  const instanceName = payload?.instance || payload?.instanceName || payload?.data?.instance || payload?.data?.instanceName;
   if (!instanceName) { console.log("[wa-webhook] no instance"); return; }
 
   // Only process incoming messages
-  if (event !== "messages.upsert" && event !== "MESSAGES_UPSERT") {
+  if (normalizeEventName(event) !== "messages.upsert") {
     return;
   }
 
-  const msg = payload?.data || payload?.message || {};
+  const dataItems = asArray(payload?.data || payload?.message || {});
+  for (const msg of dataItems) {
+    await handleMessage(supabase, payload, instanceName, msg);
+  }
+}
+
+async function handleMessage(supabase: any, payload: any, instanceName: string, msg: any) {
   const key = msg.key || {};
   if (key.fromMe) return; // ignore our own sends
 
@@ -258,13 +364,8 @@ async function handleEvent(payload: any) {
   // Real phone often lives in: senderPn, remoteJidAlt, participantPn,
   // participantAlt, msg.pushName-related fields, or msg.contextInfo.
   // We collect all candidates and pick the first that LOOKS like a BR phone.
-  function jidToDigits(j: any): string {
-    if (!j || typeof j !== "string") return "";
-    return j.split("@")[0].replace(/:\d+$/, "").replace(/\D/g, "");
-  }
   function looksLikePhone(d: string): boolean {
-    // BR phones: 10-13 digits. LIDs are typically 14-16.
-    return d.length >= 10 && d.length <= 13;
+    return looksLikeBrazilianPhone(d);
   }
   const candidates: string[] = [
     jidToDigits(key.senderPn),
@@ -275,7 +376,7 @@ async function handleEvent(payload: any) {
     jidToDigits(msg?.senderPn),
     jidToDigits(msg?.participantPn),
     // remoteJid LAST — only if it's @s.whatsapp.net (not @lid)
-    remoteJid.endsWith("@lid") ? "" : jidToDigits(remoteJid),
+    (remoteJid.endsWith("@lid") || !looksLikeBrazilianPhone(jidToDigits(remoteJid))) ? "" : jidToDigits(remoteJid),
     // Absolute fallback — accept LID as last resort so we still log the event
     jidToDigits(remoteJid),
   ].filter(Boolean);
@@ -296,6 +397,8 @@ async function handleEvent(payload: any) {
     .from("whatsapp_instances")
     .select("id, name, organization_id, api_url, api_key")
     .eq("name", instanceName)
+    .order("updated_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (!instance?.organization_id) {
@@ -303,27 +406,43 @@ async function handleEvent(payload: any) {
     return;
   }
 
+  await logWebhookReceipt(supabase, instance.organization_id, "MESSAGES_UPSERT", {
+    instance: instanceName,
+    message_id: key.id || msg.messageId || null,
+    remote_jid: remoteJid || null,
+    message_type: msg.messageType || Object.keys(msg.message || {})[0] || null,
+    push_name: msg?.pushName || msg?.push_name || payload?.data?.pushName || null,
+    received_at: new Date().toISOString(),
+  });
+
   // Feature flag check (early exit — saves OCR credits)
   const { data: flag } = await supabase
     .from("global_settings").select("value").eq("key", "auto_settlement_enabled").maybeSingle();
   if (!flag || flag.value !== "true") return;
 
-  const messageType: string = msg.messageType || "";
+  const messageType: string = msg.messageType || Object.keys(msg.message || {}).find((k) => k.endsWith("Message")) || "";
   const messageObj = msg.message || {};
   const caption: string = messageObj?.imageMessage?.caption ||
-                          messageObj?.documentMessage?.caption || "";
+                          messageObj?.documentMessage?.caption ||
+                          messageObj?.videoMessage?.caption ||
+                          msg?.caption || "";
   const textBody: string = messageObj?.conversation ||
-                           messageObj?.extendedTextMessage?.text || "";
+                           messageObj?.extendedTextMessage?.text ||
+                           messageObj?.ephemeralMessage?.message?.conversation ||
+                           messageObj?.ephemeralMessage?.message?.extendedTextMessage?.text ||
+                           msg?.text || "";
 
   // WhatsApp contact display name — used downstream to identify clients when
   // remoteJid is @lid and the OCR can't extract a sender_name from the image.
   const pushName: string = msg?.pushName || msg?.push_name || payload?.data?.pushName || "";
 
-  const documentMime: string = messageObj?.documentMessage?.mimetype || "";
-  const documentFileName: string = messageObj?.documentMessage?.fileName || "";
-  const isImage = !!messageObj?.imageMessage || messageType === "imageMessage";
-  const isDocImage = !!messageObj?.documentMessage && documentMime.startsWith("image/");
-  const isPdf = !!messageObj?.documentMessage && (
+  const doc = messageObj?.documentMessage || messageObj?.documentWithCaptionMessage?.message?.documentMessage || null;
+  const image = messageObj?.imageMessage || messageObj?.viewOnceMessage?.message?.imageMessage || messageObj?.ephemeralMessage?.message?.imageMessage || null;
+  const documentMime: string = doc?.mimetype || msg?.mimetype || "";
+  const documentFileName: string = doc?.fileName || msg?.fileName || "";
+  const isImage = !!image || messageType === "imageMessage";
+  const isDocImage = !!doc && documentMime.startsWith("image/");
+  const isPdf = !!doc && (
     documentMime === "application/pdf" || documentFileName.toLowerCase().endsWith(".pdf")
   );
 
@@ -369,7 +488,7 @@ async function handleEvent(payload: any) {
         const { data: cli } = await supabase
           .from("clients").select("phone").eq("id", cached.client_id).maybeSingle();
         const phoneDigits = (cli?.phone || "").replace(/\D/g, "");
-        if (phoneDigits.length >= 10) phone = phoneDigits;
+        if (looksLikeBrazilianPhone(phoneDigits)) phone = phoneDigits;
       } else {
         console.log(JSON.stringify({
           tag: "wa-webhook", event: "lid_cache_miss",
@@ -443,8 +562,10 @@ async function handleEvent(payload: any) {
     // Evolution v2 sometimes embeds base64 directly in the payload — use it first
     const inlineB64 = msg?.message?.base64
       || msg?.base64
-      || messageObj?.imageMessage?.base64
-      || messageObj?.documentMessage?.base64
+      || image?.base64
+      || doc?.base64
+      || msg?.media?.base64
+      || msg?.data?.base64
       || null;
     const base64 = inlineB64
       || (apiUrl && apiKey
@@ -461,6 +582,8 @@ async function handleEvent(payload: any) {
       receipt_hint: true,
       message_id: messageId,
       raw_text: fallbackRawText,
+      remote_jid: remoteJid || null,
+      force_reprocess: !!payload?.force_reprocess,
     };
     if (!base64) {
       console.error("[wa-webhook] media WITHOUT base64 — enviando para revisão manual", {
@@ -471,6 +594,13 @@ async function handleEvent(payload: any) {
         hasApiCreds: !!(apiUrl && apiKey),
       });
       body.ocr_error = "media_fetch_failed";
+      await logAutoSettlement(supabase, instance.organization_id, "media_fetch_failed", {
+        instance: instanceName,
+        phone,
+        message_id: messageId,
+        media_mime_type: mediaMimeType,
+        has_api_creds: !!(apiUrl && apiKey),
+      });
     }
   } else if ((textBody && looksLikePix(textBody))) {
     const amount = extractAmountFromText(textBody);
@@ -483,6 +613,7 @@ async function handleEvent(payload: any) {
       manual_amount: amount,
       manual_txid: `WA-TXT-${messageId}`,
       message_id: messageId,
+      force_reprocess: !!payload?.force_reprocess,
     };
   } else {
     return; // not a PIX receipt — ignore
@@ -500,7 +631,16 @@ async function handleEvent(payload: any) {
     });
     const t = await res.text();
     console.log("[wa-webhook] forwarded", res.status, t.slice(0, 200));
+    await logAutoSettlement(supabase, instance.organization_id, "webhook_forwarded_to_pix_ocr", {
+      message_id: messageId,
+      status: res.status,
+      response: t.slice(0, 300),
+    });
+    if (!res.ok) {
+      await createFallbackEvent(supabase, body, "erro", `pix-ocr-settlement retornou HTTP ${res.status}: ${t.slice(0, 200)}`);
+    }
   } catch (e) {
     console.error("[wa-webhook] forward error", e);
+    await createFallbackEvent(supabase, body, "erro", `falha ao encaminhar webhook para OCR: ${String((e as any)?.message || e)}`);
   }
 }

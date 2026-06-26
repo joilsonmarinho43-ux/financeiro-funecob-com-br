@@ -10,7 +10,8 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY") || "";
 
 function normalizePhone(p: string): string {
   return (p || "").replace(/\D/g, "").replace(/^55/, "");
@@ -100,41 +101,124 @@ function buildMediaBlock(dataUrl: string, mimeType: string) {
   return { type: "image_url", image_url: { url: dataUrl } };
 }
 
-async function runOcr(mediaUrl: string, mimeType: string): Promise<any> {
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-pro",
-      messages: [
-        {
-          role: "system",
-          content:
-            "Você extrai dados de comprovantes PIX brasileiros (imagem OU PDF). Retorne APENAS JSON válido com as chaves: amount (number, valor em reais), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (string com TODO o texto bruto visível no comprovante, incluindo cabeçalhos, valores, datas, nomes). Se não for um comprovante PIX válido, retorne {\"amount\":null}.",
-        },
-        {
+function dataUrlToBase64(dataUrl: string): string {
+  const idx = dataUrl.indexOf(",");
+  return idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl;
+}
+
+function isAiCreditError(err: any): boolean {
+  const s = String(err?.message || err || "").toLowerCase();
+  return s.includes("402") || s.includes("payment_required") || s.includes("not enough credits") || s.includes("insufficient credits");
+}
+
+function parseJsonObject(text: string): any {
+  const raw = String(text || "").trim();
+  if (!raw) return {};
+  try { return JSON.parse(raw); } catch {}
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1];
+  if (fenced) {
+    try { return JSON.parse(fenced); } catch {}
+  }
+  const first = raw.indexOf("{");
+  const last = raw.lastIndexOf("}");
+  if (first >= 0 && last > first) {
+    try { return JSON.parse(raw.slice(first, last + 1)); } catch {}
+  }
+  return { raw_text: raw };
+}
+
+async function runGeminiDirectOcr(mediaUrl: string, mimeType: string, amountOnly = false): Promise<any> {
+  if (!GEMINI_API_KEY) throw new Error("credito_ocr_esgotado: AI Gateway sem crédito e GEMINI_API_KEY/GOOGLE_API_KEY não configurada para fallback direto");
+
+  const prompt = amountOnly
+    ? "Leia este comprovante PIX brasileiro e retorne APENAS JSON válido: {\"amount\": <number|null>, \"raw_text\": <todo o texto visível>}. Encontre o valor transferido em reais. Não invente valor."
+    : "Extraia dados deste comprovante PIX brasileiro e retorne APENAS JSON válido com: amount (number|null), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (todo o texto visível). Não invente dados.";
+
+  const isPdf = /^application\/pdf/i.test(mimeType || "");
+  const models = isPdf
+    ? ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
+    : ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+  let lastErr = "";
+  for (const model of models) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
           role: "user",
-          content: [
-            { type: "text", text: "Extraia os dados deste comprovante PIX." },
-            buildMediaBlock(mediaUrl, mimeType),
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: mimeType || "image/jpeg", data: dataUrlToBase64(mediaUrl) } },
           ],
-        },
-      ],
-      response_format: { type: "json_object" },
-    }),
-  });
-  if (!res.ok) throw new Error(`OCR failed [${res.status}]: ${await res.text()}`);
-  const data = await res.json();
-  const txt = data.choices?.[0]?.message?.content || "{}";
-  try { return JSON.parse(txt); } catch { return { raw_text: txt }; }
+        }],
+        generationConfig: { response_mime_type: "application/json" },
+      }),
+    });
+    if (!res.ok) {
+      lastErr = `Gemini ${model} failed [${res.status}]: ${(await res.text()).slice(0, 500)}`;
+      console.warn("[pix-ocr] Gemini model failed", lastErr);
+      continue;
+    }
+    const data = await res.json();
+    const txt = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "{}";
+    return { ...parseJsonObject(txt), _gemini_model: model };
+  }
+  throw new Error(lastErr || "Gemini direct OCR failed");
+}
+
+async function runOcr(mediaUrl: string, mimeType: string): Promise<any> {
+  try {
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-pro",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Você extrai dados de comprovantes PIX brasileiros (imagem OU PDF). Retorne APENAS JSON válido com as chaves: amount (number, valor em reais), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (string com TODO o texto bruto visível no comprovante, incluindo cabeçalhos, valores, datas, nomes). Se não for um comprovante PIX válido, retorne {\"amount\":null}.",
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Extraia os dados deste comprovante PIX." },
+              buildMediaBlock(mediaUrl, mimeType),
+            ],
+          },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!res.ok) throw new Error(`OCR failed [${res.status}]: ${await res.text()}`);
+    const data = await res.json();
+    const txt = data.choices?.[0]?.message?.content || "{}";
+    try { return JSON.parse(txt); } catch { return { raw_text: txt }; }
+  } catch (e) {
+    if (isAiCreditError(e) || GEMINI_API_KEY) {
+      console.warn("[pix-ocr] primary OCR unavailable; trying Gemini direct fallback", String((e as any)?.message || e).slice(0, 180));
+      try {
+        const fallback = await runGeminiDirectOcr(mediaUrl, mimeType, false);
+        return { ...fallback, _ocr_provider: "gemini_direct_fallback" };
+      } catch (fallbackErr) {
+        throw new Error(`OCR primário indisponível (${String((e as any)?.message || e)}); fallback Gemini falhou (${String((fallbackErr as any)?.message || fallbackErr)})`);
+      }
+    }
+    throw e;
+  }
 }
 
 // 2º passe: foco exclusivo em VALOR, usado quando o 1º passe não detectou.
 async function runOcrAmountOnly(mediaUrl: string, mimeType: string): Promise<{ amount: number | null; raw_text: string | null }> {
   try {
+    if (!LOVABLE_API_KEY) {
+      const direct = await runGeminiDirectOcr(mediaUrl, mimeType, true);
+      return { amount: coerceAmount(direct.amount), raw_text: direct.raw_text || null };
+    }
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -160,7 +244,14 @@ async function runOcrAmountOnly(mediaUrl: string, mimeType: string): Promise<{ a
         response_format: { type: "json_object" },
       }),
     });
-    if (!res.ok) return { amount: null, raw_text: null };
+    if (!res.ok) {
+      const text = await res.text();
+      if (isAiCreditError(`${res.status} ${text}`) || GEMINI_API_KEY) {
+        const direct = await runGeminiDirectOcr(mediaUrl, mimeType, true);
+        return { amount: coerceAmount(direct.amount), raw_text: direct.raw_text || null };
+      }
+      return { amount: null, raw_text: null };
+    }
     const data = await res.json();
     const txt = data.choices?.[0]?.message?.content || "{}";
     const parsed = JSON.parse(txt);
@@ -215,7 +306,7 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
     const body = await req.json();
-    const { organization_id, phone, push_name, image_url, image_base64, media_mime_type, message_id, raw_text, manual_amount, manual_txid } = body;
+    const { organization_id, phone, push_name, image_url, image_base64, media_mime_type, message_id, raw_text, manual_amount, manual_txid, force_reprocess, ocr_error, remote_jid } = body;
 
     if (!organization_id || !phone || (!image_url && !image_base64 && !raw_text && manual_amount == null)) {
       return new Response(JSON.stringify({ error: "missing organization_id, phone, or image/raw_text/manual_amount" }), {
@@ -280,6 +371,7 @@ Deno.serve(async (req) => {
     // de extração de valor (downstream) fica sem fonte e o evento vai pra revisão.
     const webhookRawText: string | null = (typeof raw_text === "string" && raw_text.trim()) ? raw_text : null;
     let ocr: any = { raw_text: webhookRawText };
+    if (ocr_error) ocr.error = String(ocr_error);
     // Mime real do anexo (webhook sabe se é image/jpeg, image/png ou application/pdf).
     // Sem isso, PDF era enviado como "data:image/jpeg;..." e o OCR retornava vazio.
     const resolvedMime = (typeof media_mime_type === "string" && media_mime_type) || "image/jpeg";
@@ -292,8 +384,8 @@ Deno.serve(async (req) => {
         console.error("[pix-ocr] 1st-pass failed", e);
         ocrResult = { error: String(e?.message || e) };
       }
-      // merge — nunca perde o raw_text do webhook
-      ocr = { ...ocrResult };
+      // merge — nunca perde o raw_text do webhook nem erro prévio do webhook
+      ocr = { ...(ocr_error ? { webhook_error: String(ocr_error) } : {}), ...ocrResult };
       if (!ocr.raw_text && webhookRawText) ocr.raw_text = webhookRawText;
 
       // 2º passe — Flash focado em valor quando o 1º passe falhou
@@ -438,9 +530,31 @@ Deno.serve(async (req) => {
       ?? extractFromText(ocr?.raw_text)
       ?? extractFromText(raw_text);
     const txid = ocr?.txid || manual_txid || (message_id ? `WA-MSG-${message_id}` : null);
+    let forcedExistingEventId: string | null = null;
+
+    if (force_reprocess) {
+      const q = supabase
+        .from("auto_settlement_events")
+        .select("id, status")
+        .eq("organization_id", organization_id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const { data: existingForce } = message_id
+        ? await q.eq("whatsapp_message_id", message_id).maybeSingle()
+        : txid
+          ? await q.eq("txid", txid).maybeSingle()
+          : { data: null } as any;
+      if (existingForce?.id && existingForce.status !== "conciliado") {
+        forcedExistingEventId = existingForce.id;
+      } else if (existingForce?.status === "conciliado") {
+        return new Response(JSON.stringify({ status: "duplicado", event_id: existingForce.id, reason: "already_conciliated" }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     // Idempotency: by txid (limit 1, ordered, tolerates legacy duplicates)
-    if (txid) {
+    if (txid && !force_reprocess) {
       const { data: existing } = await supabase
         .from("auto_settlement_events")
         .select("id").eq("organization_id", organization_id).eq("txid", txid)
@@ -453,7 +567,7 @@ Deno.serve(async (req) => {
     }
 
     // Idempotency: by whatsapp_message_id (covers retries when OCR fails to extract txid)
-    if (message_id) {
+    if (message_id && !force_reprocess) {
       const { data: existingMsg } = await supabase
         .from("auto_settlement_events")
         .select("id").eq("organization_id", organization_id).eq("whatsapp_message_id", message_id)
@@ -578,28 +692,43 @@ Deno.serve(async (req) => {
       status: eventStatus,
     });
 
-    const { data: ev, error: insErr } = await supabase
-      .from("auto_settlement_events").insert({
-        organization_id,
-        client_id: client?.id || null,
-        phone,
-        raw_text: ocr?.raw_text || null,
-        ocr_payload: {
-          ...ocr,
-          push_name: push_name || null,
-          _match_source: matchSource,
-          _fuzzy_name_source: fuzzyNameSource,
-          _safe_fuzzy: safeFuzzy,
-          _amount_matches_invoice: amountMatchesInvoice,
-          _combination_picks: combinationPicks,
-        },
-        txid,
-        pix_end_to_end_id: ocr?.end_to_end_id || null,
-        amount_detected: amount,
-        whatsapp_message_id: message_id || null,
-        status: eventStatus,
-        error_message: errorMessage,
-      }).select("id").single();
+    const eventRow = {
+      organization_id,
+      client_id: client?.id || null,
+      phone,
+      raw_text: ocr?.raw_text || null,
+      ocr_payload: {
+        ...ocr,
+        push_name: push_name || null,
+        _match_source: matchSource,
+        _fuzzy_name_source: fuzzyNameSource,
+        _safe_fuzzy: safeFuzzy,
+        _amount_matches_invoice: amountMatchesInvoice,
+        _combination_picks: combinationPicks,
+        _force_reprocessed_at: force_reprocess ? new Date().toISOString() : null,
+        remote_jid: remote_jid || null,
+      },
+      txid,
+      pix_end_to_end_id: ocr?.end_to_end_id || null,
+      amount_detected: amount,
+      whatsapp_message_id: message_id || null,
+      status: eventStatus,
+      error_message: errorMessage,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: ev, error: insErr } = forcedExistingEventId
+      ? await supabase
+          .from("auto_settlement_events")
+          .update(eventRow)
+          .eq("id", forcedExistingEventId)
+          .select("id")
+          .single()
+      : await supabase
+          .from("auto_settlement_events")
+          .insert(eventRow)
+          .select("id")
+          .single();
 
     if (insErr) throw insErr;
 
