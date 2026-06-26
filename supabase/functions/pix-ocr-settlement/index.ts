@@ -10,7 +10,8 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY") || "";
 
 function normalizePhone(p: string): string {
   return (p || "").replace(/\D/g, "").replace(/^55/, "");
@@ -100,41 +101,98 @@ function buildMediaBlock(dataUrl: string, mimeType: string) {
   return { type: "image_url", image_url: { url: dataUrl } };
 }
 
-async function runOcr(mediaUrl: string, mimeType: string): Promise<any> {
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+function dataUrlToBase64(dataUrl: string): string {
+  const idx = dataUrl.indexOf(",");
+  return idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl;
+}
+
+function isAiCreditError(err: any): boolean {
+  const s = String(err?.message || err || "").toLowerCase();
+  return s.includes("402") || s.includes("payment_required") || s.includes("not enough credits") || s.includes("insufficient credits");
+}
+
+async function runGeminiDirectOcr(mediaUrl: string, mimeType: string, amountOnly = false): Promise<any> {
+  if (!GEMINI_API_KEY) throw new Error("OCR fallback indisponível: GEMINI_API_KEY/GOOGLE_API_KEY não configurada");
+
+  const prompt = amountOnly
+    ? "Leia este comprovante PIX brasileiro e retorne APENAS JSON válido: {\"amount\": <number|null>, \"raw_text\": <todo o texto visível>}. Encontre o valor transferido em reais. Não invente valor."
+    : "Extraia dados deste comprovante PIX brasileiro e retorne APENAS JSON válido com: amount (number|null), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (todo o texto visível). Não invente dados.";
+
+  const isPdf = /^application\/pdf/i.test(mimeType || "");
+  const model = isPdf ? "gemini-1.5-pro" : "gemini-1.5-flash";
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "google/gemini-2.5-pro",
-      messages: [
-        {
-          role: "system",
-          content:
-            "Você extrai dados de comprovantes PIX brasileiros (imagem OU PDF). Retorne APENAS JSON válido com as chaves: amount (number, valor em reais), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (string com TODO o texto bruto visível no comprovante, incluindo cabeçalhos, valores, datas, nomes). Se não for um comprovante PIX válido, retorne {\"amount\":null}.",
-        },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: "Extraia os dados deste comprovante PIX." },
-            buildMediaBlock(mediaUrl, mimeType),
-          ],
-        },
-      ],
-      response_format: { type: "json_object" },
+      contents: [{
+        role: "user",
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: mimeType || "image/jpeg", data: dataUrlToBase64(mediaUrl) } },
+        ],
+      }],
+      generationConfig: { response_mime_type: "application/json" },
     }),
   });
-  if (!res.ok) throw new Error(`OCR failed [${res.status}]: ${await res.text()}`);
+  if (!res.ok) throw new Error(`Gemini direct OCR failed [${res.status}]: ${await res.text()}`);
   const data = await res.json();
-  const txt = data.choices?.[0]?.message?.content || "{}";
+  const txt = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "{}";
   try { return JSON.parse(txt); } catch { return { raw_text: txt }; }
+}
+
+async function runOcr(mediaUrl: string, mimeType: string): Promise<any> {
+  try {
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-pro",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Você extrai dados de comprovantes PIX brasileiros (imagem OU PDF). Retorne APENAS JSON válido com as chaves: amount (number, valor em reais), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (string com TODO o texto bruto visível no comprovante, incluindo cabeçalhos, valores, datas, nomes). Se não for um comprovante PIX válido, retorne {\"amount\":null}.",
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Extraia os dados deste comprovante PIX." },
+              buildMediaBlock(mediaUrl, mimeType),
+            ],
+          },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!res.ok) throw new Error(`OCR failed [${res.status}]: ${await res.text()}`);
+    const data = await res.json();
+    const txt = data.choices?.[0]?.message?.content || "{}";
+    try { return JSON.parse(txt); } catch { return { raw_text: txt }; }
+  } catch (e) {
+    if (isAiCreditError(e) || GEMINI_API_KEY) {
+      console.warn("[pix-ocr] primary OCR unavailable; trying Gemini direct fallback", String((e as any)?.message || e).slice(0, 180));
+      try {
+        const fallback = await runGeminiDirectOcr(mediaUrl, mimeType, false);
+        return { ...fallback, _ocr_provider: "gemini_direct_fallback" };
+      } catch (fallbackErr) {
+        throw new Error(`OCR primário indisponível (${String((e as any)?.message || e)}); fallback Gemini falhou (${String((fallbackErr as any)?.message || fallbackErr)})`);
+      }
+    }
+    throw e;
+  }
 }
 
 // 2º passe: foco exclusivo em VALOR, usado quando o 1º passe não detectou.
 async function runOcrAmountOnly(mediaUrl: string, mimeType: string): Promise<{ amount: number | null; raw_text: string | null }> {
   try {
+    if (!LOVABLE_API_KEY) {
+      const direct = await runGeminiDirectOcr(mediaUrl, mimeType, true);
+      return { amount: coerceAmount(direct.amount), raw_text: direct.raw_text || null };
+    }
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -160,7 +218,14 @@ async function runOcrAmountOnly(mediaUrl: string, mimeType: string): Promise<{ a
         response_format: { type: "json_object" },
       }),
     });
-    if (!res.ok) return { amount: null, raw_text: null };
+    if (!res.ok) {
+      const text = await res.text();
+      if (isAiCreditError(`${res.status} ${text}`) || GEMINI_API_KEY) {
+        const direct = await runGeminiDirectOcr(mediaUrl, mimeType, true);
+        return { amount: coerceAmount(direct.amount), raw_text: direct.raw_text || null };
+      }
+      return { amount: null, raw_text: null };
+    }
     const data = await res.json();
     const txt = data.choices?.[0]?.message?.content || "{}";
     const parsed = JSON.parse(txt);
@@ -215,7 +280,7 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
     const body = await req.json();
-    const { organization_id, phone, push_name, image_url, image_base64, media_mime_type, message_id, raw_text, manual_amount, manual_txid } = body;
+    const { organization_id, phone, push_name, image_url, image_base64, media_mime_type, message_id, raw_text, manual_amount, manual_txid, force_reprocess } = body;
 
     if (!organization_id || !phone || (!image_url && !image_base64 && !raw_text && manual_amount == null)) {
       return new Response(JSON.stringify({ error: "missing organization_id, phone, or image/raw_text/manual_amount" }), {
@@ -440,7 +505,7 @@ Deno.serve(async (req) => {
     const txid = ocr?.txid || manual_txid || (message_id ? `WA-MSG-${message_id}` : null);
 
     // Idempotency: by txid (limit 1, ordered, tolerates legacy duplicates)
-    if (txid) {
+    if (txid && !force_reprocess) {
       const { data: existing } = await supabase
         .from("auto_settlement_events")
         .select("id").eq("organization_id", organization_id).eq("txid", txid)
@@ -453,7 +518,7 @@ Deno.serve(async (req) => {
     }
 
     // Idempotency: by whatsapp_message_id (covers retries when OCR fails to extract txid)
-    if (message_id) {
+    if (message_id && !force_reprocess) {
       const { data: existingMsg } = await supabase
         .from("auto_settlement_events")
         .select("id").eq("organization_id", organization_id).eq("whatsapp_message_id", message_id)

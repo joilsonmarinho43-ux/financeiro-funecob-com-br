@@ -32,6 +32,7 @@ type ReasonCategory =
   | "sugestao_terceiro"
   | "telefone_invalido"
   | "valor_nao_detectado"
+  | "credito_ocr_esgotado"
   | "sem_fatura_compativel"
   | "ocr_falhou"
   | "template_placeholder"
@@ -45,6 +46,7 @@ const reasonMeta: Record<ReasonCategory, { label: string; variant: any; hint: st
   sugestao_terceiro:     { label: "Sugestão (PIX terceiro)",    variant: "secondary",   hint: "Sistema sugeriu cliente pelo nome do pagador — confirme manualmente, pode ser PIX de terceiro." },
   telefone_invalido:     { label: "Telefone inválido",          variant: "destructive", hint: "Número malformado, sem DDI/DDD ou LID não resolvido." },
   valor_nao_detectado:   { label: "Valor não detectado",        variant: "destructive", hint: "OCR não conseguiu extrair o valor do comprovante." },
+  credito_ocr_esgotado:  { label: "Crédito OCR esgotado",       variant: "destructive", hint: "O provedor de IA/OCR recusou a leitura por falta de crédito; o comprovante não foi lido." },
   sem_fatura_compativel: { label: "Sem fatura compatível",      variant: "destructive", hint: "Nenhuma fatura aberta bate com o valor recebido." },
   ocr_falhou:            { label: "Falha de OCR",               variant: "destructive", hint: "Imagem ilegível, sem texto ou OCR retornou vazio." },
   template_placeholder:  { label: "Template/placeholder",       variant: "destructive", hint: "'R$ R$' duplicado ou '{variavel}' não substituída." },
@@ -56,9 +58,14 @@ const reasonMeta: Record<ReasonCategory, { label: string; variant: any; hint: st
 
 function classifyReason(e: any): { category: ReasonCategory; detail: string } {
   const msg = String(e.error_message || "").toLowerCase();
+  const ocrError = String(e.ocr_payload?.error || e.ocr_payload?._ocr_error || "");
+  const fullMsg = `${msg} ${ocrError}`.toLowerCase();
   const raw = String(e.raw_text || e.ocr_payload?.raw_text || "");
   const status = e.status as string;
 
+  if (/402|payment_required|not enough credits|insufficient credits|cr[eé]dito.*ocr|credito.*ocr|sem cr[eé]dito/i.test(fullMsg)) {
+    return { category: "credito_ocr_esgotado", detail: e.ocr_payload?.error || e.error_message || "Provedor OCR sem crédito" };
+  }
   if (/r\$\s*r\$/i.test(raw) || /\{[a-z_]+\}/i.test(raw)) {
     const placeholders = Array.from(raw.matchAll(/\{([a-z_]+)\}/gi)).map((m) => m[1]);
     const issues: string[] = [];
