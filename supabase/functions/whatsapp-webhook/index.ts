@@ -576,6 +576,7 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
       receipt_hint: true,
       message_id: messageId,
       raw_text: fallbackRawText,
+      force_reprocess: !!payload?.force_reprocess,
     };
     if (!base64) {
       console.error("[wa-webhook] media WITHOUT base64 — enviando para revisão manual", {
@@ -605,6 +606,7 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
       manual_amount: amount,
       manual_txid: `WA-TXT-${messageId}`,
       message_id: messageId,
+      force_reprocess: !!payload?.force_reprocess,
     };
   } else {
     return; // not a PIX receipt — ignore
