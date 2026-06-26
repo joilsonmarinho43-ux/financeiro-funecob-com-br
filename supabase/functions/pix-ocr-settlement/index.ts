@@ -503,6 +503,28 @@ Deno.serve(async (req) => {
       ?? extractFromText(ocr?.raw_text)
       ?? extractFromText(raw_text);
     const txid = ocr?.txid || manual_txid || (message_id ? `WA-MSG-${message_id}` : null);
+    let forcedExistingEventId: string | null = null;
+
+    if (force_reprocess) {
+      const q = supabase
+        .from("auto_settlement_events")
+        .select("id, status")
+        .eq("organization_id", organization_id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const { data: existingForce } = message_id
+        ? await q.eq("whatsapp_message_id", message_id).maybeSingle()
+        : txid
+          ? await q.eq("txid", txid).maybeSingle()
+          : { data: null } as any;
+      if (existingForce?.id && existingForce.status !== "conciliado") {
+        forcedExistingEventId = existingForce.id;
+      } else if (existingForce?.status === "conciliado") {
+        return new Response(JSON.stringify({ status: "duplicado", event_id: existingForce.id, reason: "already_conciliated" }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     // Idempotency: by txid (limit 1, ordered, tolerates legacy duplicates)
     if (txid && !force_reprocess) {
@@ -643,28 +665,42 @@ Deno.serve(async (req) => {
       status: eventStatus,
     });
 
-    const { data: ev, error: insErr } = await supabase
-      .from("auto_settlement_events").insert({
-        organization_id,
-        client_id: client?.id || null,
-        phone,
-        raw_text: ocr?.raw_text || null,
-        ocr_payload: {
-          ...ocr,
-          push_name: push_name || null,
-          _match_source: matchSource,
-          _fuzzy_name_source: fuzzyNameSource,
-          _safe_fuzzy: safeFuzzy,
-          _amount_matches_invoice: amountMatchesInvoice,
-          _combination_picks: combinationPicks,
-        },
-        txid,
-        pix_end_to_end_id: ocr?.end_to_end_id || null,
-        amount_detected: amount,
-        whatsapp_message_id: message_id || null,
-        status: eventStatus,
-        error_message: errorMessage,
-      }).select("id").single();
+    const eventRow = {
+      organization_id,
+      client_id: client?.id || null,
+      phone,
+      raw_text: ocr?.raw_text || null,
+      ocr_payload: {
+        ...ocr,
+        push_name: push_name || null,
+        _match_source: matchSource,
+        _fuzzy_name_source: fuzzyNameSource,
+        _safe_fuzzy: safeFuzzy,
+        _amount_matches_invoice: amountMatchesInvoice,
+        _combination_picks: combinationPicks,
+        _force_reprocessed_at: force_reprocess ? new Date().toISOString() : null,
+      },
+      txid,
+      pix_end_to_end_id: ocr?.end_to_end_id || null,
+      amount_detected: amount,
+      whatsapp_message_id: message_id || null,
+      status: eventStatus,
+      error_message: errorMessage,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: ev, error: insErr } = forcedExistingEventId
+      ? await supabase
+          .from("auto_settlement_events")
+          .update(eventRow)
+          .eq("id", forcedExistingEventId)
+          .select("id")
+          .single()
+      : await supabase
+          .from("auto_settlement_events")
+          .insert(eventRow)
+          .select("id")
+          .single();
 
     if (insErr) throw insErr;
 
