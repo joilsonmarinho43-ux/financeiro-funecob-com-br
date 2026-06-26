@@ -41,6 +41,17 @@ function asArray<T = any>(value: T | T[] | null | undefined): T[] {
   return value == null ? [] : [value];
 }
 
+function jidToDigits(j: any): string {
+  if (!j || typeof j !== "string") return "";
+  return j.split("@")[0].replace(/:\d+$/, "").replace(/\D/g, "");
+}
+
+function looksLikeBrazilianPhone(d: string): boolean {
+  const n = String(d || "").replace(/\D/g, "").replace(/^55/, "");
+  // DDD + fixo/celular. Reject long Baileys/LID identifiers.
+  return n.length === 10 || n.length === 11;
+}
+
 async function logWebhookReceipt(supabase: any, organizationId: string, event: string, payload: any, responseStatus = 200, responseBody = "received") {
   try {
     await supabase.from("webhook_logs").insert({
@@ -155,13 +166,13 @@ async function resolveLidToPhone(
       const recordText = JSON.stringify(c || {}).replace(/\D/g, "");
       if (!recordText.includes(lid)) continue;
 
-      const fields = [c?.id, c?.remoteJid, c?.jid, c?.wuid, c?.number, c?.phoneNumber, c?.owner];
+      const fields = [c?.remoteJid, c?.jid, c?.wuid, c?.number, c?.phoneNumber, c?.phone, c?.participant, c?.participantPn, c?.remoteJidAlt];
       for (const f of fields) {
         if (typeof f !== "string") continue;
         const jid = f.includes("@") ? f : `${f}@s.whatsapp.net`;
         if (jid.endsWith("@s.whatsapp.net")) {
           const digits = jid.split("@")[0].replace(/\D/g, "");
-          if (digits !== lid && digits.length >= 10 && digits.length <= 13) return digits;
+          if (digits !== lid && looksLikeBrazilianPhone(digits)) return digits;
         }
       }
     }
@@ -353,13 +364,8 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
   // Real phone often lives in: senderPn, remoteJidAlt, participantPn,
   // participantAlt, msg.pushName-related fields, or msg.contextInfo.
   // We collect all candidates and pick the first that LOOKS like a BR phone.
-  function jidToDigits(j: any): string {
-    if (!j || typeof j !== "string") return "";
-    return j.split("@")[0].replace(/:\d+$/, "").replace(/\D/g, "");
-  }
   function looksLikePhone(d: string): boolean {
-    // BR phones: 10-13 digits. LIDs are typically 14-16.
-    return d.length >= 10 && d.length <= 13;
+    return looksLikeBrazilianPhone(d);
   }
   const candidates: string[] = [
     jidToDigits(key.senderPn),
@@ -370,7 +376,7 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
     jidToDigits(msg?.senderPn),
     jidToDigits(msg?.participantPn),
     // remoteJid LAST — only if it's @s.whatsapp.net (not @lid)
-    remoteJid.endsWith("@lid") ? "" : jidToDigits(remoteJid),
+    (remoteJid.endsWith("@lid") || !looksLikeBrazilianPhone(jidToDigits(remoteJid))) ? "" : jidToDigits(remoteJid),
     // Absolute fallback — accept LID as last resort so we still log the event
     jidToDigits(remoteJid),
   ].filter(Boolean);
@@ -482,7 +488,7 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
         const { data: cli } = await supabase
           .from("clients").select("phone").eq("id", cached.client_id).maybeSingle();
         const phoneDigits = (cli?.phone || "").replace(/\D/g, "");
-        if (phoneDigits.length >= 10) phone = phoneDigits;
+        if (looksLikeBrazilianPhone(phoneDigits)) phone = phoneDigits;
       } else {
         console.log(JSON.stringify({
           tag: "wa-webhook", event: "lid_cache_miss",
@@ -576,6 +582,7 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
       receipt_hint: true,
       message_id: messageId,
       raw_text: fallbackRawText,
+      remote_jid: remoteJid || null,
       force_reprocess: !!payload?.force_reprocess,
     };
     if (!base64) {
