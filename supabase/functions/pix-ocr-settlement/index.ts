@@ -86,11 +86,40 @@ function strongNameTokens(s: string): string[] {
     .filter((t) => t.length >= 3 && !NAME_STOPWORDS.has(t));
 }
 
+function editDistanceWithinOne(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  let j = 0;
+  let edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    edits++;
+    if (edits > 1) return false;
+    if (a.length > b.length) i++;
+    else if (b.length > a.length) j++;
+    else { i++; j++; }
+  }
+  if (i < a.length || j < b.length) edits++;
+  return edits <= 1;
+}
+
+function tokenMatchesName(sourceToken: string, clientTokens: Set<string>): boolean {
+  if (clientTokens.has(sourceToken)) return true;
+  // Tolerância controlada para erro comum de OCR/digitação em nomes fortes:
+  // ex.: "edmar" no comprovante vs "edimar" no cadastro. Não aplica a tokens curtos.
+  if (sourceToken.length < 5) return false;
+  for (const clientToken of clientTokens) {
+    if (clientToken.length >= 5 && editDistanceWithinOne(sourceToken, clientToken)) return true;
+  }
+  return false;
+}
+
 function strongNameScore(sourceName: string, clientName: string): number {
   const sourceTokens = strongNameTokens(sourceName);
   if (sourceTokens.length === 0) return 0;
   const clientTokens = new Set(normName(clientName).split(/\s+/).filter(Boolean));
-  return sourceTokens.filter((t) => clientTokens.has(t)).length;
+  return sourceTokens.filter((t) => tokenMatchesName(t, clientTokens)).length;
 }
 
 async function matchesOpenInvoicesByAmount(
