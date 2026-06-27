@@ -515,7 +515,7 @@ Deno.serve(async (req) => {
         if (distinctive.length === 0) return [] as Array<{ c: any; score: number }>;
         return clients.map((c: any) => {
           const nTokens = new Set(normName(c.name || "").split(/\s+/).filter(Boolean));
-          const score = distinctive.filter(t => nTokens.has(t)).length;
+          const score = distinctive.filter(t => tokenMatchesName(t, nTokens)).length;
           return { c, score };
         }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
       };
