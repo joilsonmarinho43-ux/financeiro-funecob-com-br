@@ -78,6 +78,16 @@ async function logAutoSettlement(supabase: any, organizationId: string, action: 
   }
 }
 
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 5000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function createFallbackEvent(supabase: any, body: any, status: string, errorMessage: string) {
   if (!body?.organization_id || !body?.phone) return null;
 
@@ -132,11 +142,11 @@ async function fetchMediaBase64(
 ): Promise<string | null> {
   try {
     const url = `${apiUrl.replace(/\/$/, "")}/chat/getBase64FromMediaMessage/${instance}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: apiKey },
       body: JSON.stringify({ message: messageObj, convertToMp4: false }),
-    });
+    }, 8000);
     if (!res.ok) {
       console.error("[wa-webhook] media fetch failed", res.status, (await res.text()).slice(0, 200));
       return null;
@@ -186,11 +196,11 @@ async function resolveLidToPhone(
     { where: { id: `${lid}@lid` } },
   ]) {
     try {
-      const res = await fetch(`${base}/chat/findContacts/${instance}`, {
+      const res = await fetchWithTimeout(`${base}/chat/findContacts/${instance}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: apiKey },
         body: JSON.stringify(body),
-      });
+      }, 1800);
       if (!res.ok) continue;
       const data = await res.json();
       const list = Array.isArray(data) ? data : (data?.data || data?.contacts || []);
@@ -201,11 +211,11 @@ async function resolveLidToPhone(
 
   // 2) whatsappNumbers
   try {
-    const res = await fetch(`${base}/chat/whatsappNumbers/${instance}`, {
+    const res = await fetchWithTimeout(`${base}/chat/whatsappNumbers/${instance}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: apiKey },
       body: JSON.stringify({ numbers: [lid, `${lid}@lid`] }),
-    });
+    }, 1800);
     if (res.ok) {
       const data = await res.json();
       const list = Array.isArray(data) ? data : (data?.data || []);
@@ -217,11 +227,11 @@ async function resolveLidToPhone(
   // 3) fetchProfile
   for (const num of [`${lid}@lid`, lid]) {
     try {
-      const res = await fetch(`${base}/chat/fetchProfile/${instance}`, {
+      const res = await fetchWithTimeout(`${base}/chat/fetchProfile/${instance}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: apiKey },
         body: JSON.stringify({ number: num }),
-      });
+      }, 1800);
       if (!res.ok) continue;
       const data = await res.json();
       const found = tryExtractFromList([data, data?.data, data?.profile].filter(Boolean));
@@ -231,11 +241,11 @@ async function resolveLidToPhone(
 
   // 4) findChats — Evolution persists chats in store (DATABASE_SAVE_DATA_CHATS)
   try {
-    const res = await fetch(`${base}/chat/findChats/${instance}`, {
+    const res = await fetchWithTimeout(`${base}/chat/findChats/${instance}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: apiKey },
       body: JSON.stringify({ where: { remoteJid: `${lid}@lid` } }),
-    });
+    }, 1800);
     if (res.ok) {
       const data = await res.json();
       const list = Array.isArray(data) ? data : (data?.data || data?.chats || []);
@@ -446,9 +456,21 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
     documentMime === "application/pdf" || documentFileName.toLowerCase().endsWith(".pdf")
   );
 
-  // Decision: forward to PIX-OCR if (a) image with PIX-ish caption or no caption,
-  // or (b) text mentioning PIX with an amount.
+  // Decision: forward to PIX-OCR if (a) image/PDF receipt, or
+  // (b) text mentioning PIX with an amount.
   const messageId = key.id || msg.messageId || crypto.randomUUID();
+
+  if (isImage || isDocImage || isPdf) {
+    await logAutoSettlement(supabase, instance.organization_id, "webhook_media_candidate", {
+      instance: instanceName,
+      phone,
+      remote_jid: remoteJid || null,
+      message_id: messageId,
+      message_type: messageType || null,
+      media_mime_type: documentMime || (isImage ? "image/jpeg" : null),
+      push_name: pushName || null,
+    });
+  }
 
   // Resolve API creds (instance first, then global fallback)
   let apiUrl = instance.api_url || "";
@@ -621,14 +643,14 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
 
   // Forward to pix-ocr-settlement
   try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/pix-ocr-settlement`, {
+    const res = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/pix-ocr-settlement`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${SERVICE_KEY}`,
       },
       body: JSON.stringify(body),
-    });
+    }, 12000);
     const t = await res.text();
     console.log("[wa-webhook] forwarded", res.status, t.slice(0, 200));
     await logAutoSettlement(supabase, instance.organization_id, "webhook_forwarded_to_pix_ocr", {

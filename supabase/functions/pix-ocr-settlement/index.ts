@@ -65,6 +65,34 @@ function findExactCombination(amounts: number[], target: number): number[] | nul
   return null;
 }
 
+const NAME_STOPWORDS = new Set([
+  "maria","jose","da","de","do","das","dos","silva","santos","souza","sousa",
+  "oliveira","pereira","lima","ferreira","costa","rodrigues","almeida","gomes",
+  "ribeiro","carvalho","martins","araujo","barbosa","rocha","dias","nascimento",
+  "moreira","cardoso","fernandes","correia","mendes","freitas","cavalcante",
+  "monteiro","goncalves","pinto","ramos","azevedo","teixeira","melo","barros",
+  "vieira","reis","moura","castro","campos","cruz","alves","machado","junior",
+  "neto","filho","sobrinho","ana","jr"
+]);
+
+function normName(s: string): string {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function strongNameTokens(s: string): string[] {
+  return normName(s)
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 3 && !NAME_STOPWORDS.has(t));
+}
+
+function strongNameScore(sourceName: string, clientName: string): number {
+  const sourceTokens = strongNameTokens(sourceName);
+  if (sourceTokens.length === 0) return 0;
+  const clientTokens = new Set(normName(clientName).split(/\s+/).filter(Boolean));
+  return sourceTokens.filter((t) => clientTokens.has(t)).length;
+}
+
 async function matchesOpenInvoicesByAmount(
   supabase: any,
   organizationId: string,
@@ -135,10 +163,30 @@ async function runGeminiDirectOcr(mediaUrl: string, mimeType: string, amountOnly
     : "Extraia dados deste comprovante PIX brasileiro e retorne APENAS JSON válido com: amount (number|null), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (todo o texto visível). Não invente dados.";
 
   const isPdf = /^application\/pdf/i.test(mimeType || "");
-  const models = isPdf
-    ? ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
-    : ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
-  let lastErr = "";
+  const preferredModels = isPdf
+    ? ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-flash-latest", "gemini-pro-latest"]
+    : ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.5-pro", "gemini-flash-latest", "gemini-pro-latest"];
+  let models = preferredModels;
+  try {
+    const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(GEMINI_API_KEY)}`);
+    if (listRes.ok) {
+      const listed = await listRes.json();
+      const available = (listed?.models || [])
+        .filter((m: any) => Array.isArray(m?.supportedGenerationMethods) && m.supportedGenerationMethods.includes("generateContent"))
+        .map((m: any) => String(m?.name || "").replace(/^models\//, ""))
+        .filter((name: string) => /gemini/i.test(name) && !/embedding|tts|imagen/i.test(name));
+      const ordered = [
+        ...preferredModels.filter((m) => available.includes(m)),
+        ...available.filter((m: string) => !preferredModels.includes(m) && /(flash|pro)/i.test(m)),
+      ];
+      if (ordered.length) models = ordered;
+    } else {
+      console.warn("[pix-ocr] Gemini listModels failed", listRes.status, (await listRes.text()).slice(0, 200));
+    }
+  } catch (e) {
+    console.warn("[pix-ocr] Gemini listModels error (using defaults)", String((e as any)?.message || e));
+  }
+  const failures: string[] = [];
   for (const model of models) {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
       method: "POST",
@@ -155,15 +203,16 @@ async function runGeminiDirectOcr(mediaUrl: string, mimeType: string, amountOnly
       }),
     });
     if (!res.ok) {
-      lastErr = `Gemini ${model} failed [${res.status}]: ${(await res.text()).slice(0, 500)}`;
-      console.warn("[pix-ocr] Gemini model failed", lastErr);
+      const msg = `Gemini ${model} failed [${res.status}]: ${(await res.text()).slice(0, 500)}`;
+      failures.push(msg);
+      console.warn("[pix-ocr] Gemini model failed", msg);
       continue;
     }
     const data = await res.json();
     const txt = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "{}";
     return { ...parseJsonObject(txt), _gemini_model: model };
   }
-  throw new Error(lastErr || "Gemini direct OCR failed");
+  throw new Error(failures.slice(-4).join(" | ") || "Gemini direct OCR failed");
 }
 
 async function runOcr(mediaUrl: string, mimeType: string): Promise<any> {
@@ -432,24 +481,11 @@ Deno.serve(async (req) => {
       //     PIX é frequentemente pago por terceiro (família, amigo) → o nome do
       //     comprovante NÃO é o cliente, mas o push_name (nome do contato que
       //     enviou no WhatsApp) geralmente É o cliente.
-      const STOPWORDS = new Set([
-        "maria","jose","da","de","do","das","dos","silva","santos","souza","sousa",
-        "oliveira","pereira","lima","ferreira","costa","rodrigues","almeida","gomes",
-        "ribeiro","carvalho","martins","araujo","barbosa","rocha","dias","nascimento",
-        "moreira","cardoso","fernandes","correia","mendes","freitas","cavalcante",
-        "monteiro","goncalves","pinto","ramos","azevedo","teixeira","melo","barros",
-        "vieira","reis","moura","castro","campos","cruz","alves","machado","junior",
-        "neto","filho","sobrinho","ana","jr"
-      ]);
-      const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
       const tryFuzzy = (rawName: string) => {
-        const senderNorm = norm(rawName).trim();
-        const senderTokens = senderNorm.split(/\s+/).filter(t => t.length >= 3);
-        const distinctive = senderTokens.filter(t => !STOPWORDS.has(t));
+        const distinctive = strongNameTokens(rawName);
         if (distinctive.length === 0) return [] as Array<{ c: any; score: number }>;
         return clients.map((c: any) => {
-          const nTokens = new Set(norm(c.name || "").split(/\s+/).filter(Boolean));
+          const nTokens = new Set(normName(c.name || "").split(/\s+/).filter(Boolean));
           const score = distinctive.filter(t => nTokens.has(t)).length;
           return { c, score };
         }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
@@ -505,8 +541,8 @@ Deno.serve(async (req) => {
         if (uniqueClientIds.length === 1) {
           const cand = (clients || []).find((c: any) => c.id === uniqueClientIds[0]);
           if (cand) {
-            const candTokens = new Set(norm(cand.name || "").split(/\s+/).filter(t => t.length >= 4));
-            const hasOverlap = names.some(n => norm(n.val).split(/\s+/).filter(t => t.length >= 4).some(t => candTokens.has(t)));
+            const candTokens = new Set(normName(cand.name || "").split(/\s+/).filter(t => t.length >= 4));
+            const hasOverlap = names.some(n => normName(n.val).split(/\s+/).filter(t => t.length >= 4).some(t => candTokens.has(t)));
             if (hasOverlap) {
               client = cand; matchSource = "fuzzy_name"; fuzzyNameSource = "value_fallback";
               console.log("[value-fallback] matched", { client_id: cand.id, name: cand.name });
@@ -610,22 +646,24 @@ Deno.serve(async (req) => {
     // 1º) phone   : telefone WhatsApp real bate com cadastro          → auto
     // 2º) lid_map : LID já vinculado a este cliente em baixa anterior → auto
     // 3º) cpf     : CPF do comprovante bate com cadastro              → auto
-    // 4º) fuzzy_name (nome cadastrado) — auto SOMENTE quando:
-    //       (a) push_name (nome do contato WhatsApp) identifica
-    //           UNICAMENTE 1 cliente do cadastro (sem empate),  E
-    //       (b) o valor do PIX casa com 1 fatura aberta desse cliente.
-    //     Qualquer ambiguidade (2+ clientes com tokens em comum,
-    //     ou nome veio só do comprovante/sender_name) → revisão manual.
+    // 4º) fuzzy_name (nome cadastrado) — auto SOMENTE quando o valor casa
+    //     com fatura aberta E o nome tem sinal forte/sem empate. Para não
+    //     regredir PIX de terceiros, sender_name exige 2+ tokens fortes;
+    //     push_name pode baixar com 1+ token forte se for único/sem empate.
     let safeFuzzy = false;
-    if (matchSource === "fuzzy_name" && fuzzyNameSource === "push_name" && amountMatchesInvoice && amount && client) {
-      const STOPW = new Set(["maria","jose","da","de","do","das","dos","silva","santos","souza","sousa","oliveira","pereira","lima","ferreira","costa","rodrigues","almeida","gomes","ribeiro","carvalho","martins","araujo","barbosa","rocha","dias","nascimento","moreira","cardoso","fernandes","correia","mendes","freitas","cavalcante","monteiro","goncalves","pinto","ramos","azevedo","teixeira","melo","barros","vieira","reis","moura","castro","campos","cruz","alves","machado","junior","neto","filho","sobrinho","ana","jr"]);
-      const nrm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      const pushTokens = nrm(String(push_name || "")).split(/\s+/).filter(t => t.length >= 3 && !STOPW.has(t));
+    if (matchSource === "fuzzy_name" && amountMatchesInvoice && amount && client) {
+      const sourceName = fuzzyNameSource === "push_name"
+        ? String(push_name || "")
+        : fuzzyNameSource === "sender_name"
+          ? String(ocr?.sender_name || "")
+          : "";
+      const sourceTokens = strongNameTokens(sourceName);
+      const minStrongTokens = fuzzyNameSource === "sender_name" ? 2 : 1;
+      const clientScore = strongNameScore(sourceName, client.name || "");
       let nameUnique = false;
-      if (pushTokens.length > 0) {
+      if (sourceTokens.length >= minStrongTokens && clientScore >= minStrongTokens) {
         const scored = (clients || []).map((c: any) => {
-          const ct = new Set(nrm(c.name || "").split(/\s+/).filter(Boolean));
-          return { id: c.id, score: pushTokens.filter(t => ct.has(t)).length };
+          return { id: c.id, score: strongNameScore(sourceName, c.name || "") };
         }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
         // único = só 1 candidato com tokens em comum,
         //   OU top score estritamente maior que o 2º (sem empate) E é o cliente atual
@@ -641,12 +679,13 @@ Deno.serve(async (req) => {
       const distinctAmt = Array.from(new Set((ambig || []).map((i: any) => i.client_id)));
       const amountUnique = distinctAmt.length === 1 && distinctAmt[0] === client.id;
 
-      // Auto-settle quando nome é único; quando há ambiguidade de nome, exige valor único.
-      safeFuzzy = nameUnique || amountUnique;
+      // Auto-settle quando nome é forte e único; quando há ambiguidade de nome,
+      // aceita somente se o valor exato também é único na organização.
+      safeFuzzy = (sourceTokens.length >= minStrongTokens && clientScore >= minStrongTokens) && (nameUnique || amountUnique);
       console.log("[fuzzy-auto-settle-check]", {
         client_id: client.id, amount,
-        name_unique: nameUnique, amount_unique: amountUnique,
-        push_tokens: pushTokens, distinct_amount_clients: distinctAmt.length,
+        source: fuzzyNameSource, name_unique: nameUnique, amount_unique: amountUnique,
+        source_tokens: sourceTokens, client_score: clientScore, distinct_amount_clients: distinctAmt.length,
         safe: safeFuzzy,
       });
     }
