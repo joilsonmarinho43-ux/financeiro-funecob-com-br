@@ -160,13 +160,17 @@ async function fetchMediaBase64(
 }
 
 // Resolve @lid → real phone via Evolution API.
-// Tries findContacts → whatsappNumbers → fetchProfile → findChats.
-// Returns { phone, endpoint } indicating which fallback succeeded.
+// Phase 1: Evolution v1.6.0 + Baileys 6.5.0 frequently store LIDs of unsaved
+// contacts using the "@s.whatsapp.net" suffix instead of "@lid". We therefore
+// try BOTH suffixes in every endpoint, and add /chat/findMessages as a final
+// fallback to inspect recent messages for a senderPn/participantPn.
 async function resolveLidToPhone(
   apiUrl: string, apiKey: string, instance: string, lid: string
 ): Promise<{ phone: string | null; endpoint: string | null }> {
   if (!apiUrl || !apiKey || !lid) return { phone: null, endpoint: null };
   const base = apiUrl.replace(/\/$/, "");
+  const lidJidLid = `${lid}@lid`;
+  const lidJidWa = `${lid}@s.whatsapp.net`;
 
   const tryExtractFromList = (list: any[]): string | null => {
     for (const c of list || []) {
@@ -176,7 +180,11 @@ async function resolveLidToPhone(
       const recordText = JSON.stringify(c || {}).replace(/\D/g, "");
       if (!recordText.includes(lid)) continue;
 
-      const fields = [c?.remoteJid, c?.jid, c?.wuid, c?.number, c?.phoneNumber, c?.phone, c?.participant, c?.participantPn, c?.remoteJidAlt];
+      const fields = [
+        c?.remoteJid, c?.jid, c?.wuid, c?.number, c?.phoneNumber, c?.phone,
+        c?.participant, c?.participantPn, c?.remoteJidAlt, c?.senderPn,
+        c?.key?.senderPn, c?.key?.participantPn, c?.key?.remoteJidAlt,
+      ];
       for (const f of fields) {
         if (typeof f !== "string") continue;
         const jid = f.includes("@") ? f : `${f}@s.whatsapp.net`;
@@ -189,11 +197,14 @@ async function resolveLidToPhone(
     return null;
   };
 
-  // 1) findContacts — multiple where shapes
+  // 1) findContacts — try both @lid and @s.whatsapp.net suffixes
   for (const body of [
-    { where: { lid: `${lid}@lid` } },
-    { where: { remoteJid: `${lid}@lid` } },
-    { where: { id: `${lid}@lid` } },
+    { where: { lid: lidJidLid } },
+    { where: { remoteJid: lidJidLid } },
+    { where: { id: lidJidLid } },
+    { where: { remoteJid: lidJidWa } },
+    { where: { id: lidJidWa } },
+    { where: { remoteJid: lid } },
   ]) {
     try {
       const res = await fetchWithTimeout(`${base}/chat/findContacts/${instance}`, {
@@ -214,7 +225,7 @@ async function resolveLidToPhone(
     const res = await fetchWithTimeout(`${base}/chat/whatsappNumbers/${instance}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: apiKey },
-      body: JSON.stringify({ numbers: [lid, `${lid}@lid`] }),
+      body: JSON.stringify({ numbers: [lid, lidJidLid, lidJidWa] }),
     }, 1800);
     if (res.ok) {
       const data = await res.json();
@@ -225,7 +236,7 @@ async function resolveLidToPhone(
   } catch (e) { console.warn("[wa-webhook] whatsappNumbers error", e); }
 
   // 3) fetchProfile
-  for (const num of [`${lid}@lid`, lid]) {
+  for (const num of [lidJidLid, lidJidWa, lid]) {
     try {
       const res = await fetchWithTimeout(`${base}/chat/fetchProfile/${instance}`, {
         method: "POST",
@@ -240,19 +251,48 @@ async function resolveLidToPhone(
   }
 
   // 4) findChats — Evolution persists chats in store (DATABASE_SAVE_DATA_CHATS)
-  try {
-    const res = await fetchWithTimeout(`${base}/chat/findChats/${instance}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: apiKey },
-      body: JSON.stringify({ where: { remoteJid: `${lid}@lid` } }),
-    }, 1800);
-    if (res.ok) {
+  for (const body of [
+    { where: { remoteJid: lidJidLid } },
+    { where: { remoteJid: lidJidWa } },
+    { where: { id: lidJidLid } },
+    { where: { id: lidJidWa } },
+  ]) {
+    try {
+      const res = await fetchWithTimeout(`${base}/chat/findChats/${instance}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: apiKey },
+        body: JSON.stringify(body),
+      }, 1800);
+      if (!res.ok) continue;
       const data = await res.json();
       const list = Array.isArray(data) ? data : (data?.data || data?.chats || []);
       const found = tryExtractFromList(list);
       if (found) return { phone: found, endpoint: "findChats" };
-    }
-  } catch (e) { console.warn("[wa-webhook] findChats error", e); }
+    } catch (e) { console.warn("[wa-webhook] findChats error", e); }
+  }
+
+  // 5) findMessages — inspect recent messages of this chat for senderPn/participantPn.
+  // Baileys 6.5.0 frequently exposes the real phone in message.key.senderPn even
+  // when the chat itself is stored under @lid/@s.whatsapp.net with the LID id.
+  for (const body of [
+    { where: { key: { remoteJid: lidJidLid } }, limit: 20 },
+    { where: { key: { remoteJid: lidJidWa } }, limit: 20 },
+    { where: { keyRemoteJid: lidJidLid }, limit: 20 },
+    { where: { keyRemoteJid: lidJidWa }, limit: 20 },
+  ]) {
+    try {
+      const res = await fetchWithTimeout(`${base}/chat/findMessages/${instance}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: apiKey },
+        body: JSON.stringify(body),
+      }, 2500);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data?.data || data?.messages?.records || data?.messages || []);
+      const found = tryExtractFromList(list);
+      if (found) return { phone: found, endpoint: "findMessages" };
+    } catch (e) { console.warn("[wa-webhook] findMessages error", e); }
+  }
 
   return { phone: null, endpoint: null };
 }
@@ -555,11 +595,22 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
           console.warn("[wa-webhook] lid auto-link failed (non-blocking)", e);
         }
       } else {
+        const keySnapshot = {
+          remoteJid: key?.remoteJid || null,
+          remoteJidAlt: key?.remoteJidAlt || null,
+          participant: key?.participant || null,
+          participantPn: key?.participantPn || null,
+          participantAlt: key?.participantAlt || null,
+          senderPn: key?.senderPn || null,
+          id: key?.id || null,
+        };
+        const endpointsTried = ["findContacts", "whatsappNumbers", "fetchProfile", "findChats", "findMessages"];
         console.warn(JSON.stringify({
           tag: "wa-webhook", event: "lid_resolve_failed",
           lid: lidDigits, instance: instanceName, message_id: messageId,
           push_name: pushName || null,
-          endpoints_tried: ["findContacts", "whatsappNumbers", "fetchProfile", "findChats"],
+          key: keySnapshot,
+          endpoints_tried: endpointsTried,
         }));
         try {
           await supabase.from("auto_settlement_logs").insert({
@@ -568,7 +619,8 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
             details: {
               lid: lidDigits, instance: instanceName, message_id: messageId,
               push_name: pushName || null,
-              endpoints_tried: ["findContacts", "whatsappNumbers", "fetchProfile", "findChats"],
+              key: keySnapshot,
+              endpoints_tried: endpointsTried,
             },
           });
         } catch (e) {
