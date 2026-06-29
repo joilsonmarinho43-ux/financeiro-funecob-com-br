@@ -595,11 +595,22 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
           console.warn("[wa-webhook] lid auto-link failed (non-blocking)", e);
         }
       } else {
+        const keySnapshot = {
+          remoteJid: key?.remoteJid || null,
+          remoteJidAlt: key?.remoteJidAlt || null,
+          participant: key?.participant || null,
+          participantPn: key?.participantPn || null,
+          participantAlt: key?.participantAlt || null,
+          senderPn: key?.senderPn || null,
+          id: key?.id || null,
+        };
+        const endpointsTried = ["findContacts", "whatsappNumbers", "fetchProfile", "findChats", "findMessages"];
         console.warn(JSON.stringify({
           tag: "wa-webhook", event: "lid_resolve_failed",
           lid: lidDigits, instance: instanceName, message_id: messageId,
           push_name: pushName || null,
-          endpoints_tried: ["findContacts", "whatsappNumbers", "fetchProfile", "findChats"],
+          key: keySnapshot,
+          endpoints_tried: endpointsTried,
         }));
         try {
           await supabase.from("auto_settlement_logs").insert({
@@ -608,7 +619,8 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
             details: {
               lid: lidDigits, instance: instanceName, message_id: messageId,
               push_name: pushName || null,
-              endpoints_tried: ["findContacts", "whatsappNumbers", "fetchProfile", "findChats"],
+              key: keySnapshot,
+              endpoints_tried: endpointsTried,
             },
           });
         } catch (e) {
