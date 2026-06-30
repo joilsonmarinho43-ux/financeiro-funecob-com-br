@@ -78,7 +78,7 @@ async function logAutoSettlement(supabase: any, organizationId: string, action: 
   }
 }
 
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 5000): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 10000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -702,7 +702,7 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
         Authorization: `Bearer ${SERVICE_KEY}`,
       },
       body: JSON.stringify(body),
-    }, 12000);
+    }, 90000);
     const t = await res.text();
     console.log("[wa-webhook] forwarded", res.status, t.slice(0, 200));
     await logAutoSettlement(supabase, instance.organization_id, "webhook_forwarded_to_pix_ocr", {
