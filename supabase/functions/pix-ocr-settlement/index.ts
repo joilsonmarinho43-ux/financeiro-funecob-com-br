@@ -708,9 +708,21 @@ Deno.serve(async (req) => {
       const distinctAmt = Array.from(new Set((ambig || []).map((i: any) => i.client_id)));
       const amountUnique = distinctAmt.length === 1 && distinctAmt[0] === client.id;
 
+      // Match de nome completo: todos os tokens fortes do cadastro aparecem
+      // no nome lido (sender_name/push_name). Quando isso ocorre e o cliente
+      // é o melhor candidato sem empate, NÃO é PIX de terceiro — é o próprio
+      // cliente pagando em nome dele. Libera baixa mesmo sem amountUnique.
+      const clientStrongTokens = strongNameTokens(client.name || "");
+      const fullNameMatch =
+        clientStrongTokens.length >= 2 &&
+        clientScore >= clientStrongTokens.length &&
+        nameUnique;
+
       // Auto-settle quando nome é forte e único; quando há ambiguidade de nome,
       // aceita somente se o valor exato também é único na organização.
-      safeFuzzy = (sourceTokens.length >= minStrongTokens && clientScore >= minStrongTokens) && (nameUnique || amountUnique);
+      safeFuzzy = fullNameMatch || (
+        (sourceTokens.length >= minStrongTokens && clientScore >= minStrongTokens) && (nameUnique || amountUnique)
+      );
       console.log("[fuzzy-auto-settle-check]", {
         client_id: client.id, amount,
         source: fuzzyNameSource, name_unique: nameUnique, amount_unique: amountUnique,
