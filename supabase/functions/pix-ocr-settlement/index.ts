@@ -740,8 +740,10 @@ Deno.serve(async (req) => {
       console.log("[fuzzy-auto-settle-check]", {
         client_id: client.id, amount,
         source: fuzzyNameSource, name_unique: nameUnique, amount_unique: amountUnique,
-        source_tokens: sourceTokens, client_score: clientScore, distinct_amount_clients: distinctAmt.length,
-        safe: safeFuzzy,
+        source_tokens: sourceTokens, client_score: clientScore,
+        client_strong_tokens: clientStrongTokens.length, coverage_ratio: coverageRatio,
+        full_name_match: fullNameMatch, tokenized_name_match: tokenizedNameMatch,
+        distinct_amount_clients: distinctAmt.length, safe: safeFuzzy,
       });
     }
     const requiresReview = matchSource === "fuzzy_name" && !safeFuzzy;
