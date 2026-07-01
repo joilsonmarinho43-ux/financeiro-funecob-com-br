@@ -718,16 +718,32 @@ Deno.serve(async (req) => {
         clientScore >= clientStrongTokens.length &&
         nameUnique;
 
+      // NOVO: Similaridade tokenizada alta — mesmo sem cobrir 100% dos tokens
+      // do cadastro, se o nome lido tem ≥2 tokens fortes que batem com o
+      // cliente E cobre ≥60% dos tokens fortes do cadastro E é o único top
+      // candidato, tratamos como pagamento do próprio cliente. Isso libera
+      // baixa automática mesmo quando o telefone do remetente PIX não bate.
+      // Ex.: sender_name="TELMA ARAUJO" vs cadastro="Telma Araujo Silva".
+      const coverageRatio = clientStrongTokens.length > 0
+        ? clientScore / clientStrongTokens.length : 0;
+      const tokenizedNameMatch =
+        clientStrongTokens.length >= 2 &&
+        clientScore >= 2 &&
+        coverageRatio >= 0.6 &&
+        nameUnique;
+
       // Auto-settle quando nome é forte e único; quando há ambiguidade de nome,
       // aceita somente se o valor exato também é único na organização.
-      safeFuzzy = fullNameMatch || (
+      safeFuzzy = fullNameMatch || tokenizedNameMatch || (
         (sourceTokens.length >= minStrongTokens && clientScore >= minStrongTokens) && (nameUnique || amountUnique)
       );
       console.log("[fuzzy-auto-settle-check]", {
         client_id: client.id, amount,
         source: fuzzyNameSource, name_unique: nameUnique, amount_unique: amountUnique,
-        source_tokens: sourceTokens, client_score: clientScore, distinct_amount_clients: distinctAmt.length,
-        safe: safeFuzzy,
+        source_tokens: sourceTokens, client_score: clientScore,
+        client_strong_tokens: clientStrongTokens.length, coverage_ratio: coverageRatio,
+        full_name_match: fullNameMatch, tokenized_name_match: tokenizedNameMatch,
+        distinct_amount_clients: distinctAmt.length, safe: safeFuzzy,
       });
     }
     const requiresReview = matchSource === "fuzzy_name" && !safeFuzzy;
