@@ -337,6 +337,7 @@ export function AppSidebar() {
             { title: "Auditoria Recorrência", icon: CalendarCheck, url: "/admin/recurrence", badge: "" },
             { title: "Liquidação Auto", icon: Zap, url: "/admin/auto-settlement", badge: "Novo!" },
             { title: "Comprov. Não Baixados", icon: AlertTriangle, url: "/admin/missed-settlements", badge: "Novo!" },
+            { title: "Analytics PIX", icon: Zap, url: "/admin/pix-analytics", badge: "Novo!" },
             { title: "Auditoria Telefones", icon: PhoneCall, url: "/admin/phone-audit", badge: "Novo!" },
             { title: "Sandbox Testes", icon: FlaskConical, url: "/sandbox-tests", badge: "Novo!" },
             { title: "Config Global", icon: Globe, url: "/admin/global-settings", badge: "" },

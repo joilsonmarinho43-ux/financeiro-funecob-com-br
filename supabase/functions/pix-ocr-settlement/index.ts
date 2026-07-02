@@ -341,6 +341,10 @@ async function runOcrAmountOnly(mediaUrl: string, mimeType: string): Promise<{ a
 }
 
 import { deliverPaymentConfirmation } from "../_shared/paymentReceipt.ts";
+import { computeScore, decisionAllowsAuto } from "../_shared/pix/score.ts";
+import { detectDuplicate } from "../_shared/pix/duplicate.ts";
+import { findTrustedPayer, recordTrustedPayer, normalizeName as normalizePayerName } from "../_shared/pix/trustedPayers.ts";
+import { isProviderDisabled, recordProviderSuccess, recordProviderFailure } from "../_shared/pix/ocrStats.ts";
 
 async function processEvent(supabase: any, eventId: string, organizationId: string) {
   try {
@@ -354,6 +358,12 @@ async function processEvent(supabase: any, eventId: string, organizationId: stri
     console.log("settlement result", eventId, result);
 
     if (result?.success && ev.client_id && ev.amount_detected) {
+      // Register trusted payer (helps future third-party PIX)
+      try {
+        const payerName = ev?.ocr_payload?.sender_name || ev?.ocr_payload?.push_name || null;
+        await recordTrustedPayer(supabase, organizationId, ev.client_id, payerName, ev.payer_document, Number(ev.amount_detected));
+      } catch (e) { console.warn("[trusted-payer] record failed", e); }
+
       await deliverPaymentConfirmation(supabase, {
         organizationId,
         eventId: ev.id,
@@ -365,8 +375,9 @@ async function processEvent(supabase: any, eventId: string, organizationId: stri
     }
   } catch (e: any) {
     console.error("process error", e);
+    const nextAt = new Date(Date.now() + 60_000).toISOString();
     await supabase.from("auto_settlement_events")
-      .update({ status: "erro", error_message: String(e?.message || e) })
+      .update({ status: "erro", error_message: String(e?.message || e), next_retry_at: nextAt })
       .eq("id", eventId);
     await supabase.from("auto_settlement_logs").insert({
       organization_id: organizationId,
@@ -454,13 +465,20 @@ Deno.serve(async (req) => {
     // Sem isso, PDF era enviado como "data:image/jpeg;..." e o OCR retornava vazio.
     const resolvedMime = (typeof media_mime_type === "string" && media_mime_type) || "image/jpeg";
     const ocrUrl = image_url || (image_base64 ? `data:${resolvedMime};base64,${image_base64}` : null);
+    let ocrProviderUsed: string | null = null;
+    let ocrElapsedMs: number | null = null;
     if (ocrUrl) {
       let ocrResult: any = null;
+      const t0 = Date.now();
       try {
         ocrResult = await runOcr(ocrUrl, resolvedMime);
+        ocrProviderUsed = ocrResult?._ocr_provider || "lovable_gateway";
+        ocrElapsedMs = Date.now() - t0;
+        await recordProviderSuccess(supabase, ocrProviderUsed, ocrElapsedMs);
       } catch (e: any) {
         console.error("[pix-ocr] 1st-pass failed", e);
         ocrResult = { error: String(e?.message || e) };
+        await recordProviderFailure(supabase, "lovable_gateway", e);
       }
       // merge — nunca perde o raw_text do webhook nem erro prévio do webhook
       ocr = { ...(ocr_error ? { webhook_error: String(ocr_error) } : {}), ...ocrResult };
@@ -468,10 +486,13 @@ Deno.serve(async (req) => {
 
       // 2º passe — Flash focado em valor quando o 1º passe falhou
       if (!coerceAmount(ocr?.amount)) {
+        const t1 = Date.now();
         const second = await runOcrAmountOnly(ocrUrl, resolvedMime);
         if (second.amount) {
           ocr.amount = second.amount;
           ocr._second_pass_used = true;
+          ocrProviderUsed = ocrProviderUsed || "lovable_gateway_2nd";
+          ocrElapsedMs = (ocrElapsedMs || 0) + (Date.now() - t1);
           console.log("[pix-ocr] 2nd-pass recuperou valor", { amount: second.amount });
         }
         if (!ocr.raw_text && second.raw_text) ocr.raw_text = second.raw_text;
@@ -503,6 +524,16 @@ Deno.serve(async (req) => {
         const cpfDigits = cpfMatch[1].replace(/\D/g, "");
         const byCpf = clients.find((c: any) => (c.document || "").replace(/\D/g, "") === cpfDigits);
         if (byCpf) { client = byCpf; matchSource = "cpf"; }
+      }
+
+      // (1.5) Trusted payer — pagador já vinculado a esse cliente em baixas anteriores
+      if (!client) {
+        const cpfDoc = cpfMatch ? cpfMatch[1] : null;
+        const trusted = await findTrustedPayer(supabase, organization_id, ocr?.sender_name || push_name || null, cpfDoc);
+        if (trusted && trusted.confidence >= 85) {
+          const byTrusted = (clients || []).find((c: any) => c.id === trusted.client_id);
+          if (byTrusted) { client = byTrusted; matchSource = "cpf"; /* treated as trusted-strong */ console.log("[trusted-payer] matched", { client_id: byTrusted.id, payment_count: trusted.payment_count }); }
+        }
       }
 
       // (2) Fuzzy name — ONLY as candidate; final validation requires amount match.
@@ -781,12 +812,49 @@ Deno.serve(async (req) => {
       eventStatus = "recebido";
     }
 
-    console.log("[settlement-decision]", {
-      match_source: matchSource, client_id: client?.id, amount,
-      amount_matches_invoice: amountMatchesInvoice,
-      combination_size: combinationPicks?.length || (amountMatchesInvoice ? 1 : 0),
-      status: eventStatus,
+    // ===== Confidence score (0-100) =====
+    const senderName = String(ocr?.sender_name || "").trim();
+    const nameCompat = !!(client && senderName && strongNameScore(senderName, client.name || "") >= 1);
+    const cpfMatchScore = (ocr?.raw_text || "").match(/\b(\d{3}\.?\d{3}\.?\d{3}-?\d{2})\b/);
+    const payerDocument = cpfMatchScore ? cpfMatchScore[1].replace(/\D/g, "") : null;
+    let payerKnown = false;
+    if (client && (senderName || payerDocument)) {
+      const trustedCheck = await findTrustedPayer(supabase, organization_id, senderName || null, payerDocument);
+      payerKnown = !!(trustedCheck && trustedCheck.client_id === client.id && trustedCheck.payment_count >= 1);
+    }
+    const scoreResult = computeScore({
+      client_identified: !!client,
+      amount_found: !!amount,
+      txid_found: !!(ocr?.txid || ocr?.end_to_end_id),
+      name_compatible: nameCompat,
+      payer_known: payerKnown,
+      single_open_match: amountMatchesInvoice && (combinationPicks?.length || 1) === 1,
+      match_source: matchSource,
     });
+    console.log("[score]", { score: scoreResult.score, decision: scoreResult.decision, breakdown: scoreResult.breakdown });
+
+    // Elevate fuzzy_name to auto when score is high enough AND value matches
+    if (eventStatus === "pendente_revisao" && requiresReview && amountMatchesInvoice && decisionAllowsAuto(scoreResult.decision) && client && amount) {
+      eventStatus = "recebido";
+      errorMessage = null;
+      console.log("[score] elevated fuzzy_name to auto by score", { score: scoreResult.score });
+    }
+
+    // Build candidates list (top 5) for review UI when not auto
+    const candidates: any[] = [];
+    if (client) {
+      candidates.push({ client_id: client.id, name: client.name, source: matchSource, confidence: scoreResult.score });
+    }
+    if ((eventStatus === "pendente_revisao" || !client) && senderName && clients) {
+      const others = clients
+        .filter((c: any) => c.id !== client?.id)
+        .map((c: any) => ({ c, s: strongNameScore(senderName, c.name || "") }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s)
+        .slice(0, 5)
+        .map((x) => ({ client_id: x.c.id, name: x.c.name, source: "fuzzy_name_alt", confidence: Math.min(90, 40 + x.s * 15) }));
+      for (const o of others) if (!candidates.find((k) => k.client_id === o.client_id)) candidates.push(o);
+    }
 
     const eventRow = {
       organization_id,
@@ -806,10 +874,18 @@ Deno.serve(async (req) => {
       },
       txid,
       pix_end_to_end_id: ocr?.end_to_end_id || null,
+      end_to_end_id: ocr?.end_to_end_id || null,
+      payer_document: payerDocument,
       amount_detected: amount,
       whatsapp_message_id: message_id || null,
       status: eventStatus,
       error_message: errorMessage,
+      score: scoreResult.score,
+      score_breakdown: scoreResult.breakdown,
+      decision: scoreResult.decision,
+      candidates,
+      ocr_provider: ocrProviderUsed,
+      ocr_elapsed_ms: ocrElapsedMs,
       updated_at: new Date().toISOString(),
     };
 
@@ -839,11 +915,17 @@ Deno.serve(async (req) => {
         amount_matches_invoice: amountMatchesInvoice,
         combination_picks: combinationPicks,
         requires_review: requiresReview,
+        score: scoreResult.score,
+        decision: scoreResult.decision,
+        score_breakdown: scoreResult.breakdown,
+        ocr_provider: ocrProviderUsed,
+        ocr_elapsed_ms: ocrElapsedMs,
       },
     });
 
-    // Auto-settle apenas quando match é por sinal confiável (phone/lid_map/cpf) E valor casa
-    if (client && amount && !requiresReview && eventStatus === "recebido") {
+    // Auto-settle: match confiável OR score >= 80 (auto_ok/auto_high) com valor casado.
+    const scoreAllowsAuto = decisionAllowsAuto(scoreResult.decision) && amountMatchesInvoice;
+    if (client && amount && eventStatus === "recebido" && (!requiresReview || scoreAllowsAuto)) {
       // Auto-learn LID → client em sinais confiáveis (CPF) e em fuzzy seguro
       // (push_name + valor único). Próximas mensagens do mesmo LID viram match
       // direto (`lid_map`) sem depender de OCR/nome.
