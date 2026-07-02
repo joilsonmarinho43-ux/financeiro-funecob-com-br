@@ -86,16 +86,26 @@ export type Database = {
       auto_settlement_events: {
         Row: {
           amount_detected: number | null
+          candidates: Json
           client_id: string | null
           created_at: string
+          decision: string | null
+          end_to_end_id: string | null
           error_message: string | null
           id: string
+          next_retry_at: string | null
+          ocr_elapsed_ms: number | null
           ocr_payload: Json | null
+          ocr_provider: string | null
           organization_id: string
+          payer_document: string | null
           phone: string
           pix_end_to_end_id: string | null
           processed_at: string | null
           raw_text: string | null
+          retry_attempts: number
+          score: number | null
+          score_breakdown: Json | null
           status: string
           txid: string | null
           updated_at: string
@@ -103,16 +113,26 @@ export type Database = {
         }
         Insert: {
           amount_detected?: number | null
+          candidates?: Json
           client_id?: string | null
           created_at?: string
+          decision?: string | null
+          end_to_end_id?: string | null
           error_message?: string | null
           id?: string
+          next_retry_at?: string | null
+          ocr_elapsed_ms?: number | null
           ocr_payload?: Json | null
+          ocr_provider?: string | null
           organization_id: string
+          payer_document?: string | null
           phone: string
           pix_end_to_end_id?: string | null
           processed_at?: string | null
           raw_text?: string | null
+          retry_attempts?: number
+          score?: number | null
+          score_breakdown?: Json | null
           status?: string
           txid?: string | null
           updated_at?: string
@@ -120,16 +140,26 @@ export type Database = {
         }
         Update: {
           amount_detected?: number | null
+          candidates?: Json
           client_id?: string | null
           created_at?: string
+          decision?: string | null
+          end_to_end_id?: string | null
           error_message?: string | null
           id?: string
+          next_retry_at?: string | null
+          ocr_elapsed_ms?: number | null
           ocr_payload?: Json | null
+          ocr_provider?: string | null
           organization_id?: string
+          payer_document?: string | null
           phone?: string
           pix_end_to_end_id?: string | null
           processed_at?: string | null
           raw_text?: string | null
+          retry_attempts?: number
+          score?: number | null
+          score_breakdown?: Json | null
           status?: string
           txid?: string | null
           updated_at?: string
@@ -668,6 +698,45 @@ export type Database = {
           },
         ]
       }
+      ocr_provider_stats: {
+        Row: {
+          avg_elapsed_ms: number | null
+          disabled_until: string | null
+          fail_count: number
+          last_402_at: string | null
+          last_error: string | null
+          last_fail_at: string | null
+          last_success_at: string | null
+          provider: string
+          success_count: number
+          updated_at: string
+        }
+        Insert: {
+          avg_elapsed_ms?: number | null
+          disabled_until?: string | null
+          fail_count?: number
+          last_402_at?: string | null
+          last_error?: string | null
+          last_fail_at?: string | null
+          last_success_at?: string | null
+          provider: string
+          success_count?: number
+          updated_at?: string
+        }
+        Update: {
+          avg_elapsed_ms?: number | null
+          disabled_until?: string | null
+          fail_count?: number
+          last_402_at?: string | null
+          last_error?: string | null
+          last_fail_at?: string | null
+          last_success_at?: string | null
+          provider?: string
+          success_count?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       org_api_keys: {
         Row: {
           active: boolean
@@ -790,6 +859,45 @@ export type Database = {
           secondary_color?: string | null
           slug?: string
           support_phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pix_trusted_payers: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          last_amount: number | null
+          last_paid_at: string
+          organization_id: string
+          payer_document: string | null
+          payer_name_normalized: string
+          payment_count: number
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          last_amount?: number | null
+          last_paid_at?: string
+          organization_id: string
+          payer_document?: string | null
+          payer_name_normalized: string
+          payment_count?: number
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          last_amount?: number | null
+          last_paid_at?: string
+          organization_id?: string
+          payer_document?: string | null
+          payer_name_normalized?: string
+          payment_count?: number
           updated_at?: string
         }
         Relationships: []
