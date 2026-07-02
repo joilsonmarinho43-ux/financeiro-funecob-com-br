@@ -465,13 +465,20 @@ Deno.serve(async (req) => {
     // Sem isso, PDF era enviado como "data:image/jpeg;..." e o OCR retornava vazio.
     const resolvedMime = (typeof media_mime_type === "string" && media_mime_type) || "image/jpeg";
     const ocrUrl = image_url || (image_base64 ? `data:${resolvedMime};base64,${image_base64}` : null);
+    let ocrProviderUsed: string | null = null;
+    let ocrElapsedMs: number | null = null;
     if (ocrUrl) {
       let ocrResult: any = null;
+      const t0 = Date.now();
       try {
         ocrResult = await runOcr(ocrUrl, resolvedMime);
+        ocrProviderUsed = ocrResult?._ocr_provider || "lovable_gateway";
+        ocrElapsedMs = Date.now() - t0;
+        await recordProviderSuccess(supabase, ocrProviderUsed, ocrElapsedMs);
       } catch (e: any) {
         console.error("[pix-ocr] 1st-pass failed", e);
         ocrResult = { error: String(e?.message || e) };
+        await recordProviderFailure(supabase, "lovable_gateway", e);
       }
       // merge — nunca perde o raw_text do webhook nem erro prévio do webhook
       ocr = { ...(ocr_error ? { webhook_error: String(ocr_error) } : {}), ...ocrResult };
@@ -479,10 +486,13 @@ Deno.serve(async (req) => {
 
       // 2º passe — Flash focado em valor quando o 1º passe falhou
       if (!coerceAmount(ocr?.amount)) {
+        const t1 = Date.now();
         const second = await runOcrAmountOnly(ocrUrl, resolvedMime);
         if (second.amount) {
           ocr.amount = second.amount;
           ocr._second_pass_used = true;
+          ocrProviderUsed = ocrProviderUsed || "lovable_gateway_2nd";
+          ocrElapsedMs = (ocrElapsedMs || 0) + (Date.now() - t1);
           console.log("[pix-ocr] 2nd-pass recuperou valor", { amount: second.amount });
         }
         if (!ocr.raw_text && second.raw_text) ocr.raw_text = second.raw_text;
