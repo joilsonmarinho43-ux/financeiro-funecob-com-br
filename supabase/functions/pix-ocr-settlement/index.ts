@@ -812,12 +812,49 @@ Deno.serve(async (req) => {
       eventStatus = "recebido";
     }
 
-    console.log("[settlement-decision]", {
-      match_source: matchSource, client_id: client?.id, amount,
-      amount_matches_invoice: amountMatchesInvoice,
-      combination_size: combinationPicks?.length || (amountMatchesInvoice ? 1 : 0),
-      status: eventStatus,
+    // ===== Confidence score (0-100) =====
+    const senderName = String(ocr?.sender_name || "").trim();
+    const nameCompat = !!(client && senderName && strongNameScore(senderName, client.name || "") >= 1);
+    const cpfMatchScore = (ocr?.raw_text || "").match(/\b(\d{3}\.?\d{3}\.?\d{3}-?\d{2})\b/);
+    const payerDocument = cpfMatchScore ? cpfMatchScore[1].replace(/\D/g, "") : null;
+    let payerKnown = false;
+    if (client && (senderName || payerDocument)) {
+      const trustedCheck = await findTrustedPayer(supabase, organization_id, senderName || null, payerDocument);
+      payerKnown = !!(trustedCheck && trustedCheck.client_id === client.id && trustedCheck.payment_count >= 1);
+    }
+    const scoreResult = computeScore({
+      client_identified: !!client,
+      amount_found: !!amount,
+      txid_found: !!(ocr?.txid || ocr?.end_to_end_id),
+      name_compatible: nameCompat,
+      payer_known: payerKnown,
+      single_open_match: amountMatchesInvoice && (combinationPicks?.length || 1) === 1,
+      match_source: matchSource,
     });
+    console.log("[score]", { score: scoreResult.score, decision: scoreResult.decision, breakdown: scoreResult.breakdown });
+
+    // Elevate fuzzy_name to auto when score is high enough AND value matches
+    if (eventStatus === "pendente_revisao" && requiresReview && amountMatchesInvoice && decisionAllowsAuto(scoreResult.decision) && client && amount) {
+      eventStatus = "recebido";
+      errorMessage = null;
+      console.log("[score] elevated fuzzy_name to auto by score", { score: scoreResult.score });
+    }
+
+    // Build candidates list (top 5) for review UI when not auto
+    const candidates: any[] = [];
+    if (client) {
+      candidates.push({ client_id: client.id, name: client.name, source: matchSource, confidence: scoreResult.score });
+    }
+    if ((eventStatus === "pendente_revisao" || !client) && senderName && clients) {
+      const others = clients
+        .filter((c: any) => c.id !== client?.id)
+        .map((c: any) => ({ c, s: strongNameScore(senderName, c.name || "") }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s)
+        .slice(0, 5)
+        .map((x) => ({ client_id: x.c.id, name: x.c.name, source: "fuzzy_name_alt", confidence: Math.min(90, 40 + x.s * 15) }));
+      for (const o of others) if (!candidates.find((k) => k.client_id === o.client_id)) candidates.push(o);
+    }
 
     const eventRow = {
       organization_id,
@@ -837,10 +874,18 @@ Deno.serve(async (req) => {
       },
       txid,
       pix_end_to_end_id: ocr?.end_to_end_id || null,
+      end_to_end_id: ocr?.end_to_end_id || null,
+      payer_document: payerDocument,
       amount_detected: amount,
       whatsapp_message_id: message_id || null,
       status: eventStatus,
       error_message: errorMessage,
+      score: scoreResult.score,
+      score_breakdown: scoreResult.breakdown,
+      decision: scoreResult.decision,
+      candidates,
+      ocr_provider: ocrProviderUsed,
+      ocr_elapsed_ms: ocrElapsedMs,
       updated_at: new Date().toISOString(),
     };
 
