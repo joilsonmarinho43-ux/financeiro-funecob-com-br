@@ -526,6 +526,16 @@ Deno.serve(async (req) => {
         if (byCpf) { client = byCpf; matchSource = "cpf"; }
       }
 
+      // (1.5) Trusted payer — pagador já vinculado a esse cliente em baixas anteriores
+      if (!client) {
+        const cpfDoc = cpfMatch ? cpfMatch[1] : null;
+        const trusted = await findTrustedPayer(supabase, organization_id, ocr?.sender_name || push_name || null, cpfDoc);
+        if (trusted && trusted.confidence >= 85) {
+          const byTrusted = (clients || []).find((c: any) => c.id === trusted.client_id);
+          if (byTrusted) { client = byTrusted; matchSource = "cpf"; /* treated as trusted-strong */ console.log("[trusted-payer] matched", { client_id: byTrusted.id, payment_count: trusted.payment_count }); }
+        }
+      }
+
       // (2) Fuzzy name — ONLY as candidate; final validation requires amount match.
       //     Try BOTH OCR sender_name AND WhatsApp push_name independently.
       //     PIX é frequentemente pago por terceiro (família, amigo) → o nome do
