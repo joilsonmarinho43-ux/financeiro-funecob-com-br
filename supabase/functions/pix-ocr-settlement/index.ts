@@ -915,11 +915,17 @@ Deno.serve(async (req) => {
         amount_matches_invoice: amountMatchesInvoice,
         combination_picks: combinationPicks,
         requires_review: requiresReview,
+        score: scoreResult.score,
+        decision: scoreResult.decision,
+        score_breakdown: scoreResult.breakdown,
+        ocr_provider: ocrProviderUsed,
+        ocr_elapsed_ms: ocrElapsedMs,
       },
     });
 
-    // Auto-settle apenas quando match é por sinal confiável (phone/lid_map/cpf) E valor casa
-    if (client && amount && !requiresReview && eventStatus === "recebido") {
+    // Auto-settle: match confiável OR score >= 80 (auto_ok/auto_high) com valor casado.
+    const scoreAllowsAuto = decisionAllowsAuto(scoreResult.decision) && amountMatchesInvoice;
+    if (client && amount && eventStatus === "recebido" && (!requiresReview || scoreAllowsAuto)) {
       // Auto-learn LID → client em sinais confiáveis (CPF) e em fuzzy seguro
       // (push_name + valor único). Próximas mensagens do mesmo LID viram match
       // direto (`lid_map`) sem depender de OCR/nome.
