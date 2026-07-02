@@ -341,6 +341,10 @@ async function runOcrAmountOnly(mediaUrl: string, mimeType: string): Promise<{ a
 }
 
 import { deliverPaymentConfirmation } from "../_shared/paymentReceipt.ts";
+import { computeScore, decisionAllowsAuto } from "../_shared/pix/score.ts";
+import { detectDuplicate } from "../_shared/pix/duplicate.ts";
+import { findTrustedPayer, recordTrustedPayer, normalizeName as normalizePayerName } from "../_shared/pix/trustedPayers.ts";
+import { isProviderDisabled, recordProviderSuccess, recordProviderFailure } from "../_shared/pix/ocrStats.ts";
 
 async function processEvent(supabase: any, eventId: string, organizationId: string) {
   try {
