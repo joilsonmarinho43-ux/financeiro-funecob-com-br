@@ -30,6 +30,7 @@ import RecurrenceAudit from "./pages/RecurrenceAudit";
 import AutoSettlement from "./pages/AutoSettlement";
 import PhoneAudit from "./pages/PhoneAudit";
 import MissedSettlements from "./pages/MissedSettlements";
+import PixAnalytics from "./pages/PixAnalytics";
 import SystemHealth from "./pages/SystemHealth";
 import SandboxTests from "./pages/SandboxTests";
 import NotFound from "./pages/NotFound";
@@ -141,6 +142,7 @@ const App = () => (
               <Route path="/admin/auto-settlement" element={<ProtectedRoute adminOnly><AutoSettlement /></ProtectedRoute>} />
               <Route path="/admin/phone-audit" element={<ProtectedRoute adminOnly><PhoneAudit /></ProtectedRoute>} />
               <Route path="/admin/missed-settlements" element={<ProtectedRoute adminOnly><MissedSettlements /></ProtectedRoute>} />
+              <Route path="/admin/pix-analytics" element={<ProtectedRoute adminOnly><PixAnalytics /></ProtectedRoute>} />
               <Route path="/system-health" element={<ProtectedRoute><SystemHealth /></ProtectedRoute>} />
               <Route path="/sandbox-tests" element={<ProtectedRoute adminOnly><SandboxTests /></ProtectedRoute>} />
               <Route path="/portal/:token" element={<ClientPortal />} />
