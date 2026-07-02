@@ -358,6 +358,12 @@ async function processEvent(supabase: any, eventId: string, organizationId: stri
     console.log("settlement result", eventId, result);
 
     if (result?.success && ev.client_id && ev.amount_detected) {
+      // Register trusted payer (helps future third-party PIX)
+      try {
+        const payerName = ev?.ocr_payload?.sender_name || ev?.ocr_payload?.push_name || null;
+        await recordTrustedPayer(supabase, organizationId, ev.client_id, payerName, ev.payer_document, Number(ev.amount_detected));
+      } catch (e) { console.warn("[trusted-payer] record failed", e); }
+
       await deliverPaymentConfirmation(supabase, {
         organizationId,
         eventId: ev.id,
@@ -369,8 +375,9 @@ async function processEvent(supabase: any, eventId: string, organizationId: stri
     }
   } catch (e: any) {
     console.error("process error", e);
+    const nextAt = new Date(Date.now() + 60_000).toISOString();
     await supabase.from("auto_settlement_events")
-      .update({ status: "erro", error_message: String(e?.message || e) })
+      .update({ status: "erro", error_message: String(e?.message || e), next_retry_at: nextAt })
       .eq("id", eventId);
     await supabase.from("auto_settlement_logs").insert({
       organization_id: organizationId,
