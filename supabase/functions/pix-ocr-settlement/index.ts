@@ -833,11 +833,14 @@ Deno.serve(async (req) => {
     });
     console.log("[score]", { score: scoreResult.score, decision: scoreResult.decision, breakdown: scoreResult.breakdown });
 
-    // Elevate fuzzy_name to auto when score is high enough AND value matches
-    if (eventStatus === "pendente_revisao" && requiresReview && amountMatchesInvoice && decisionAllowsAuto(scoreResult.decision) && client && amount) {
-      eventStatus = "recebido";
-      errorMessage = null;
-      console.log("[score] elevated fuzzy_name to auto by score", { score: scoreResult.score });
+    // ⚠️ NÃO elevar fuzzy_name para auto por score:
+    // safeFuzzy é o único portão seguro. O score subia com apenas 1 token em comum
+    // (ex.: sobrenome "Silva") + valor + txid, causando baixa em cliente errado.
+    // Se safeFuzzy=false, exige revisão manual — mesmo com score alto.
+    if (eventStatus === "pendente_revisao" && requiresReview) {
+      console.log("[score] fuzzy_name mantido em revisão (safeFuzzy=false)", {
+        score: scoreResult.score, decision: scoreResult.decision, client_id: client?.id,
+      });
     }
 
     // Build candidates list (top 5) for review UI when not auto
