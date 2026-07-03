@@ -782,6 +782,36 @@ Deno.serve(async (req) => {
       console.log("[conflict-detected]", { reason: "fuzzy_name_revisao", client_id: client?.id, amount, fuzzyNameSource });
     }
 
+    // Proteção contra comprovante encaminhado / WhatsApp compartilhado:
+    // se o telefone bate com o cliente A, mas o nome do pagador no comprovante
+    // bate fortemente com outro cliente B que também tem fatura aberta no mesmo
+    // valor, NÃO baixa automático em A. Vai para revisão para evitar baixa em
+    // cliente errado (caso típico: comprovante de Simone enviado pelo telefone
+    // cadastrado de Santana).
+    let phoneNameConflict: any = null;
+    if ((matchSource === "phone" || matchSource === "lid_map") && client && amount && ocr?.sender_name) {
+      const sourceName = String(ocr.sender_name || "");
+      const sourceTokens = strongNameTokens(sourceName);
+      const currentScore = strongNameScore(sourceName, client.name || "");
+      if (sourceTokens.length >= 2) {
+        const scoredOthers = (clients || [])
+          .filter((c: any) => c.id !== client.id)
+          .map((c: any) => ({ c, score: strongNameScore(sourceName, c.name || "") }))
+          .filter((x: any) => x.score >= 2 && x.score > currentScore)
+          .sort((a: any, b: any) => b.score - a.score);
+        for (const cand of scoredOthers.slice(0, 3)) {
+          const otherHasInvoice = await matchesOpenInvoicesByAmount(supabase, organization_id, cand.c.id, amount);
+          if (otherHasInvoice) {
+            phoneNameConflict = { client_id: cand.c.id, name: cand.c.name, score: cand.score, current_score: currentScore, sender_name: sourceName };
+            break;
+          }
+        }
+      }
+    }
+    if (phoneNameConflict) {
+      console.log("[conflict-detected]", { reason: "phone_sender_matches_other_client", selected_client_id: client?.id, conflict: phoneNameConflict, amount });
+    }
+
 
     let eventStatus: string;
     let errorMessage: string | null = null;
@@ -802,6 +832,10 @@ Deno.serve(async (req) => {
     else if (requiresReview) {
       eventStatus = "pendente_revisao";
       errorMessage = "candidato sugerido por nome — confirme manualmente (PIX pode ser de terceiro)";
+    }
+    else if (phoneNameConflict) {
+      eventStatus = "pendente_revisao";
+      errorMessage = `conflito: telefone bate com este cliente, mas pagador do PIX parece ser ${phoneNameConflict.name}; revise antes de baixar`;
     }
     else if (!amountMatchesInvoice) {
       // Mesmo com telefone/CPF confiável, valor que não casa com nenhuma fatura
@@ -871,6 +905,7 @@ Deno.serve(async (req) => {
         _fuzzy_name_source: fuzzyNameSource,
         _safe_fuzzy: safeFuzzy,
         _amount_matches_invoice: amountMatchesInvoice,
+        _phone_name_conflict: phoneNameConflict,
         _combination_picks: combinationPicks,
         _force_reprocessed_at: force_reprocess ? new Date().toISOString() : null,
         remote_jid: remote_jid || null,
