@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { event_id, client_id } = await req.json();
+    const { event_id, client_id, learn_lid = false } = await req.json();
     if (!event_id || !client_id) {
       return new Response(JSON.stringify({ error: "event_id e client_id obrigatórios" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -59,15 +59,17 @@ Deno.serve(async (req) => {
       details: { linked_by_user: true, previous_status: ev.status },
     });
 
-    // === Aprende o mapeamento LID → cliente para auto-resolver futuros PIX ===
-    // Quando Evolution v2 entrega só @lid (14-16 dígitos sem telefone real),
-    // gravamos esse LID associado ao cliente para que próximas mensagens do
-    // mesmo remetente sejam reconhecidas automaticamente.
+    // === LID → cliente SOMENTE com confirmação explícita ===
+    // Antes, todo vínculo manual aprendia automaticamente o LID e ainda
+    // reprocessava outros comprovantes do mesmo LID. Isso é perigoso: em PIX de
+    // terceiro, o LID pertence ao pagador/remetente, não necessariamente ao
+    // cliente beneficiário. Agora só aprende/reprocessa quando a tela enviar
+    // learn_lid=true de forma intencional.
     const rawPhone = (ev.phone || "").replace(/\D/g, "");
     const looksLikeLid = rawPhone.length >= 14;
     let lid_learned = false;
     let auto_resolved_count = 0;
-    if (looksLikeLid) {
+    if (looksLikeLid && learn_lid === true) {
       const { error: mapErr } = await supabase.from("whatsapp_lid_map").upsert({
         organization_id: ev.organization_id,
         lid: rawPhone,
