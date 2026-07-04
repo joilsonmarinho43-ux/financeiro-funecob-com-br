@@ -455,6 +455,25 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ============================================================
+    // PRIORIDADE MÁXIMA (regra do usuário):
+    // Se o número do WhatsApp do remetente NÃO estiver cadastrado
+    // em nenhum cliente (nem via telefone direto, nem via lid_map já
+    // aprendido), IGNORAR o evento completamente. Não cria evento,
+    // não roda OCR, não tenta CPF/fuzzy/valor, não altera nada.
+    // ============================================================
+    if (!client) {
+      console.log("[pix-ocr] IGNORED: sender phone not registered", {
+        phone, rawPhone, looksLikeLid, message_id, organization_id,
+      });
+      return new Response(JSON.stringify({
+        skipped: "sender_not_registered",
+        phone,
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+
+
     // OCR — preserva sempre o raw_text vindo do webhook (caption ou fallback),
     // mesmo quando o OCR falha ou não devolve texto. Sem isso o regex
     // de extração de valor (downstream) fica sem fonte e o evento vai pra revisão.
