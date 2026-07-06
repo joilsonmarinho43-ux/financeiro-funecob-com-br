@@ -656,6 +656,50 @@ Deno.serve(async (req) => {
     const txid = ocr?.txid || manual_txid || (message_id ? `WA-MSG-${message_id}` : null);
     let forcedExistingEventId: string | null = null;
 
+    // ===== Troca de cliente: telefone-central → pagador real via sender_name =====
+    // Caso típico: um único WhatsApp (atendente/central da funerária) encaminha
+    // comprovantes de vários clientes. O telefone bate com o "dono" desse número,
+    // mas o nome do pagador no comprovante é claramente outro cliente da base.
+    // Se o sender_name tem match fuzzy forte e único em outro cliente com
+    // fatura aberta no valor EXATO, troca o cliente antes da checagem de baixa.
+    if ((matchSource === "phone" || matchSource === "lid_map") && client && amount && ocr?.sender_name) {
+      const sourceName = String(ocr.sender_name || "");
+      const sourceTokens = strongNameTokens(sourceName);
+      const currentScore = strongNameScore(sourceName, client.name || "");
+      if (sourceTokens.length >= 2) {
+        const scoredOthers = (clients || [])
+          .filter((c: any) => c.id !== client!.id)
+          .map((c: any) => ({ c, score: strongNameScore(sourceName, c.name || "") }))
+          .filter((x: any) => x.score >= 2 && x.score > currentScore)
+          .sort((a: any, b: any) => b.score - a.score);
+        const uniqueTop =
+          scoredOthers.length === 1 ||
+          (scoredOthers.length > 1 && scoredOthers[0].score > scoredOthers[1].score);
+        if (scoredOthers.length >= 1 && uniqueTop) {
+          const top = scoredOthers[0];
+          const topStrongTokens = strongNameTokens(top.c.name || "");
+          const coverage = topStrongTokens.length > 0 ? top.score / topStrongTokens.length : 0;
+          const nameSafe = topStrongTokens.length >= 2 && top.score >= 2 && coverage >= 0.6;
+          if (nameSafe) {
+            const otherHasInvoice = await matchesOpenInvoicesByAmount(
+              supabase, organization_id, top.c.id, amount,
+            );
+            if (otherHasInvoice) {
+              console.log("[pix-ocr] SWITCH client via sender_name (telefone-central detectado)", {
+                from: { id: client.id, name: client.name, source: matchSource },
+                to: { id: top.c.id, name: top.c.name, score: top.score, coverage },
+                amount, sender_name: sourceName,
+              });
+              client = top.c;
+              matchSource = "fuzzy_name";
+              fuzzyNameSource = "sender_name";
+            }
+          }
+        }
+      }
+    }
+
+
     if (force_reprocess) {
       const q = supabase
         .from("auto_settlement_events")
