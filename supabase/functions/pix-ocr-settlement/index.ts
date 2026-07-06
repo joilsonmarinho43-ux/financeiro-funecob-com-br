@@ -456,21 +456,30 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // PRIORIDADE MÁXIMA (regra do usuário):
-    // Se o número do WhatsApp do remetente NÃO estiver cadastrado
-    // em nenhum cliente (nem via telefone direto, nem via lid_map já
-    // aprendido), IGNORAR o evento completamente. Não cria evento,
-    // não roda OCR, não tenta CPF/fuzzy/valor, não altera nada.
+    // PRIORIDADE MÁXIMA (relaxada para @lid não resolvido):
+    //  - Telefone REAL (não @lid) que não está cadastrado → IGNORA
+    //    completamente (regra original do usuário).
+    //  - @lid opaco não resolvido → NÃO ignora em silêncio: continua
+    //    o fluxo (OCR, fuzzy sender_name, CPF) e, se ainda assim não
+    //    identificar cliente, cria evento pendente_revisao pro operador
+    //    vincular. Sem isso, PIX legítimo de cliente cujo LID ainda não
+    //    foi aprendido era descartado sem deixar rastro.
     // ============================================================
-    if (!client) {
-      console.log("[pix-ocr] IGNORED: sender phone not registered", {
-        phone, rawPhone, looksLikeLid, message_id, organization_id,
+    if (!client && !looksLikeLid) {
+      console.log("[pix-ocr] IGNORED: real sender phone not registered", {
+        phone, rawPhone, message_id, organization_id,
       });
       return new Response(JSON.stringify({
         skipped: "sender_not_registered",
         phone,
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+    if (!client && looksLikeLid) {
+      console.log("[pix-ocr] @lid unresolved — continuando fluxo p/ tentar identificar via OCR/fuzzy", {
+        phone, rawPhone, message_id, organization_id,
+      });
+    }
+
 
 
 
@@ -646,6 +655,50 @@ Deno.serve(async (req) => {
       ?? extractFromText(raw_text);
     const txid = ocr?.txid || manual_txid || (message_id ? `WA-MSG-${message_id}` : null);
     let forcedExistingEventId: string | null = null;
+
+    // ===== Troca de cliente: telefone-central → pagador real via sender_name =====
+    // Caso típico: um único WhatsApp (atendente/central da funerária) encaminha
+    // comprovantes de vários clientes. O telefone bate com o "dono" desse número,
+    // mas o nome do pagador no comprovante é claramente outro cliente da base.
+    // Se o sender_name tem match fuzzy forte e único em outro cliente com
+    // fatura aberta no valor EXATO, troca o cliente antes da checagem de baixa.
+    if ((matchSource === "phone" || matchSource === "lid_map") && client && amount && ocr?.sender_name) {
+      const sourceName = String(ocr.sender_name || "");
+      const sourceTokens = strongNameTokens(sourceName);
+      const currentScore = strongNameScore(sourceName, client.name || "");
+      if (sourceTokens.length >= 2) {
+        const scoredOthers = (clients || [])
+          .filter((c: any) => c.id !== client!.id)
+          .map((c: any) => ({ c, score: strongNameScore(sourceName, c.name || "") }))
+          .filter((x: any) => x.score >= 2 && x.score > currentScore)
+          .sort((a: any, b: any) => b.score - a.score);
+        const uniqueTop =
+          scoredOthers.length === 1 ||
+          (scoredOthers.length > 1 && scoredOthers[0].score > scoredOthers[1].score);
+        if (scoredOthers.length >= 1 && uniqueTop) {
+          const top = scoredOthers[0];
+          const topStrongTokens = strongNameTokens(top.c.name || "");
+          const coverage = topStrongTokens.length > 0 ? top.score / topStrongTokens.length : 0;
+          const nameSafe = topStrongTokens.length >= 2 && top.score >= 2 && coverage >= 0.6;
+          if (nameSafe) {
+            const otherHasInvoice = await matchesOpenInvoicesByAmount(
+              supabase, organization_id, top.c.id, amount,
+            );
+            if (otherHasInvoice) {
+              console.log("[pix-ocr] SWITCH client via sender_name (telefone-central detectado)", {
+                from: { id: client.id, name: client.name, source: matchSource },
+                to: { id: top.c.id, name: top.c.name, score: top.score, coverage },
+                amount, sender_name: sourceName,
+              });
+              client = top.c;
+              matchSource = "fuzzy_name";
+              fuzzyNameSource = "sender_name";
+            }
+          }
+        }
+      }
+    }
+
 
     if (force_reprocess) {
       const q = supabase
