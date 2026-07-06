@@ -456,21 +456,30 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // PRIORIDADE MÁXIMA (regra do usuário):
-    // Se o número do WhatsApp do remetente NÃO estiver cadastrado
-    // em nenhum cliente (nem via telefone direto, nem via lid_map já
-    // aprendido), IGNORAR o evento completamente. Não cria evento,
-    // não roda OCR, não tenta CPF/fuzzy/valor, não altera nada.
+    // PRIORIDADE MÁXIMA (relaxada para @lid não resolvido):
+    //  - Telefone REAL (não @lid) que não está cadastrado → IGNORA
+    //    completamente (regra original do usuário).
+    //  - @lid opaco não resolvido → NÃO ignora em silêncio: continua
+    //    o fluxo (OCR, fuzzy sender_name, CPF) e, se ainda assim não
+    //    identificar cliente, cria evento pendente_revisao pro operador
+    //    vincular. Sem isso, PIX legítimo de cliente cujo LID ainda não
+    //    foi aprendido era descartado sem deixar rastro.
     // ============================================================
-    if (!client) {
-      console.log("[pix-ocr] IGNORED: sender phone not registered", {
-        phone, rawPhone, looksLikeLid, message_id, organization_id,
+    if (!client && !looksLikeLid) {
+      console.log("[pix-ocr] IGNORED: real sender phone not registered", {
+        phone, rawPhone, message_id, organization_id,
       });
       return new Response(JSON.stringify({
         skipped: "sender_not_registered",
         phone,
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+    if (!client && looksLikeLid) {
+      console.log("[pix-ocr] @lid unresolved — continuando fluxo p/ tentar identificar via OCR/fuzzy", {
+        phone, rawPhone, message_id, organization_id,
+      });
+    }
+
 
 
 
