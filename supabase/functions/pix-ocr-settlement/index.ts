@@ -840,6 +840,26 @@ Deno.serve(async (req) => {
       safeFuzzy = fullNameMatch || tokenizedNameMatch || (
         (sourceTokens.length >= minStrongTokens && clientScore >= minStrongTokens) && (nameUnique || amountUnique)
       );
+
+      // PROTEÇÃO CRÍTICA (bug Joelson 07/07/2026):
+      // push_name é o display name do WhatsApp do remetente — altamente
+      // spoofável, e quando o remetente é @lid não vinculado, é o ÚNICO sinal
+      // de identidade. Se o comprovante OCR não trouxe sender_name nem
+      // sender_cpf (só temos o nome do WhatsApp), NÃO baixa automático:
+      // manda para revisão. Ex.: comprovante em nome do beneficiário J M PAMPOLHA,
+      // OCR sem pagador, push_name "joelison" e @lid → derrubava fatura de
+      // Joelson Queiroz indevidamente.
+      if (
+        fuzzyNameSource === "push_name" &&
+        looksLikeLid &&
+        !ocr?.sender_name &&
+        !ocr?.sender_cpf
+      ) {
+        console.log("[safeFuzzy-guard] push_name-only + @lid sem OCR pagador → revisão", {
+          client_id: client?.id, push_name, sourceName,
+        });
+        safeFuzzy = false;
+      }
       console.log("[fuzzy-auto-settle-check]", {
         client_id: client.id, amount,
         source: fuzzyNameSource, name_unique: nameUnique, amount_unique: amountUnique,
