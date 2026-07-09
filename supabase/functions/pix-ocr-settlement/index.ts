@@ -412,6 +412,42 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ===== BLOQUEIO: comprovante enviado pelo DONO da instância WhatsApp =====
+    // Quando o próprio dono da instância envia um recibo (comprovante manual
+    // escrito, foto de recibo em papel, etc.) para o cliente, esses eventos NÃO
+    // devem gerar baixa automática — o dono está apenas entregando/confirmando
+    // algo para o cliente, não recebendo um PIX. Comparamos os últimos 8 dígitos
+    // do telefone remetente com os telefones cadastrados nas instâncias da org.
+    {
+      const senderDigits = (phone || "").replace(/\D/g, "");
+      if (senderDigits.length >= 8) {
+        const tail = senderDigits.slice(-8);
+        const { data: orgInstances } = await supabase
+          .from("whatsapp_instances")
+          .select("phone")
+          .eq("organization_id", organization_id);
+        const ownerMatch = (orgInstances || []).some((i: any) => {
+          const d = (i?.phone || "").replace(/\D/g, "");
+          return d.length >= 8 && d.slice(-8) === tail;
+        });
+        if (ownerMatch) {
+          console.log("[pix-ocr] IGNORED: sender is WhatsApp instance owner", {
+            phone, message_id, organization_id,
+          });
+          try {
+            await supabase.from("auto_settlement_logs").insert({
+              organization_id, event_id: null, client_id: null,
+              action: "ignored_owner_sender",
+              details: { phone, message_id, reason: "instance_owner_forwarded_receipt" },
+            });
+          } catch (_e) { /* noop */ }
+          return new Response(JSON.stringify({ skipped: "owner_sender" }), {
+            status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
+
     // ===== Identificação do cliente — PRIORIDADE ABSOLUTA DO TELEFONE =====
     // Regra de negócio: mesmo que o PIX tenha sido pago por TERCEIRO
     // (pai, esposa, amigo — nome diferente no comprovante), se o NÚMERO
