@@ -239,23 +239,30 @@ _Equipe Financeira_`;
   return msg;
 }
 
-/** Resolve dígitos de destino (cadastro fallback se origem for @lid). */
+/** Resolve dígitos de destino.
+ *  Regra: SEMPRE prioriza o telefone cadastrado do cliente quando disponível.
+ *  A origem (quem enviou o comprovante no WhatsApp) pode ser terceiro
+ *  (familiar, contador, outro cliente encaminhando) — enviar a confirmação
+ *  para ela faria o dono errado receber a mensagem. Só cai para a origem
+ *  quando o cliente não tem telefone cadastrado válido. */
 export function resolveDestinationDigits(originPhone: string, cadastroPhone: string | null): {
   destination: string; isLidFallback: boolean; isDivergent: boolean;
 } {
   const origin = (originPhone || "").replace(/\D/g, "");
   const cadastro = (cadastroPhone || "").replace(/\D/g, "");
   const tail = (s: string) => s.slice(-8);
+  const hasCadastro = cadastro.length >= 10;
   const isLid = origin.length >= 14;
-  const useCadastro = isLid && cadastro.length >= 10;
-  const effective = useCadastro ? cadastro : origin;
+  const isDivergent = hasCadastro && tail(cadastro) !== tail(origin);
+  const useCadastro = hasCadastro && (isLid || isDivergent);
+  const effective = useCadastro ? cadastro : (origin || cadastro);
   const dest = (effective.startsWith("55") && (effective.length === 12 || effective.length === 13))
     ? effective
     : ((effective.length === 10 || effective.length === 11) ? "55" + effective : effective);
   return {
     destination: dest,
-    isLidFallback: useCadastro,
-    isDivergent: !!cadastro && tail(cadastro) !== tail(origin),
+    isLidFallback: useCadastro && isLid,
+    isDivergent,
   };
 }
 
