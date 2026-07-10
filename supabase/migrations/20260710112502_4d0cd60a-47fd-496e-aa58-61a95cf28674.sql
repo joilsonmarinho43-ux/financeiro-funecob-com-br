@@ -1,0 +1,1 @@
+UPDATE public.whatsapp_instances SET phone='559193210439' WHERE id='652ca3d5-52c6-436f-8e56-d89dfa64161e';
