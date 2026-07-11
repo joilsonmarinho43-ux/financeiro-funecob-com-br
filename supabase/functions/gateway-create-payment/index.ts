@@ -25,6 +25,7 @@ async function createMercadoPagoPayment(opts: {
   description: string;
   payerEmail?: string;
   payerName?: string;
+  notificationUrl?: string;
 }): Promise<CreatePaymentResult> {
   // MP exige valor mínimo de R$ 0,50 para checkout
   const amount = Math.max(Number(opts.amount), 0.5);
@@ -60,6 +61,10 @@ async function createMercadoPagoPayment(opts: {
       installments: 12,
     },
   };
+
+  if (opts.notificationUrl) {
+    body.notification_url = opts.notificationUrl;
+  }
 
   if (Object.keys(payerObj).length > 0) {
     body.payer = payerObj;
@@ -144,7 +149,7 @@ Deno.serve(async (req) => {
     // 2. Get gateway settings
     const { data: settings, error: settingsErr } = await supabase
       .from("billing_settings")
-      .select("gateway_provider, gateway_api_key, billing_mode")
+      .select("gateway_provider, gateway_api_key, billing_mode, gateway_webhook_url")
       .eq("organization_id", organization_id)
       .maybeSingle();
 
@@ -190,6 +195,7 @@ Deno.serve(async (req) => {
           description: invoice.description || "Pagamento de fatura",
           payerEmail: client?.email || undefined,
           payerName: client?.name || undefined,
+          notificationUrl: settings.gateway_webhook_url || undefined,
         });
         break;
       default:
