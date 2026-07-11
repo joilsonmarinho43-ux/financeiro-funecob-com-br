@@ -25,6 +25,7 @@ async function createMercadoPagoPayment(opts: {
   description: string;
   payerEmail?: string;
   payerName?: string;
+  notificationUrl?: string;
 }): Promise<CreatePaymentResult> {
   // MP exige valor mínimo de R$ 0,50 para checkout
   const amount = Math.max(Number(opts.amount), 0.5);
