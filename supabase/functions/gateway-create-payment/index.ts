@@ -62,6 +62,10 @@ async function createMercadoPagoPayment(opts: {
     },
   };
 
+  if (opts.notificationUrl) {
+    body.notification_url = opts.notificationUrl;
+  }
+
   if (Object.keys(payerObj).length > 0) {
     body.payer = payerObj;
   }
