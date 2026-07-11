@@ -195,6 +195,7 @@ Deno.serve(async (req) => {
           description: invoice.description || "Pagamento de fatura",
           payerEmail: client?.email || undefined,
           payerName: client?.name || undefined,
+          notificationUrl: settings.gateway_webhook_url || undefined,
         });
         break;
       default:
