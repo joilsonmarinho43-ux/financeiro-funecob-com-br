@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
     // 2. Get gateway settings
     const { data: settings, error: settingsErr } = await supabase
       .from("billing_settings")
-      .select("gateway_provider, gateway_api_key, billing_mode")
+      .select("gateway_provider, gateway_api_key, billing_mode, gateway_webhook_url")
       .eq("organization_id", organization_id)
       .maybeSingle();
 
