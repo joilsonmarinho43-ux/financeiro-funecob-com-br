@@ -691,6 +691,7 @@ Deno.serve(async (req) => {
       ?? extractFromText(raw_text);
     const txid = ocr?.txid || manual_txid || (message_id ? `WA-MSG-${message_id}` : null);
     let forcedExistingEventId: string | null = null;
+    let switchedFromPhone = false; // true quando o cliente foi trocado via sender_name a partir de match phone/lid_map
 
     // ===== Troca de cliente: telefone-central → pagador real via sender_name =====
     // Caso típico: um único WhatsApp (atendente/central da funerária) encaminha
