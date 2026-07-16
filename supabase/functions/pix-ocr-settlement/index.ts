@@ -1107,7 +1107,7 @@ Deno.serve(async (req) => {
     });
 
     // Auto-settle: match confiável OR score >= 80 (auto_ok/auto_high) com valor casado.
-    const scoreAllowsAuto = decisionAllowsAuto(scoreResult.decision) && amountMatchesInvoice;
+    const scoreAllowsAuto = decisionAllowsAuto(scoreResult.decision) && amountMatchesInvoice && !switchedFromPhone;
     if (client && amount && eventStatus === "recebido" && (!requiresReview || scoreAllowsAuto)) {
       // Auto-learn LID → client em sinais confiáveis (CPF) e em fuzzy seguro
       // (push_name + valor único). Próximas mensagens do mesmo LID viram match
