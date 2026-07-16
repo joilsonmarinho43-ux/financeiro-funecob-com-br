@@ -730,6 +730,7 @@ Deno.serve(async (req) => {
               client = top.c;
               matchSource = "fuzzy_name";
               fuzzyNameSource = "sender_name";
+              switchedFromPhone = true;
             }
           }
         }
