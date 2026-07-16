@@ -691,6 +691,7 @@ Deno.serve(async (req) => {
       ?? extractFromText(raw_text);
     const txid = ocr?.txid || manual_txid || (message_id ? `WA-MSG-${message_id}` : null);
     let forcedExistingEventId: string | null = null;
+    let switchedFromPhone = false; // true quando o cliente foi trocado via sender_name a partir de match phone/lid_map
 
     // ===== Troca de cliente: telefone-central → pagador real via sender_name =====
     // Caso típico: um único WhatsApp (atendente/central da funerária) encaminha
@@ -729,6 +730,7 @@ Deno.serve(async (req) => {
               client = top.c;
               matchSource = "fuzzy_name";
               fuzzyNameSource = "sender_name";
+              switchedFromPhone = true;
             }
           }
         }
@@ -896,6 +898,20 @@ Deno.serve(async (req) => {
         });
         safeFuzzy = false;
       }
+
+      // PROTEÇÃO ADICIONAL (bug Iara 15/07/2026):
+      // Quando o cliente foi trocado via sender_name (telefone-central detectado),
+      // o telefone de origem do WhatsApp pertence a OUTRO cliente. Isso é
+      // ambíguo — pode ser: (a) intermediário legítimo encaminhando comprovante
+      // do próprio cliente pagador, ou (b) homônimo em outro cadastro.
+      // Como não temos como distinguir sem confirmação humana, NUNCA baixa
+      // automaticamente nesse caso: sempre pendente_revisao.
+      if (switchedFromPhone) {
+        console.log("[safeFuzzy-guard] switched via sender_name → sempre revisão manual", {
+          client_id: client?.id, origin_phone: phone, cadastro_phone: client?.phone,
+        });
+        safeFuzzy = false;
+      }
       console.log("[fuzzy-auto-settle-check]", {
         client_id: client.id, amount,
         source: fuzzyNameSource, name_unique: nameUnique, amount_unique: amountUnique,
@@ -903,11 +919,12 @@ Deno.serve(async (req) => {
         client_strong_tokens: clientStrongTokens.length, coverage_ratio: coverageRatio,
         full_name_match: fullNameMatch, tokenized_name_match: tokenizedNameMatch,
         distinct_amount_clients: distinctAmt.length, safe: safeFuzzy,
+        switched_from_phone: switchedFromPhone,
       });
     }
     const requiresReview = matchSource === "fuzzy_name" && !safeFuzzy;
     if (requiresReview) {
-      console.log("[conflict-detected]", { reason: "fuzzy_name_revisao", client_id: client?.id, amount, fuzzyNameSource });
+      console.log("[conflict-detected]", { reason: "fuzzy_name_revisao", client_id: client?.id, amount, fuzzyNameSource, switched_from_phone: switchedFromPhone });
     }
 
     // Proteção contra comprovante encaminhado / WhatsApp compartilhado:
@@ -1090,7 +1107,7 @@ Deno.serve(async (req) => {
     });
 
     // Auto-settle: match confiável OR score >= 80 (auto_ok/auto_high) com valor casado.
-    const scoreAllowsAuto = decisionAllowsAuto(scoreResult.decision) && amountMatchesInvoice;
+    const scoreAllowsAuto = decisionAllowsAuto(scoreResult.decision) && amountMatchesInvoice && !switchedFromPhone;
     if (client && amount && eventStatus === "recebido" && (!requiresReview || scoreAllowsAuto)) {
       // Auto-learn LID → client em sinais confiáveis (CPF) e em fuzzy seguro
       // (push_name + valor único). Próximas mensagens do mesmo LID viram match
