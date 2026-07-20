@@ -147,16 +147,21 @@ Deno.serve(async (req) => {
           const maskedKey = apiKey.length > 4 ? apiKey.slice(0, 2) + "***" + apiKey.slice(-2) : "***";
           console.log(`[baixa-manual] Sending confirmation to ${cleanPhone.slice(0, 4)}**** (key: ${maskedKey})`);
 
-          const response = await fetch(sendUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", apikey: apiKey },
-            body: JSON.stringify({ number: cleanPhone, textMessage: { text: message } }),
-          });
-
-          whatsapp_sent = response.ok;
-          if (!response.ok) {
-            const errBody = await response.text();
-            console.error(`[baixa-manual] WhatsApp error: ${response.status} - ${errBody.slice(0, 200)}`);
+          let errBody = "";
+          try {
+            const response = await fetch(sendUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", apikey: apiKey },
+              body: JSON.stringify({ number: cleanPhone, textMessage: { text: message } }),
+            });
+            whatsapp_sent = response.ok;
+            if (!response.ok) {
+              errBody = await response.text();
+              console.error(`[baixa-manual] WhatsApp error: ${response.status} - ${errBody.slice(0, 200)}`);
+            }
+          } catch (fetchErr) {
+            errBody = String(fetchErr);
+            console.error(`[baixa-manual] WhatsApp fetch failed: ${errBody.slice(0, 200)}`);
           }
 
           // Log sent message
@@ -169,6 +174,20 @@ Deno.serve(async (req) => {
             instance_id: instance?.id || null,
             sent_at: new Date().toISOString(),
           });
+
+          // FALLBACK: se envio direto falhou (ex.: "Connection Closed"),
+          // enfileira na whatsapp_queue para o whatsapp-sender reprocessar
+          if (!whatsapp_sent) {
+            await supabase.from("whatsapp_queue").insert({
+              organization_id,
+              phone: cleanPhone,
+              message,
+              status: "queued",
+              scheduled_for: new Date(Date.now() + 30_000).toISOString(),
+              error_message: `baixa-manual fallback: ${errBody.slice(0, 200)}`,
+            });
+            console.log(`[baixa-manual] Confirmação enfileirada para retry (${cleanPhone.slice(0,4)}****)`);
+          }
         } else {
           console.warn("[baixa-manual] WhatsApp not configured — skipping confirmation");
         }
