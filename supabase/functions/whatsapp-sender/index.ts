@@ -363,7 +363,6 @@ Deno.serve(async (req) => {
             status: "failed",
             error_message: `[retry:${nextRetry}] ${errorMsg}`,
           }).eq("id", item.id);
-        }
           failed++;
         }
       }
