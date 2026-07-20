@@ -281,7 +281,14 @@ Deno.serve(async (req) => {
         const instanceName = instance?.name || gs.default_instance_name || "";
 
         if (!instanceName || !apiUrl || !apiKey) {
-          throw new Error("WhatsApp não configurado — verifique instância e configurações globais");
+          const retryAt = new Date(Date.now() + 5 * 60_000).toISOString();
+          await supabase.from("whatsapp_queue").update({
+            status: "queued",
+            scheduled_for: retryAt,
+            error_message: "Aguardando reconexão do WhatsApp — nenhuma tentativa consumida",
+          }).eq("id", item.id);
+          paused++;
+          continue;
         }
 
         const phone = normalizeBRPhone(item.phone);
@@ -332,7 +339,18 @@ Deno.serve(async (req) => {
 
         console.error(`[whatsapp-sender] Failed ${item.phone.slice(0, 4)}**** (attempt ${nextRetry}):`, errorMsg.replace(/apikey[=:]\s*\S+/gi, "apikey=***"));
 
-        if (nextRetry < MAX_RETRIES) {
+        const lowerError = errorMsg.toLowerCase();
+        const isConnectionClosed = lowerError.includes("connection closed") || lowerError.includes("not connected") || lowerError.includes("connection close");
+
+        if (isConnectionClosed) {
+          const retryAt = new Date(Date.now() + 5 * 60_000).toISOString();
+          await supabase.from("whatsapp_queue").update({
+            status: "queued",
+            scheduled_for: retryAt,
+            error_message: "Aguardando reconexão do WhatsApp — erro de sessão fechada",
+          }).eq("id", item.id);
+          failed++;
+        } else if (nextRetry < MAX_RETRIES) {
           const backoffMs = 30000 * Math.pow(2, retryCount);
           const retryAt = new Date(Date.now() + backoffMs).toISOString();
           await supabase.from("whatsapp_queue").update({
@@ -345,9 +363,8 @@ Deno.serve(async (req) => {
             status: "failed",
             error_message: `[retry:${nextRetry}] ${errorMsg}`,
           }).eq("id", item.id);
+          failed++;
         }
-
-        failed++;
       }
 
       // Dynamic delay with temperature awareness
