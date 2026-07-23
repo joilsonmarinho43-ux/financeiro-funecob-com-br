@@ -172,6 +172,54 @@ async function ensurePixWebhook(
   return { ok: false, attempts };
 }
 
+async function requestQrCode(
+  apiCall: (url: string, options: RequestInit) => Promise<Response>,
+  baseUrl: string,
+  apiKey: string,
+  instanceName: string,
+) {
+  const qrResp = await apiCall(`${baseUrl}/instance/connect/${encodeURIComponent(instanceName)}`, {
+    method: "GET",
+    headers: { apikey: apiKey },
+  });
+  const text = await qrResp.text();
+  let data: any = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+  return {
+    ok: qrResp.ok,
+    status: qrResp.status,
+    data,
+    qrCode: qrResp.ok ? extractQrCode(data) : null,
+    body: text.slice(0, 300),
+  };
+}
+
+async function createEvolutionInstance(
+  apiCall: (url: string, options: RequestInit) => Promise<Response>,
+  baseUrl: string,
+  apiKey: string,
+  instanceName: string,
+  webhookUrl: string,
+) {
+  const resp = await apiCall(`${baseUrl}/instance/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: apiKey },
+    body: JSON.stringify({
+      instanceName,
+      qrcode: true,
+      integration: "WHATSAPP-BAILEYS",
+      webhook: webhookUrl,
+      webhookByEvents: false,
+      webhookBase64: true,
+      webhookEvents: PIX_WEBHOOK_EVENTS,
+    }),
+  });
+  const text = await resp.text();
+  let data: any = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+  return { ok: resp.ok, status: resp.status, data, qrCode: extractQrCode(data), body: text.slice(0, 300) };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -262,33 +310,17 @@ Deno.serve(async (req) => {
         });
       }
 
-      const createResp = await apiCall(`${baseUrl}/instance/create`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: globalApiKey },
-        body: JSON.stringify({
-          instanceName: instance_name,
-          qrcode: true,
-          integration: "WHATSAPP-BAILEYS",
-          webhook: pixWebhookUrl,
-          webhookByEvents: false,
-          webhookBase64: true,
-          webhookEvents: PIX_WEBHOOK_EVENTS,
-        }),
-      });
+      const created = await createEvolutionInstance(apiCall, baseUrl, globalApiKey, instance_name, pixWebhookUrl);
 
-      if (!createResp.ok) {
-        const errText = await createResp.text();
-        console.error("API create error:", errText);
-        if (!errText.includes("already") && !errText.includes("exists")) {
-          return new Response(JSON.stringify({ error: `Erro ao criar instância: ${createResp.status} - ${errText}` }), {
+      if (!created.ok) {
+        console.error("API create error:", created.body);
+        if (!created.body.includes("already") && !created.body.includes("exists")) {
+          return new Response(JSON.stringify({ error: `Erro ao criar instância: ${created.status} - ${created.body}` }), {
             status: 500,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
       }
-
-      let createData: any = {};
-      try { createData = await createResp.json(); } catch {}
 
       // Save instance in DB
       const { data: dbInstance, error: dbErr } = await supabase
@@ -334,17 +366,11 @@ Deno.serve(async (req) => {
       }
 
       // Get QR code
-      let qrCode = extractQrCode(createData);
+      let qrCode = created.qrCode;
       if (!qrCode) {
         try {
-          const qrResp = await apiCall(`${baseUrl}/instance/connect/${instance_name}`, {
-            method: "GET",
-            headers: { apikey: globalApiKey },
-          });
-          if (qrResp.ok) {
-            const qrData = await qrResp.json();
-            qrCode = extractQrCode(qrData);
-          }
+          const qr = await requestQrCode(apiCall, baseUrl, globalApiKey, instance_name);
+          qrCode = qr.qrCode;
         } catch (e) {
           console.error("QR fetch error:", e);
         }
@@ -385,27 +411,22 @@ Deno.serve(async (req) => {
       const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
       const instApiKey = inst.api_key || globalApiKey;
 
-      const qrResp = await apiCall(`${instApiUrl}/instance/connect/${inst.name}`, {
-        method: "GET",
-        headers: { apikey: instApiKey },
-      });
+      const qr = await requestQrCode(apiCall, instApiUrl, instApiKey, inst.name);
 
-      if (!qrResp.ok) {
-        const errText = await qrResp.text();
-        return new Response(JSON.stringify({ error: `Erro ao obter QR: ${errText}` }), {
+      if (!qr.ok) {
+        return new Response(JSON.stringify({ error: `Erro ao obter QR: ${qr.body}` }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const qrData = await qrResp.json();
-      const qrCode = extractQrCode(qrData);
+      const qrCode = qr.qrCode;
 
       if (!qrCode) {
         console.warn("[whatsapp-manager] QR not returned", {
           instance: inst.name,
-          status: qrResp.status,
-          shape: responseShape(qrData),
+          status: qr.status,
+          shape: responseShape(qr.data),
         });
       }
 
@@ -415,6 +436,72 @@ Deno.serve(async (req) => {
         success: true,
         qr_code: qrCode,
         instance_name: inst.name,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ─── RESET STUCK SESSION ───
+    if (action === "reset_session") {
+      if (!instance_id) {
+        return new Response(JSON.stringify({ error: "instance_id required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: inst } = await supabase
+        .from("whatsapp_instances")
+        .select("*")
+        .eq("id", instance_id)
+        .single();
+
+      if (!inst) {
+        return new Response(JSON.stringify({ error: "Instance not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
+      const instApiKey = inst.api_key || globalApiKey;
+      const attempts: any[] = [];
+
+      for (const step of [
+        { label: "logout", method: "DELETE", path: `/instance/logout/${encodeURIComponent(inst.name)}` },
+        { label: "delete", method: "DELETE", path: `/instance/delete/${encodeURIComponent(inst.name)}` },
+      ]) {
+        try {
+          const resp = await apiCall(`${instApiUrl}${step.path}`, { method: step.method, headers: { apikey: instApiKey } });
+          const text = await resp.text();
+          attempts.push({ step: step.label, ok: resp.ok, status: resp.status, body: text.slice(0, 200) });
+        } catch (e) {
+          attempts.push({ step: step.label, ok: false, error: String(e instanceof Error ? e.message : e) });
+        }
+      }
+
+      const created = await createEvolutionInstance(apiCall, instApiUrl, instApiKey, inst.name, pixWebhookUrl);
+      attempts.push({ step: "create", ok: created.ok, status: created.status, body: created.body, has_qr: !!created.qrCode });
+
+      let qrCode = created.qrCode;
+      if (!qrCode) {
+        const qr = await requestQrCode(apiCall, instApiUrl, instApiKey, inst.name);
+        attempts.push({ step: "connect", ok: qr.ok, status: qr.status, body: qr.body, has_qr: !!qr.qrCode, shape: responseShape(qr.data) });
+        qrCode = qr.qrCode;
+      }
+
+      await supabase.from("whatsapp_instances").update({ status: qrCode ? "pairing" : "disconnected" }).eq("id", instance_id);
+      await supabase.from("system_logs").insert({
+        action: "whatsapp_instance_session_reset",
+        organization_id: inst.organization_id,
+        details: { instance_name: inst.name, attempts, has_qr: !!qrCode },
+      });
+
+      return new Response(JSON.stringify({
+        success: true,
+        instance_name: inst.name,
+        qr_code: qrCode,
+        attempts,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
