@@ -1078,11 +1078,15 @@ function PairTab({ organizationId }: { organizationId: string }) {
             ) : qrBase64 ? (
               <>
                 <div className="p-3 bg-white rounded-xl shadow-sm">
-                  <img
-                    src={qrBase64.startsWith("data:") ? qrBase64 : `data:image/png;base64,${qrBase64}`}
-                    alt="QR Code WhatsApp"
-                    className="w-52 h-52 object-contain"
-                  />
+                  {qrBase64.startsWith("data:") || /^[A-Za-z0-9+/=\r\n]+$/.test(qrBase64) ? (
+                    <img
+                      src={qrBase64.startsWith("data:") ? qrBase64 : `data:image/png;base64,${qrBase64}`}
+                      alt="QR Code WhatsApp"
+                      className="w-52 h-52 object-contain"
+                    />
+                  ) : (
+                    <QRCodeSVG value={qrBase64} size={208} level="M" />
+                  )}
                 </div>
                 <div className="w-full space-y-1.5">
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
