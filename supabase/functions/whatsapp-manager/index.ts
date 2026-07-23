@@ -47,6 +47,42 @@ function asArray<T = any>(value: T | T[] | null | undefined): T[] {
   return value == null ? [] : [value];
 }
 
+function extractQrCode(payload: any): string | null {
+  const candidates = [
+    payload?.base64,
+    payload?.qrcode?.base64,
+    payload?.qrcode?.code,
+    payload?.qrcode?.qrCode,
+    payload?.qrcode,
+    payload?.code,
+    payload?.qrCode,
+    payload?.pairingCode,
+    payload?.data?.base64,
+    payload?.data?.qrcode?.base64,
+    payload?.data?.qrcode?.code,
+    payload?.data?.qrcode,
+    payload?.data?.code,
+    payload?.data?.qrCode,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) return candidate.trim();
+  }
+  return null;
+}
+
+function responseShape(payload: any) {
+  if (!payload || typeof payload !== "object") return { type: typeof payload };
+  const shape: Record<string, any> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (typeof value === "string") shape[key] = value.length > 80 ? `string(${value.length})` : "string";
+    else if (Array.isArray(value)) shape[key] = `array(${value.length})`;
+    else if (value && typeof value === "object") shape[key] = Object.keys(value as Record<string, unknown>);
+    else shape[key] = typeof value;
+  }
+  return shape;
+}
+
 function extractMessages(payload: any): any[] {
   if (!payload) return [];
   if (Array.isArray(payload)) return payload.flatMap(extractMessages);
@@ -298,7 +334,7 @@ Deno.serve(async (req) => {
       }
 
       // Get QR code
-      let qrCode = createData?.qrcode?.base64 || null;
+      let qrCode = extractQrCode(createData);
       if (!qrCode) {
         try {
           const qrResp = await apiCall(`${baseUrl}/instance/connect/${instance_name}`, {
@@ -307,7 +343,7 @@ Deno.serve(async (req) => {
           });
           if (qrResp.ok) {
             const qrData = await qrResp.json();
-            qrCode = qrData?.base64 || qrData?.qrcode?.base64 || null;
+            qrCode = extractQrCode(qrData);
           }
         } catch (e) {
           console.error("QR fetch error:", e);
@@ -363,7 +399,15 @@ Deno.serve(async (req) => {
       }
 
       const qrData = await qrResp.json();
-      const qrCode = qrData?.base64 || qrData?.qrcode?.base64 || null;
+      const qrCode = extractQrCode(qrData);
+
+      if (!qrCode) {
+        console.warn("[whatsapp-manager] QR not returned", {
+          instance: inst.name,
+          status: qrResp.status,
+          shape: responseShape(qrData),
+        });
+      }
 
       await supabase.from("whatsapp_instances").update({ status: "pairing" }).eq("id", instance_id);
 
