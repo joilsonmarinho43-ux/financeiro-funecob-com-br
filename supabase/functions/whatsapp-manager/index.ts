@@ -436,6 +436,8 @@ Deno.serve(async (req) => {
         success: true,
         qr_code: qrCode,
         instance_name: inst.name,
+        status: qrCode ? "pairing" : "qr_unavailable",
+        diagnostic: qrCode ? null : "A Evolution API respondeu sem QR Code. A instância pode estar travada em connecting/pairing; use reset_session ou reinicie a instância no servidor Evolution.",
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
