@@ -468,11 +468,14 @@ Deno.serve(async (req) => {
       const attempts: any[] = [];
 
       for (const step of [
-        { label: "logout", method: "DELETE", path: `/instance/logout/${encodeURIComponent(inst.name)}` },
-        { label: "delete", method: "DELETE", path: `/instance/delete/${encodeURIComponent(inst.name)}` },
+        { label: "restart-put", method: "PUT", path: `/instance/restart/${encodeURIComponent(inst.name)}` },
+        { label: "restart-post", method: "POST", path: `/instance/restart/${encodeURIComponent(inst.name)}` },
+        { label: "logout-delete", method: "DELETE", path: `/instance/logout/${encodeURIComponent(inst.name)}` },
+        { label: "delete-delete", method: "DELETE", path: `/instance/delete/${encodeURIComponent(inst.name)}` },
+        { label: "delete-delete-force", method: "DELETE", path: `/instance/delete/${encodeURIComponent(inst.name)}?force=true` },
       ]) {
         try {
-          const resp = await apiCall(`${instApiUrl}${step.path}`, { method: step.method, headers: { apikey: instApiKey } });
+          const resp = await apiCall(`${instApiUrl}${step.path}`, { method: step.method, headers: { "Content-Type": "application/json", apikey: instApiKey } });
           const text = await resp.text();
           attempts.push({ step: step.label, ok: resp.ok, status: resp.status, body: text.slice(0, 200) });
         } catch (e) {
