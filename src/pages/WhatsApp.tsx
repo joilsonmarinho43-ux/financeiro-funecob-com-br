@@ -60,6 +60,11 @@ const statusBadge = (status: string) => {
   return <Badge className={s.cls}>{s.label}</Badge>;
 };
 
+const isQrImageData = (value: string) => {
+  const clean = value.trim();
+  return clean.startsWith("data:image/") || clean.startsWith("iVBOR") || clean.startsWith("/9j/") || clean.startsWith("UklGR");
+};
+
 function PaginationControls({ page, setPage, totalCount }: { page: number; setPage: (p: number) => void; totalCount: number }) {
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   return (
@@ -844,6 +849,42 @@ function PairTab({ organizationId }: { organizationId: string }) {
     }
   };
 
+  const handleResetSession = async (inst: any) => {
+    if (!window.confirm(`Resetar a sessão travada da instância "${inst.name}" e tentar gerar um novo QR Code?`)) return;
+    try {
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const url = `https://${projectId}.supabase.co/functions/v1/whatsapp-manager`;
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token || ""}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ action: "reset_session", instance_id: inst.id }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Erro ao resetar sessão");
+
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+      if (result.qr_code) {
+        setSelectedInstance(inst);
+        setQrBase64(result.qr_code);
+        setQrDialogOpen(true);
+        toast({ title: "Sessão resetada. Escaneie o novo QR Code." });
+      } else {
+        toast({
+          title: "Sessão ainda travada na Evolution API",
+          description: "A API reiniciou, mas não retornou QR Code. Reinicie a instância/servidor Evolution e tente conectar novamente.",
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      toast({ title: "Erro ao resetar sessão", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const sanitizedName = sanitizeInstanceName(form.name);
@@ -973,9 +1014,14 @@ function PairTab({ organizationId }: { organizationId: string }) {
                       <WifiOff className="h-3.5 w-3.5 mr-1" /> Desconectar
                     </Button>
                   ) : (
-                    <Button variant="outline" size="sm" className="h-8 text-success border-success/30 hover:bg-success/10" onClick={() => handleConnect(inst)}>
-                      <QrCode className="h-3.5 w-3.5 mr-1" /> Conectar
-                    </Button>
+                    <>
+                      <Button variant="outline" size="sm" className="h-8 text-success border-success/30 hover:bg-success/10" onClick={() => handleConnect(inst)}>
+                        <QrCode className="h-3.5 w-3.5 mr-1" /> Conectar
+                      </Button>
+                      <Button variant="outline" size="sm" className="h-8 text-warning border-warning/30 hover:bg-warning/10" onClick={() => handleResetSession(inst)}>
+                        <AlertTriangle className="h-3.5 w-3.5 mr-1" /> Resetar sessão
+                      </Button>
+                    </>
                   )}
                   <Button variant="ghost" size="sm" className="text-destructive h-8" onClick={() => {
                     if (window.confirm(`Remover a instância "${inst.name}"? Esta ação não pode ser desfeita.`)) {
@@ -1078,11 +1124,15 @@ function PairTab({ organizationId }: { organizationId: string }) {
             ) : qrBase64 ? (
               <>
                 <div className="p-3 bg-white rounded-xl shadow-sm">
-                  <img
-                    src={qrBase64.startsWith("data:") ? qrBase64 : `data:image/png;base64,${qrBase64}`}
-                    alt="QR Code WhatsApp"
-                    className="w-52 h-52 object-contain"
-                  />
+                  {isQrImageData(qrBase64) ? (
+                    <img
+                      src={qrBase64.startsWith("data:") ? qrBase64 : `data:image/png;base64,${qrBase64}`}
+                      alt="QR Code WhatsApp"
+                      className="w-52 h-52 object-contain"
+                    />
+                  ) : (
+                    <QRCodeSVG value={qrBase64} size={208} level="M" />
+                  )}
                 </div>
                 <div className="w-full space-y-1.5">
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
