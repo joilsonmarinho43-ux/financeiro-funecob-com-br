@@ -60,6 +60,11 @@ const statusBadge = (status: string) => {
   return <Badge className={s.cls}>{s.label}</Badge>;
 };
 
+const isQrImageData = (value: string) => {
+  const clean = value.trim();
+  return clean.startsWith("data:image/") || clean.startsWith("iVBOR") || clean.startsWith("/9j/") || clean.startsWith("UklGR");
+};
+
 function PaginationControls({ page, setPage, totalCount }: { page: number; setPage: (p: number) => void; totalCount: number }) {
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   return (
@@ -1119,7 +1124,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
             ) : qrBase64 ? (
               <>
                 <div className="p-3 bg-white rounded-xl shadow-sm">
-                  {qrBase64.startsWith("data:") || /^[A-Za-z0-9+/=\r\n]+$/.test(qrBase64) ? (
+                  {isQrImageData(qrBase64) ? (
                     <img
                       src={qrBase64.startsWith("data:") ? qrBase64 : `data:image/png;base64,${qrBase64}`}
                       alt="QR Code WhatsApp"
