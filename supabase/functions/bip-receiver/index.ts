@@ -94,7 +94,7 @@ async function trySendWhatsApp(instance: any, phone: string, message: string): P
     const resp = await fetch(sendUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: apiKey },
-      body: JSON.stringify({ number: cleanPhone, textMessage: { text: message } }),
+      body: JSON.stringify({ number: cleanPhone, textMessage: { text: message }, linkPreview: false }),
     });
     return resp.ok;
   } catch (e) {
