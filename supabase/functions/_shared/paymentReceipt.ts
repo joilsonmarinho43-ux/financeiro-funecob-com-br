@@ -283,7 +283,7 @@ export async function sendWhatsAppWithReceipt(params: {
   try {
     const r = await fetch(`${base}/message/sendText/${params.instanceName}`, {
       method: "POST", headers,
-      body: JSON.stringify({ number: params.destination, textMessage: { text: params.text } }),
+      body: JSON.stringify({ number: params.destination, textMessage: { text: params.text }, linkPreview: false }),
     });
     textSent = r.ok;
     if (!r.ok) console.error("[paymentReceipt] sendText fail", r.status, (await r.text()).slice(0, 200));

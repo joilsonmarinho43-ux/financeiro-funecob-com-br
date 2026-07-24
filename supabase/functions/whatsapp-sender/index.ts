@@ -301,7 +301,7 @@ Deno.serve(async (req) => {
         const response = await fetch(sendUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: apiKey },
-          body: JSON.stringify({ number: phone, textMessage: { text: variedMessage } }),
+          body: JSON.stringify({ number: phone, textMessage: { text: variedMessage }, linkPreview: false }),
         });
 
         if (!response.ok) {
