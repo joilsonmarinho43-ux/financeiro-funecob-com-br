@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getOrCreatePortalLink } from "../_shared/portalLink.ts";
+import { removePaymentConfirmationLinks } from "../_shared/paymentReceipt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -244,19 +245,19 @@ Deno.serve(async (req) => {
       if (client?.phone) {
         const tpl = billingSettings.template_baixa ||
           "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏";
-        const portalLink = await getOrCreatePortalLink(supabase, client.id, orgParam);
+        await getOrCreatePortalLink(supabase, client.id, orgParam);
         const valorFmt = Number(invoice.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const vencBR = invoice.due_date ? String(invoice.due_date).split("-").reverse().join("/") : "";
         const compBR = invoice.due_date ? new Date(invoice.due_date + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" }) : "";
         const reciboNo = "REC-" + String(invoice.id).replace(/-/g, "").slice(0, 10).toUpperCase();
-        const message = tpl
+        const message = removePaymentConfirmationLinks(tpl
           .replace(/{nome}/g, client.name || "Cliente")
           .replace(/{valor}/g, valorFmt)
           .replace(/{data_pagamento}/g, paidDate.split("-").reverse().join("/"))
           .replace(/{data_vencimento}/g, vencBR || paidDate.split("-").reverse().join("/"))
           .replace(/{competencia}/g, compBR)
           .replace(/{recibo}/g, reciboNo)
-          .replace(/{link_portal}/g, portalLink);
+          .replace(/{link_portal}/g, ""));
 
         let directSent = false;
         if (client.collector_id) {
@@ -499,14 +500,14 @@ Deno.serve(async (req) => {
         const vencBR = invoice?.due_date ? String(invoice.due_date).split("-").reverse().join("/") : "";
         const compBR = invoice?.due_date ? new Date(invoice.due_date + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" }) : "";
         const reciboNo = "REC-" + String(invoice?.id || "").replace(/-/g, "").slice(0, 10).toUpperCase();
-        message = tpl
+        message = removePaymentConfirmationLinks(tpl
           .replace(/{nome}/g, client.name)
           .replace(/{valor}/g, valorFmt)
           .replace(/{data_pagamento}/g, paidDate.split("-").reverse().join("/"))
           .replace(/{data_vencimento}/g, vencBR || paidDate.split("-").reverse().join("/"))
           .replace(/{competencia}/g, compBR)
           .replace(/{recibo}/g, reciboNo)
-          .replace(/{link_portal}/g, portalLink);
+          .replace(/{link_portal}/g, ""));
       } else if (action === "remarcacao") {
         const tpl = billingSettings?.template_remarcar || "Olá {nome}! 📅\n\nSua fatura no valor de R$ {valor} foi remarcada.\nNova data de vencimento: {nova_data}\n\nQualquer dúvida, estamos à disposição!";
         const valorFmt = Number(invoice?.amount || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

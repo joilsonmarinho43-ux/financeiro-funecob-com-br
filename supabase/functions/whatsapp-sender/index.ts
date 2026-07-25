@@ -52,8 +52,32 @@ function normalizeLinks(msg: string): string {
   return out;
 }
 
+function looksLikePaymentConfirmation(msg: string): boolean {
+  const lower = (msg || "").toLowerCase();
+  return lower.includes("pagamento confirmado") ||
+    lower.includes("pagamento foi identificado") ||
+    lower.includes("pagamento com sucesso") ||
+    lower.includes("mensalidade foi baixada") ||
+    lower.includes("recebemos seu pagamento");
+}
+
+function removePaymentConfirmationLinks(msg: string): string {
+  return (msg || "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\b(?:financeiro[-.]funecob[-.]com[-.]br|funecob\.com\.br)\S*/gi, "")
+    .split("\n")
+    .filter((line) => {
+      const cleaned = line.replace(/[\s:*_🔗👉➡️.-]/g, "").toLowerCase();
+      if (!cleaned) return true;
+      return !["acesse seu portal", "seu portal", "portaldocliente", "portal"].includes(cleaned);
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function varyMessage(msg: string, level: string): string {
-  msg = normalizeLinks(msg);
+  msg = looksLikePaymentConfirmation(msg) ? removePaymentConfirmationLinks(msg) : normalizeLinks(msg);
   if (level === "low") return msg;
 
   const pool = greetingPools[Math.floor(Math.random() * greetingPools.length)];
