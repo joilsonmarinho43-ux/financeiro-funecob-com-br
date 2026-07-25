@@ -22,6 +22,27 @@ function competenciaBR(due: string): string {
   return dt.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 }
 
+/**
+ * Confirmações de pagamento NÃO devem carregar URL no texto.
+ * Alguns provedores WhatsApp ignoram `linkPreview: false` e geram o card no topo
+ * sempre que detectam qualquer URL. Para garantir que nunca apareça link/card no
+ * início, removemos links e linhas órfãs de portal da mensagem de confirmação.
+ */
+export function removePaymentConfirmationLinks(message: string): string {
+  return (message || "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\b(?:financeiro[-.]funecob[-.]com[-.]br|funecob\.com\.br)\S*/gi, "")
+    .split("\n")
+    .filter((line) => {
+      const cleaned = line.replace(/[\s:*_🔗👉➡️.-]/g, "").toLowerCase();
+      if (!cleaned) return true;
+      return !["acesse seu portal", "seu portal", "portaldocliente", "portal"].includes(cleaned);
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function receiptNumber(eventId: string): string {
   return "REC-" + eventId.replace(/-/g, "").slice(0, 10).toUpperCase();
 }
@@ -209,11 +230,8 @@ export function buildConfirmationText(params: {
       .replace(/{competencia}/g, comp)
       .replace(/{recibo}/g, params.receiptNo)
       .replace(/{titular_pix}/g, params.pixHolderName || "")
-      .replace(/{link_portal}/g, params.portalLink || "");
-    if (params.portalLink && !msg.includes(params.portalLink)) {
-      msg += `\n\n🔗 Acesse seu portal: ${params.portalLink}`;
-    }
-    return msg;
+      .replace(/{link_portal}/g, "");
+    return removePaymentConfirmationLinks(msg);
   }
 
   // Template padrão (novo)
@@ -233,10 +251,7 @@ Sua mensalidade foi baixada automaticamente em nosso sistema.
 Obrigado pela confiança e pela pontualidade! 🙏
 
 _Equipe Financeira_`;
-  if (params.portalLink) {
-    msg += `\n\n🔗 Acesse seu portal: ${params.portalLink}`;
-  }
-  return msg;
+  return removePaymentConfirmationLinks(msg);
 }
 
 /** Resolve dígitos de destino.
