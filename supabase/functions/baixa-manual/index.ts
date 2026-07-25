@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getOrCreatePortalLink } from "../_shared/portalLink.ts";
+import { removePaymentConfirmationLinks } from "../_shared/paymentReceipt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -100,7 +101,7 @@ Deno.serve(async (req) => {
         const template =
           settings?.template_baixa ||
           "Pagamento confirmado! ✅\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}";
-        const portalLink = await getOrCreatePortalLink(supabase, clientId, organization_id);
+        await getOrCreatePortalLink(supabase, clientId, organization_id);
         let message = template
           .replace(/{nome}/g, client.name || "Cliente")
           .replace(/{valor}/g, amount)
@@ -109,12 +110,8 @@ Deno.serve(async (req) => {
           .replace(/{competencia}/g, competenciaBR)
           .replace(/{recibo}/g, reciboNo)
           .replace(/{titular_pix}/g, (settings as any)?.pix_holder_name || "")
-          .replace(/{link_portal}/g, portalLink);
-
-        // Auto-append portal link if template didn't include the variable
-        if (portalLink && !template.includes("{link_portal}") && !message.includes(portalLink)) {
-          message += `\n\n🔗 *Acesse seu portal:* ${portalLink}`;
-        }
+          .replace(/{link_portal}/g, "");
+        message = removePaymentConfirmationLinks(message);
 
         // Get WhatsApp instance
         const { data: instance } = await supabase
