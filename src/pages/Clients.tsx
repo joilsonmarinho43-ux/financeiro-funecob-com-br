@@ -1327,10 +1327,11 @@ export default function Clients() {
                               }}>
                                 <Receipt className="h-4 w-4" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => openEdit(client)}>
+                              <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={`Editar ${client.name}`} onClick={() => openEdit(client)}>
                                 <Pencil className="h-4 w-4" />
                               </Button>
                               <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive"
+                                aria-label={`Remover ${client.name}`}
                                 onClick={() => {
                                   if (window.confirm(`Tem certeza que deseja remover "${client.name}"? Esta ação não pode ser desfeita.`)) {
                                     deleteMutation.mutate(client.id);

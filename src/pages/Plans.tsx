@@ -250,10 +250,10 @@ export default function Plans() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(plan)}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Editar plano ${plan.name}`} onClick={() => openEdit(plan)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => {
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" aria-label={`Remover plano ${plan.name}`} onClick={() => {
                               if (window.confirm(`Remover plano "${plan.name}"?`)) deleteMutation.mutate(plan.id);
                             }}>
                               <Trash2 className="h-4 w-4" />

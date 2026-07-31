@@ -71,10 +71,10 @@ function PaginationControls({ page, setPage, totalCount }: { page: number; setPa
     <div className="flex items-center justify-between pt-3">
       <p className="text-xs text-muted-foreground">{totalCount} registro(s) — Página {page} de {totalPages}</p>
       <div className="flex gap-1">
-        <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+        <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Página anterior" disabled={page <= 1} onClick={() => setPage(page - 1)}>
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+        <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Próxima página" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>

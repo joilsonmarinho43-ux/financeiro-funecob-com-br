@@ -138,7 +138,7 @@ export default function WebHooks() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Badge variant={wh.active ? "default" : "secondary"}>{wh.active ? "Ativo" : "Inativo"}</Badge>
-                    <Button variant="ghost" size="icon" onClick={() => {
+                    <Button variant="ghost" size="icon" aria-label={`Remover webhook ${wh.name}`} onClick={() => {
                       if (window.confirm(`Remover webhook "${wh.name}"?`)) deleteMutation.mutate(wh.id);
                     }}>
                       <Trash2 className="h-4 w-4 text-destructive" />

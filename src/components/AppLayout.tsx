@@ -27,7 +27,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </Button>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground relative">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground relative" aria-label="Notificações">
                 <Bell className="h-4 w-4" />
               </Button>
             </div>
