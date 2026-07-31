@@ -224,7 +224,45 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
         <div className="text-center py-12 text-muted-foreground">Nenhuma mensagem encontrada.</div>
       ) : (
         <div className="space-y-2">
-          <div className="overflow-x-auto">
+          {/* Mobile: cartões legíveis */}
+          <div className="space-y-2 md:hidden">
+            {messages.map((m: any) => (
+              <div key={m.id} className="rounded-lg border bg-card p-3 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-mono text-sm truncate">{m.phone}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {m.clients?.name || "—"} · {m.direction === "outgoing" ? "Saída" : "Entrada"}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-destructive"
+                    aria-label={`Apagar histórico de ${m.phone}`}
+                    title="Apagar histórico deste número"
+                    onClick={() => {
+                      if (window.confirm(`Apagar todo o histórico de ${m.phone}?`)) {
+                        deleteByClientMutation.mutate(m.phone);
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <p className="text-sm whitespace-pre-wrap break-words line-clamp-4">{m.message}</p>
+                <div className="flex items-center justify-between gap-2">
+                  {statusBadge(m.status)}
+                  <span className="text-xs text-muted-foreground">
+                    {format(parseISO(m.created_at), "dd/MM/yy HH:mm")}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: tabela */}
+          <div className="hidden md:block overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -242,12 +280,14 @@ function MessagesTab({ organizationId }: { organizationId: string }) {
                   <TableRow key={m.id}>
                     <TableCell className="font-mono text-sm">{m.phone}</TableCell>
                     <TableCell>{m.clients?.name || "—"}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{m.message}</TableCell>
+                    <TableCell className="max-w-[320px] truncate">{m.message}</TableCell>
                     <TableCell>{m.direction === "outgoing" ? "Saída" : "Entrada"}</TableCell>
                     <TableCell>{statusBadge(m.status)}</TableCell>
                     <TableCell className="text-sm">{format(parseISO(m.created_at), "dd/MM/yy HH:mm")}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Apagar histórico deste número"
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                        aria-label={`Apagar histórico de ${m.phone}`}
+                        title="Apagar histórico deste número"
                         onClick={() => {
                           if (window.confirm(`Apagar todo o histórico de ${m.phone}?`)) {
                             deleteByClientMutation.mutate(m.phone);
