@@ -264,7 +264,7 @@ export default function Gateways() {
                   <Label>Cole esta URL no painel do seu provedor de pagamento</Label>
                   <div className="flex gap-2">
                     <Input value={webhookUrl} readOnly className="font-mono text-xs" />
-                    <Button onClick={copyWebhookUrl} variant="outline" size="icon" className="shrink-0">
+                    <Button onClick={copyWebhookUrl} variant="outline" size="icon" className="shrink-0" aria-label="Copiar URL do webhook">
                       <Copy className="h-4 w-4" />
                     </Button>
                   </div>

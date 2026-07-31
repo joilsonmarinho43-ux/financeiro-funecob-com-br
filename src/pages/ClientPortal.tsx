@@ -81,10 +81,10 @@ export default function ClientPortal() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="min-h-dvh flex items-center justify-center bg-gradient-to-br from-background to-muted">
         <div className="text-center space-y-4">
-          <div className="h-10 w-10 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-slate-500 text-sm">Carregando seu portal...</p>
+          <div className="h-10 w-10 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-muted-foreground text-sm">Carregando seu portal...</p>
         </div>
       </div>
     );
@@ -92,14 +92,14 @@ export default function ClientPortal() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+      <div className="min-h-dvh flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
         <Card className="max-w-md w-full border-0 shadow-xl">
           <CardContent className="p-8 text-center space-y-4">
-            <div className="h-16 w-16 rounded-full bg-red-50 flex items-center justify-center mx-auto">
-              <XCircle className="h-8 w-8 text-red-500" />
+            <div className="h-16 w-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto">
+              <XCircle className="h-8 w-8 text-destructive" />
             </div>
-            <h1 className="text-xl font-bold text-slate-800">Link Inválido</h1>
-            <p className="text-slate-500 text-sm">
+            <h1 className="text-xl font-bold text-foreground">Link Inválido</h1>
+            <p className="text-muted-foreground text-sm">
               {error || "Este link de acesso é inválido ou expirou. Solicite um novo link ao seu prestador de serviços."}
             </p>
           </CardContent>
@@ -127,7 +127,7 @@ export default function ClientPortal() {
   const primaryColor = data.organization.primary_color || "#0ea5e9";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-dvh bg-gradient-to-br from-background to-muted">
       {/* Header */}
       <header
         className="py-5 px-4 shadow-sm"
@@ -138,16 +138,16 @@ export default function ClientPortal() {
             <img
               src={data.organization.logo_url}
               alt={data.organization.name}
-              className="h-10 w-10 rounded-xl object-cover bg-white/20 p-0.5"
+              className="h-10 w-10 rounded-xl object-cover bg-primary-foreground/20 p-0.5"
             />
           ) : (
-            <div className="h-10 w-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <Building2 className="h-5 w-5 text-white" />
+            <div className="h-10 w-10 rounded-xl bg-primary-foreground/20 flex items-center justify-center">
+              <Building2 className="h-5 w-5 text-primary-foreground" />
             </div>
           )}
           <div>
-            <h1 className="text-white font-bold text-lg">{data.organization.name}</h1>
-            <p className="text-white/70 text-xs">Portal do Cliente</p>
+            <h1 className="text-primary-foreground font-bold text-lg">{data.organization.name}</h1>
+            <p className="text-primary-foreground/70 text-xs">Portal do Cliente</p>
           </div>
         </div>
       </header>
@@ -157,12 +157,12 @@ export default function ClientPortal() {
         <Card className="border-0 shadow-md">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
-                <User className="h-6 w-6 text-blue-500" />
+              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <User className="h-6 w-6 text-primary" />
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-slate-800 text-sm truncate">{data.client.name}</p>
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
+                <p className="font-semibold text-foreground text-sm truncate">{data.client.name}</p>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                   {data.client.phone && (
                     <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{data.client.phone}</span>
                   )}
@@ -180,22 +180,22 @@ export default function ClientPortal() {
           <Card className="border-0 shadow-md">
             <CardContent className="p-3 text-center">
               <DollarSign className="h-5 w-5 mx-auto text-orange-500 mb-1" />
-              <p className="text-xs text-slate-500">Em aberto</p>
-              <p className="font-bold text-sm text-slate-800">{formatCurrency(totalPending)}</p>
+              <p className="text-xs text-muted-foreground">Em aberto</p>
+              <p className="font-bold text-sm text-foreground">{formatCurrency(totalPending)}</p>
             </CardContent>
           </Card>
           <Card className="border-0 shadow-md">
             <CardContent className="p-3 text-center">
-              <CheckCircle className="h-5 w-5 mx-auto text-green-500 mb-1" />
-              <p className="text-xs text-slate-500">Total pago</p>
-              <p className="font-bold text-sm text-slate-800">{formatCurrency(totalPaid)}</p>
+              <CheckCircle className="h-5 w-5 mx-auto text-success mb-1" />
+              <p className="text-xs text-muted-foreground">Total pago</p>
+              <p className="font-bold text-sm text-foreground">{formatCurrency(totalPaid)}</p>
             </CardContent>
           </Card>
           <Card className="border-0 shadow-md">
             <CardContent className="p-3 text-center">
-              <AlertTriangle className="h-5 w-5 mx-auto text-red-500 mb-1" />
-              <p className="text-xs text-slate-500">Vencidas</p>
-              <p className="font-bold text-sm text-red-600">{overdueCount}</p>
+              <AlertTriangle className="h-5 w-5 mx-auto text-destructive mb-1" />
+              <p className="text-xs text-muted-foreground">Vencidas</p>
+              <p className="font-bold text-sm text-destructive">{overdueCount}</p>
             </CardContent>
           </Card>
         </div>
@@ -206,12 +206,12 @@ export default function ClientPortal() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-xs text-slate-500 mb-1 flex items-center gap-1">
+                  <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
                     <CreditCard className="h-3 w-3" /> Chave Pix para pagamento
                   </p>
-              <p className="font-mono text-sm text-slate-800 truncate">{data.billing.pix_key}</p>
+              <p className="font-mono text-sm text-foreground truncate">{data.billing.pix_key}</p>
                   {data.billing.pix_holder_name && (
-                    <p className="text-xs text-slate-500 mt-0.5">Titular: {data.billing.pix_holder_name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Titular: {data.billing.pix_holder_name}</p>
                   )}
                 </div>
                 <Button
@@ -220,7 +220,7 @@ export default function ClientPortal() {
                   onClick={copyPixKey}
                   className="flex-shrink-0"
                 >
-                  {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                  {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
                   {copied ? "Copiado!" : "Copiar"}
                 </Button>
               </div>
@@ -266,31 +266,31 @@ export default function ClientPortal() {
             </DialogHeader>
             {preview && (
               <div className="space-y-4">
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Confira os dados antes de confirmar a geração.
                 </p>
-                <div className="rounded-lg border bg-slate-50 p-4 space-y-3">
+                <div className="rounded-lg border bg-muted p-4 space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-slate-500">Descrição</span>
-                    <span className="text-sm font-medium text-slate-800 text-right">{preview.description}</span>
+                    <span className="text-xs text-muted-foreground">Descrição</span>
+                    <span className="text-sm font-medium text-foreground text-right">{preview.description}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-slate-500 flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
                       <CalendarDays className="h-3 w-3" /> Vencimento
                     </span>
-                    <span className="text-sm font-semibold text-slate-800">
+                    <span className="text-sm font-semibold text-foreground">
                       {format(parseDateLocal(preview.dueDate), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                     </span>
                   </div>
                   <div className="flex justify-between items-center pt-2 border-t">
-                    <span className="text-xs text-slate-500">Valor</span>
+                    <span className="text-xs text-muted-foreground">Valor</span>
                     <span className="text-lg font-bold" style={{ color: primaryColor }}>
                       {formatCurrency(preview.amount)}
                     </span>
                   </div>
                 </div>
                 {preview.amount <= 0 && (
-                  <p className="text-xs text-red-600">
+                  <p className="text-xs text-destructive">
                     Valor inválido. Não é possível gerar uma mensalidade com valor zero.
                   </p>
                 )}
@@ -355,9 +355,9 @@ export default function ClientPortal() {
             </div>
 
             {/* Mobile-friendly invoice list */}
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-border">
               {filteredInvoices.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-sm">
+                <div className="py-12 text-center text-muted-foreground text-sm">
                   Nenhuma fatura encontrada
                 </div>
               ) : (
@@ -367,24 +367,24 @@ export default function ClientPortal() {
                     inv.status === "pago" ? "Pago" : isOverdue ? "Vencida" : "Em aberto";
                   const statusColor =
                     inv.status === "pago"
-                      ? "bg-green-50 text-green-700 border-green-200"
+                      ? "bg-success/10 text-success border-success/30"
                       : isOverdue
-                      ? "bg-red-50 text-red-700 border-red-200"
-                      : "bg-yellow-50 text-yellow-700 border-yellow-200";
+                      ? "bg-destructive/10 text-destructive border-destructive/30"
+                      : "bg-warning/10 text-warning border-warning/30";
 
                   return (
                     <button
                       key={inv.id}
-                      className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors"
+                      className="w-full text-left px-4 py-3 hover:bg-muted transition-colors"
                       onClick={() => setSelectedInvoice(inv)}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-800 truncate">
+                          <p className="text-sm font-medium text-foreground truncate">
                             {inv.description || "Fatura"}
                           </p>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-xs text-slate-400 flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
                               <CalendarDays className="h-3 w-3" />
                               {format(parseDateLocal(inv.due_date), "dd/MM/yyyy")}
                             </span>
@@ -393,7 +393,7 @@ export default function ClientPortal() {
                             </span>
                           </div>
                         </div>
-                        <p className="font-bold text-sm text-slate-800 flex-shrink-0">
+                        <p className="font-bold text-sm text-foreground flex-shrink-0">
                           {formatCurrency(Number(inv.amount))}
                         </p>
                       </div>
@@ -406,7 +406,7 @@ export default function ClientPortal() {
         </Card>
 
         {/* Footer */}
-        <p className="text-center text-xs text-slate-400 pt-4">
+        <p className="text-center text-xs text-muted-foreground pt-4">
           Powered by <span className="font-semibold">FuneCob</span>
         </p>
       </main>
@@ -423,11 +423,11 @@ export default function ClientPortal() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <p className="text-xs text-slate-500">Valor</p>
+                  <p className="text-xs text-muted-foreground">Valor</p>
                   <p className="font-bold text-lg">{formatCurrency(Number(selectedInvoice.amount))}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">Status</p>
+                  <p className="text-xs text-muted-foreground">Status</p>
                   <Badge
                     variant={
                       selectedInvoice.status === "pago"
@@ -447,14 +447,14 @@ export default function ClientPortal() {
                   </Badge>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">Vencimento</p>
+                  <p className="text-xs text-muted-foreground">Vencimento</p>
                   <p className="text-sm font-medium">
                     {format(parseDateLocal(selectedInvoice.due_date), "dd/MM/yyyy")}
                   </p>
                 </div>
                 {selectedInvoice.paid_date && (
                   <div>
-                    <p className="text-xs text-slate-500">Data do Pagamento</p>
+                    <p className="text-xs text-muted-foreground">Data do Pagamento</p>
                     <p className="text-sm font-medium">
                       {format(parseDateLocal(selectedInvoice.paid_date), "dd/MM/yyyy")}
                     </p>
@@ -464,16 +464,16 @@ export default function ClientPortal() {
 
               {selectedInvoice.description && (
                 <div>
-                  <p className="text-xs text-slate-500">Descrição</p>
+                  <p className="text-xs text-muted-foreground">Descrição</p>
                   <p className="text-sm">{selectedInvoice.description}</p>
                 </div>
               )}
 
               {data?.billing?.pix_key && selectedInvoice.status !== "pago" && (
-                <div className="bg-slate-50 rounded-lg p-3 space-y-2">
-                  <p className="text-xs font-medium text-slate-600">Pague via Pix</p>
+                <div className="bg-muted rounded-lg p-3 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Pague via Pix</p>
                   <div className="flex items-center gap-2">
-                    <code className="text-xs bg-white px-2 py-1 rounded border flex-1 truncate">
+                    <code className="text-xs bg-background px-2 py-1 rounded border flex-1 truncate">
                       {data.billing.pix_key}
                     </code>
                     <Button size="sm" variant="outline" onClick={copyPixKey}>

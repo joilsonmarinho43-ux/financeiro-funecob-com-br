@@ -373,7 +373,7 @@ function ApiKeySection({ organizationId }: { organizationId: string | null }) {
           <Label>Endpoint da API</Label>
           <div className="flex gap-2">
             <Input value={endpointUrl} readOnly className="font-mono text-xs bg-muted/50" />
-            <Button variant="outline" size="icon" className="shrink-0" onClick={() => copyToClipboard(endpointUrl, "URL")}>
+            <Button variant="outline" size="icon" className="shrink-0" aria-label="Copiar endpoint da API" onClick={() => copyToClipboard(endpointUrl, "URL")}>
               {copied === "URL" ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
             </Button>
           </div>
@@ -384,10 +384,10 @@ function ApiKeySection({ organizationId }: { organizationId: string | null }) {
           {apiKeyData ? (
             <div className="flex gap-2">
               <Input value={apiKeyData.api_key} readOnly className="font-mono text-xs bg-muted/50" />
-              <Button variant="outline" size="icon" className="shrink-0" onClick={() => copyToClipboard(apiKeyData.api_key, "API Key")}>
+              <Button variant="outline" size="icon" className="shrink-0" aria-label="Copiar API Key" onClick={() => copyToClipboard(apiKeyData.api_key, "API Key")}>
                 {copied === "API Key" ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
               </Button>
-              <Button variant="outline" size="icon" className="shrink-0" onClick={() => {
+              <Button variant="outline" size="icon" className="shrink-0" aria-label="Regenerar API Key" onClick={() => {
                 if (window.confirm("Regenerar a API Key invalidará a chave anterior. Continuar?")) generateMutation.mutate();
               }}>
                 <RefreshCw className="h-4 w-4" />

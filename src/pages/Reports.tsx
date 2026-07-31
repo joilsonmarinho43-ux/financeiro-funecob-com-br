@@ -181,7 +181,16 @@ export default function Reports() {
                   <BarChart data={barData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                     <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-                    <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
+                    <YAxis
+                      tick={{ fontSize: 12 }}
+                      width={70}
+                      stroke="hsl(var(--muted-foreground))"
+                      tickFormatter={(v: number) => {
+                        if (Math.abs(v) >= 1_000_000) return `R$${(v / 1_000_000).toFixed(1).replace(".", ",")}M`;
+                        if (Math.abs(v) >= 1000) return `R$${(v / 1000).toFixed(1).replace(".", ",")}k`;
+                        return `R$${v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`;
+                      }}
+                    />
                     <Tooltip
                       formatter={(value: number) => formatCurrency(value)}
                       contentStyle={{
@@ -214,17 +223,26 @@ export default function Reports() {
                     <Pie
                       data={pieData}
                       cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={90}
+                      cy="45%"
+                      innerRadius={55}
+                      outerRadius={85}
                       paddingAngle={4}
                       dataKey="value"
-                      label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                      labelLine={false}
+                      label={({ percent }) =>
+                        (percent ?? 0) >= 0.08 ? `${((percent ?? 0) * 100).toFixed(0)}%` : ""
+                      }
                     >
                       {pieData.map((_, i) => (
                         <Cell key={i} fill={COLORS[i % COLORS.length]} />
                       ))}
                     </Pie>
+                    <Legend
+                      verticalAlign="bottom"
+                      height={36}
+                      iconType="circle"
+                      wrapperStyle={{ fontSize: 12 }}
+                    />
                     <Tooltip formatter={(value: number) => formatCurrency(value)} />
                   </PieChart>
                 </ResponsiveContainer>

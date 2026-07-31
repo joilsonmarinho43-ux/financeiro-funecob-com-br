@@ -11,7 +11,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full">
+      <div className="min-h-dvh flex w-full">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <header className="h-14 flex items-center justify-between border-b px-4 bg-card shrink-0">
@@ -27,7 +27,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </Button>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground relative">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground relative" aria-label="Notificações">
                 <Bell className="h-4 w-4" />
               </Button>
             </div>
