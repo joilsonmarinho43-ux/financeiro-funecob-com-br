@@ -50,7 +50,7 @@ function ProtectedRoute({ children, adminOnly = false }: { children: React.React
   const { user, loading, licenseExpired } = useAuth();
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-dvh flex items-center justify-center bg-background">
         <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -69,7 +69,7 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
     supabase.rpc("has_role", { _user_id: user.id, _role: "admin" }).then(({ data }) => setIsAdmin(!!data));
   }, [user]);
   if (isAdmin === null) return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="min-h-dvh flex items-center justify-center bg-background">
       <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
     </div>
   );
@@ -90,7 +90,7 @@ function LicenseExpiredPage() {
   if (!licenseExpired) return <Navigate to="/" replace />;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-dvh flex items-center justify-center bg-background p-4">
       <div className="max-w-md w-full text-center space-y-6">
         <div className="mx-auto h-20 w-20 rounded-2xl bg-destructive/10 flex items-center justify-center">
           <span className="text-4xl">🔒</span>

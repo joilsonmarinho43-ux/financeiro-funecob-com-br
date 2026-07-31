@@ -58,7 +58,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-dvh flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md border-0 shadow-lg">
         <CardHeader className="text-center pb-2">
           <img src={logoFunecob} alt="FuneCob" className="mx-auto h-24 w-auto mb-2" />
