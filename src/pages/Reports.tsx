@@ -181,7 +181,16 @@ export default function Reports() {
                   <BarChart data={barData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                     <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-                    <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
+                    <YAxis
+                      tick={{ fontSize: 12 }}
+                      width={70}
+                      stroke="hsl(var(--muted-foreground))"
+                      tickFormatter={(v: number) => {
+                        if (Math.abs(v) >= 1_000_000) return `R$${(v / 1_000_000).toFixed(1).replace(".", ",")}M`;
+                        if (Math.abs(v) >= 1000) return `R$${(v / 1000).toFixed(1).replace(".", ",")}k`;
+                        return `R$${v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`;
+                      }}
+                    />
                     <Tooltip
                       formatter={(value: number) => formatCurrency(value)}
                       contentStyle={{
