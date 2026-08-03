@@ -76,11 +76,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Detecta relógio do aparelho desajustado — causa clássica de "loga e desloga sozinho":
+  // o token recém-criado é visto como expirado, o app renova em loop e leva bloqueio (429).
+  useEffect(() => {
+    const url = import.meta.env.VITE_SUPABASE_URL;
+    if (!url) return;
+    fetch(`${url}/auth/v1/health`, { method: "GET", cache: "no-store" })
+      .then((res) => {
+        const serverDate = res.headers.get("date");
+        if (!serverDate) return;
+        const skew = Math.abs(Date.now() - new Date(serverDate).getTime()) / 1000;
+        console.log("[auth] diferença de relógio (s):", Math.round(skew));
+        if (skew > 120) {
+          toast.error("Relógio do aparelho desajustado", {
+            description:
+              "A data/hora deste dispositivo está errada, o que derruba o login automaticamente. Ative 'data e hora automática' nas configurações do aparelho.",
+            duration: 15000,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     let recovering = false;
+    let refreshTimes: number[] = [];
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log("[auth]", event, session ? "session ok" : "sem sessão");
+
+      // Trava anti-loop: várias renovações seguidas indicam relógio errado ou abas duplicadas.
+      if (event === "TOKEN_REFRESHED") {
+        const now = Date.now();
+        refreshTimes = [...refreshTimes.filter((t) => now - t < 60000), now];
+        if (refreshTimes.length === 6) {
+          console.warn("[auth] loop de renovação de token detectado");
+          toast.warning("Sessão instável neste aparelho", {
+            description:
+              "Feche as outras abas do sistema e confira se a data/hora do aparelho está automática.",
+            duration: 15000,
+          });
+        }
+      }
+
 
       // Perda de sessão sem logout explícito (falha de refresh em rede móvel/aba em background):
       // tenta recuperar antes de expulsar o usuário para a tela de login.
