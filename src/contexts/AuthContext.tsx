@@ -77,10 +77,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    let recovering = false;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[auth]", event, session ? "session ok" : "sem sessão");
+
+      // Perda de sessão sem logout explícito (falha de refresh em rede móvel/aba em background):
+      // tenta recuperar antes de expulsar o usuário para a tela de login.
+      if (!session && (event === "SIGNED_OUT" || event === "TOKEN_REFRESHED")) {
+        if (!recovering && localStorage.getItem("funecob_signed_out") !== "1") {
+          recovering = true;
+          supabase.auth.refreshSession().then(({ data, error }) => {
+            recovering = false;
+            if (data?.session) {
+              console.log("[auth] sessão recuperada automaticamente");
+              setSession(data.session);
+              setUser(data.session.user);
+              checkLicense(data.session.user.id);
+              return;
+            }
+            console.warn("[auth] não foi possível recuperar a sessão", error?.message);
+            setSession(null);
+            setUser(null);
+            setLicenseExpired(false);
+            setLoading(false);
+          });
+          setLoading(false);
+          return;
+        }
+      }
+
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
+        localStorage.removeItem("funecob_signed_out");
         setTimeout(() => checkLicense(session.user.id), 0);
       } else {
         setLicenseExpired(false);
@@ -99,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => subscription.unsubscribe();
   }, []);
+
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
