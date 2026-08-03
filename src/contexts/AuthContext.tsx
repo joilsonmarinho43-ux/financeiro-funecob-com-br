@@ -132,9 +132,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 
   const signIn = async (email: string, password: string) => {
+    localStorage.removeItem("funecob_signed_out");
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error as Error | null };
   };
+
 
   const signUp = async (email: string, password: string, fullName: string) => {
     const { error } = await supabase.auth.signUp({
