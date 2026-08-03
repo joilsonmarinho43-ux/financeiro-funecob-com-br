@@ -163,8 +163,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    // scope "local": encerra apenas ESTE dispositivo.
+    // O padrão ("global") revoga a sessão em todos os aparelhos, derrubando o celular
+    // sempre que houvesse logout no computador.
+    localStorage.setItem("funecob_signed_out", "1");
+    await supabase.auth.signOut({ scope: "local" });
   };
+
 
   return (
     <AuthContext.Provider value={{ user, session, loading, licenseExpired, signIn, signUp, resetPassword, updatePassword, signOut }}>
