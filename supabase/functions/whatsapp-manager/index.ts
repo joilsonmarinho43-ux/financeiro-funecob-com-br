@@ -56,7 +56,7 @@ function extractQrCode(payload: any): string | null {
     payload?.qrcode,
     payload?.code,
     payload?.qrCode,
-    payload?.pairingCode,
+    // NOTA: pairingCode NÃO entra aqui — é um código de 8 dígitos, não um QR.
     payload?.data?.base64,
     payload?.data?.qrcode?.base64,
     payload?.data?.qrcode?.code,
