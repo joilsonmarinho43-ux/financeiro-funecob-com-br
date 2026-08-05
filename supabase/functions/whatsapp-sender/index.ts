@@ -18,6 +18,17 @@ function normalizeBRPhone(raw: string): string {
   return digits;
 }
 
+function extractEvolutionMessageId(payload: any): string | null {
+  const candidates = [
+    payload?.key?.id,
+    payload?.message?.key?.id,
+    payload?.data?.key?.id,
+    payload?.data?.message?.key?.id,
+    payload?.id,
+  ];
+  return candidates.find((value) => typeof value === "string" && value.trim().length > 0) || null;
+}
+
 // ─── Advanced message variation (anti-ban) ──────────────
 const greetingPools = [
   ["Olá", "Oi", "E aí", "Bom dia", "Boa tarde", "Prezado(a)"],
@@ -334,16 +345,25 @@ Deno.serve(async (req) => {
         const response = await fetch(sendUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: apiKey },
-          body: JSON.stringify({ number: phone, textMessage: { text: variedMessage }, linkPreview: false }),
+          // Evolution API v2 expects `text` at the root. The old `textMessage`
+          // envelope can return HTTP 200 without producing a valid WA message.
+          body: JSON.stringify({ number: phone, text: variedMessage, linkPreview: false }),
         });
 
+        const responseBody = await response.text();
         if (!response.ok) {
-          const errorBody = await response.text();
+          const errorBody = responseBody;
           throw new Error(`API ${response.status}: ${errorBody}`);
         }
 
-        await response.text();
-        console.log(`[whatsapp-sender] Success for ${phone.slice(0, 4)}****`);
+        let evolutionResult: any = null;
+        try { evolutionResult = responseBody ? JSON.parse(responseBody) : null; } catch { /* validated below */ }
+        const providerMessageId = extractEvolutionMessageId(evolutionResult);
+        const providerStatus = String(evolutionResult?.status || evolutionResult?.data?.status || "").toUpperCase();
+        if (!providerMessageId || providerStatus === "ERROR") {
+          throw new Error(`API ${response.status} sem identificador de mensagem: ${responseBody.slice(0, 300)}`);
+        }
+        console.log(`[whatsapp-sender] Accepted ${providerMessageId.slice(0, 8)} for ${phone.slice(0, 4)}****`);
 
         await supabase.from("whatsapp_queue").update({
           status: "sent",

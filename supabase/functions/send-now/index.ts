@@ -13,6 +13,17 @@ const BodySchema = z.object({
   organization_id: z.string().uuid(),
 });
 
+function extractEvolutionMessageId(payload: any): string | null {
+  const candidates = [
+    payload?.key?.id,
+    payload?.message?.key?.id,
+    payload?.data?.key?.id,
+    payload?.data?.message?.key?.id,
+    payload?.id,
+  ];
+  return candidates.find((value) => typeof value === "string" && value.trim().length > 0) || null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -74,11 +85,12 @@ Deno.serve(async (req) => {
     const response = await fetch(sendUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: apiKey },
-      body: JSON.stringify({ number: cleanPhone, textMessage: { text: message }, linkPreview: false }),
+      body: JSON.stringify({ number: cleanPhone, text: message, linkPreview: false }),
     });
 
+    const responseBody = await response.text();
     if (!response.ok) {
-      const errorBody = await response.text();
+      const errorBody = responseBody;
       console.error(`[send-now] API error: ${response.status} - ${errorBody.slice(0, 300)}`);
 
       // Detect common Evolution errors and return user-friendly messages
@@ -98,7 +110,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    const result = await response.json();
+    let result: any = null;
+    try { result = responseBody ? JSON.parse(responseBody) : null; } catch { /* validated below */ }
+    const providerMessageId = extractEvolutionMessageId(result);
+    const providerStatus = String(result?.status || result?.data?.status || "").toUpperCase();
+    if (!providerMessageId || providerStatus === "ERROR") {
+      console.error(`[send-now] API returned no message id: ${responseBody.slice(0, 300)}`);
+      return new Response(
+        JSON.stringify({ error: "O servidor do WhatsApp não confirmou o envio. A mensagem não foi marcada como enviada." }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Log the sent message
     await supabase.from("whatsapp_messages").insert({
@@ -111,7 +133,7 @@ Deno.serve(async (req) => {
       sent_at: new Date().toISOString(),
     });
 
-    console.log(`[send-now] Success for ${cleanPhone.slice(0, 4)}****`);
+    console.log(`[send-now] Accepted ${providerMessageId.slice(0, 8)} for ${cleanPhone.slice(0, 4)}****`);
 
     return new Response(
       JSON.stringify({ success: true, result }),
