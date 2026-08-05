@@ -1171,7 +1171,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
                       className="w-52 h-52 object-contain"
                     />
                   ) : (
-                    <QRCodeSVG value={qrBase64} size={208} level="M" />
+                    <QRCodeSVG value={qrBase64} size={224} level="L" marginSize={2} />
                   )}
                 </div>
                 <div className="w-full space-y-1.5">

@@ -56,7 +56,7 @@ function extractQrCode(payload: any): string | null {
     payload?.qrcode,
     payload?.code,
     payload?.qrCode,
-    payload?.pairingCode,
+    // NOTA: pairingCode NÃO entra aqui — é um código de 8 dígitos, não um QR.
     payload?.data?.base64,
     payload?.data?.qrcode?.base64,
     payload?.data?.qrcode?.code,
@@ -410,6 +410,31 @@ Deno.serve(async (req) => {
 
       const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
       const instApiKey = inst.api_key || globalApiKey;
+
+      // A Evolution devolve o MESMO QR (já expirado) enquanto a instância está
+      // presa em "connecting". Isso faz o WhatsApp mostrar "não foi possível conectar".
+      // Então: se não estiver "open", derruba a sessão pendente antes de pedir o QR.
+      let freshSession = false;
+      try {
+        const stateResp = await apiCall(`${instApiUrl}/instance/connectionState/${encodeURIComponent(inst.name)}`, {
+          method: "GET",
+          headers: { apikey: instApiKey },
+        });
+        const stateText = await stateResp.text();
+        let stateData: any = null;
+        try { stateData = stateText ? JSON.parse(stateText) : null; } catch { /* ignore */ }
+        const state = stateData?.instance?.state || stateData?.state || "";
+        if (state !== "open" && state !== "connected") {
+          await apiCall(`${instApiUrl}/instance/logout/${encodeURIComponent(inst.name)}`, {
+            method: "DELETE",
+            headers: { apikey: instApiKey },
+          }).catch(() => null);
+          await new Promise((r) => setTimeout(r, 1500));
+          freshSession = true;
+        }
+      } catch (e) {
+        console.warn("[whatsapp-manager] state/logout pre-check failed", String(e));
+      }
 
       const qr = await requestQrCode(apiCall, instApiUrl, instApiKey, inst.name);
 
