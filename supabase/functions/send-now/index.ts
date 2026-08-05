@@ -84,18 +84,19 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    // Get global settings as fallback
+    // Global settings may supply VPS transport credentials, but never an
+    // instance name: sessions are strictly owned by an organization.
     const { data: globalSettings } = await supabase
       .from("global_settings")
       .select("key, value")
-      .in("key", ["api_host", "global_api_key", "default_instance_name"]);
+      .in("key", ["api_host", "global_api_key"]);
 
     const gs: Record<string, string> = {};
     (globalSettings || []).forEach((s: { key: string; value: string }) => { gs[s.key] = s.value; });
 
     const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
     const apiKey = instance?.api_key || gs.global_api_key || "";
-    const instanceName = instance?.name || gs.default_instance_name || "";
+    const instanceName = instance?.name || "";
 
     if (!instanceName || !apiUrl || !apiKey) {
       return new Response(

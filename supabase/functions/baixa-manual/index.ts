@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
         const { data: globalSettings } = await supabase
           .from("global_settings")
           .select("key, value")
-          .in("key", ["api_host", "global_api_key", "default_instance_name"]);
+          .in("key", ["api_host", "global_api_key"]);
 
         const gs: Record<string, string> = {};
         (globalSettings || []).forEach((s: { key: string; value: string }) => {
@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
 
         const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
         const apiKey = instance?.api_key || gs.global_api_key || "";
-        const instanceName = instance?.name || gs.default_instance_name || "";
+        const instanceName = instance?.name || "";
 
         if (instanceName && apiUrl && apiKey) {
           const _d = (client.phone || "").replace(/\D/g, "");

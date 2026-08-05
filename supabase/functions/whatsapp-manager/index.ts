@@ -310,6 +310,24 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Evolution identifica a sessão pelo nome no servidor, não pela organização.
+      // Reutilizar o mesmo nome faria duas empresas controlarem a mesma sessão.
+      const { data: conflictingInstance } = await supabase
+        .from("whatsapp_instances")
+        .select("id, organization_id")
+        .ilike("name", instance_name)
+        .neq("organization_id", organization_id)
+        .limit(1)
+        .maybeSingle();
+      if (conflictingInstance) {
+        return new Response(JSON.stringify({
+          error: "Este nome de instância já está em uso. Escolha um nome exclusivo para esta empresa.",
+        }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const created = await createEvolutionInstance(apiCall, baseUrl, globalApiKey, instance_name, pixWebhookUrl);
 
       if (!created.ok) {

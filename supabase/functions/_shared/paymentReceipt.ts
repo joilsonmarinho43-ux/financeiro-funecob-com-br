@@ -402,12 +402,12 @@ export async function deliverPaymentConfirmation(
     .limit(1).maybeSingle();
   const { data: gsRows } = await supabase
     .from("global_settings").select("key, value")
-    .in("key", ["api_host", "global_api_key", "default_instance_name"]);
+    .in("key", ["api_host", "global_api_key"]);
   const gs: Record<string, string> = {};
   (gsRows || []).forEach((s: any) => { gs[s.key] = s.value; });
   const apiUrl = instance?.api_url || gs.api_host || "";
   const apiKey = instance?.api_key || gs.global_api_key || "";
-  const instanceName = instance?.name || gs.default_instance_name || "";
+  const instanceName = instance?.name || "";
   if (!apiUrl || !apiKey || !instanceName) {
     await supabase.from("auto_settlement_logs").insert({
       organization_id: args.organizationId, event_id: args.eventId, client_id: args.clientId,
