@@ -14,6 +14,13 @@ const BodySchema = z.object({
 });
 
 function extractEvolutionMessageId(payload: any): string | null {
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const id = extractEvolutionMessageId(item);
+      if (id) return id;
+    }
+    return null;
+  }
   const candidates = [
     payload?.key?.id,
     payload?.message?.key?.id,
@@ -22,6 +29,30 @@ function extractEvolutionMessageId(payload: any): string | null {
     payload?.id,
   ];
   return candidates.find((value) => typeof value === "string" && value.trim().length > 0) || null;
+}
+
+async function resolveWhatsAppNumber(apiUrl: string, apiKey: string, instanceName: string, phone: string): Promise<string> {
+  const candidates = [phone];
+  if (phone.startsWith("55") && phone.length === 13 && phone[4] === "9") {
+    candidates.push(phone.slice(0, 4) + phone.slice(5));
+  } else if (phone.startsWith("55") && phone.length === 12) {
+    candidates.push(phone.slice(0, 4) + "9" + phone.slice(4));
+  }
+
+  try {
+    const response = await fetch(`${apiUrl}/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify({ numbers: candidates }),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !Array.isArray(body)) return phone;
+    const match = body.find((item: any) => item?.exists === true);
+    const resolved = String(match?.jid || match?.number || "").replace(/@.*$/, "").replace(/\D/g, "");
+    return resolved || phone;
+  } catch {
+    return phone;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -77,6 +108,7 @@ Deno.serve(async (req) => {
     const cleanPhone = (digits.startsWith("55") && (digits.length === 12 || digits.length === 13))
       ? digits
       : (digits.length === 10 || digits.length === 11) ? "55" + digits : digits;
+    const destination = await resolveWhatsAppNumber(apiUrl, apiKey, instanceName, cleanPhone);
     const sendUrl = `${apiUrl}/message/sendText/${instanceName}`;
 
     const maskedKey = apiKey.length > 4 ? apiKey.slice(0, 2) + "***" + apiKey.slice(-2) : "***";
@@ -85,7 +117,7 @@ Deno.serve(async (req) => {
     const response = await fetch(sendUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: apiKey },
-      body: JSON.stringify({ number: cleanPhone, text: message, linkPreview: false }),
+      body: JSON.stringify({ number: destination, text: message, linkPreview: false }),
     });
 
     const responseBody = await response.text();
