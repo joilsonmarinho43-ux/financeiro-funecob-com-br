@@ -147,7 +147,16 @@ Deno.serve(async (req) => {
     const now = new Date();
     const nowISO = now.toISOString();
 
+    // Reclaim messages stuck in "sending" (worker died mid-flight) — evita fila travada
+    const staleISO = new Date(Date.now() - 10 * 60_000).toISOString();
+    await supabase
+      .from("whatsapp_queue")
+      .update({ status: "queued", scheduled_for: null })
+      .eq("status", "sending")
+      .lt("created_at", staleISO);
+
     // Get queued + retry messages
+
     const { data: queueItems, error: queueErr } = await supabase
       .from("whatsapp_queue")
       .select("*")
