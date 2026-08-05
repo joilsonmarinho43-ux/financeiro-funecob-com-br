@@ -628,7 +628,72 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ─── RECOVER MISSED PIX RECEIPTS ───
+    // ─── RESTART CONNECTION WITHOUT LOSING PAIRING ───
+    if (action === "restart_connection") {
+      if (!instance_id) {
+        return new Response(JSON.stringify({ error: "instance_id required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: inst } = await supabase
+        .from("whatsapp_instances")
+        .select("*")
+        .eq("id", instance_id)
+        .single();
+
+      if (!inst) {
+        return new Response(JSON.stringify({ error: "Instance not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
+      const instApiKey = inst.api_key || globalApiKey;
+      const restart = await apiCall(`${instApiUrl}/instance/restart/${encodeURIComponent(inst.name)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", apikey: instApiKey },
+      });
+      const restartBody = await restart.text();
+
+      if (!restart.ok) {
+        return new Response(JSON.stringify({ error: "Falha ao reiniciar a conexão", status: restart.status, details: restartBody.slice(0, 200) }), {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      let state = "restarting";
+      for (let attempt = 0; attempt < 8; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        try {
+          const stateResponse = await apiCall(`${instApiUrl}/instance/connectionState/${encodeURIComponent(inst.name)}`, {
+            method: "GET",
+            headers: { apikey: instApiKey },
+          });
+          const statePayload = await stateResponse.json().catch(() => null);
+          state = statePayload?.instance?.state || statePayload?.state || "restarting";
+          if (state === "open" || state === "connected") break;
+        } catch { /* keep polling */ }
+      }
+
+      const mappedStatus = state === "open" || state === "connected" ? "connected" : "disconnected";
+      await supabase.from("whatsapp_instances").update({ status: mappedStatus }).eq("id", instance_id);
+      await supabase.from("system_logs").insert({
+        action: "whatsapp_connection_restarted",
+        organization_id: inst.organization_id,
+        details: { instance_name: inst.name, final_state: state },
+      });
+
+      return new Response(JSON.stringify({ success: mappedStatus === "connected", instance_name: inst.name, status: mappedStatus, raw_state: state }), {
+        status: mappedStatus === "connected" ? 200 : 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ─── DELIVERY DIAGNOSTIC ───
     if (action === "diagnose_delivery") {
       if (!instance_id) {
         return new Response(JSON.stringify({ error: "instance_id required" }), {
