@@ -628,6 +628,133 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ─── RESTART CONNECTION WITHOUT LOSING PAIRING ───
+    if (action === "restart_connection") {
+      if (!instance_id) {
+        return new Response(JSON.stringify({ error: "instance_id required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: inst } = await supabase
+        .from("whatsapp_instances")
+        .select("*")
+        .eq("id", instance_id)
+        .single();
+
+      if (!inst) {
+        return new Response(JSON.stringify({ error: "Instance not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
+      const instApiKey = inst.api_key || globalApiKey;
+      const restart = await apiCall(`${instApiUrl}/instance/restart/${encodeURIComponent(inst.name)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", apikey: instApiKey },
+      });
+      const restartBody = await restart.text();
+
+      if (!restart.ok) {
+        return new Response(JSON.stringify({ error: "Falha ao reiniciar a conexão", status: restart.status, details: restartBody.slice(0, 200) }), {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      let state = "restarting";
+      for (let attempt = 0; attempt < 8; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        try {
+          const stateResponse = await apiCall(`${instApiUrl}/instance/connectionState/${encodeURIComponent(inst.name)}`, {
+            method: "GET",
+            headers: { apikey: instApiKey },
+          });
+          const statePayload = await stateResponse.json().catch(() => null);
+          state = statePayload?.instance?.state || statePayload?.state || "restarting";
+          if (state === "open" || state === "connected") break;
+        } catch { /* keep polling */ }
+      }
+
+      const mappedStatus = state === "open" || state === "connected" ? "connected" : "disconnected";
+      await supabase.from("whatsapp_instances").update({ status: mappedStatus }).eq("id", instance_id);
+      await supabase.from("system_logs").insert({
+        action: "whatsapp_connection_restarted",
+        organization_id: inst.organization_id,
+        details: { instance_name: inst.name, final_state: state },
+      });
+
+      return new Response(JSON.stringify({ success: mappedStatus === "connected", instance_name: inst.name, status: mappedStatus, raw_state: state }), {
+        status: mappedStatus === "connected" ? 200 : 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ─── DELIVERY DIAGNOSTIC ───
+    if (action === "diagnose_delivery") {
+      if (!instance_id) {
+        return new Response(JSON.stringify({ error: "instance_id required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: inst } = await supabase
+        .from("whatsapp_instances")
+        .select("*")
+        .eq("id", instance_id)
+        .single();
+
+      if (!inst) {
+        return new Response(JSON.stringify({ error: "Instance not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
+      const instApiKey = inst.api_key || globalApiKey;
+      const checks: Record<string, unknown> = {};
+
+      for (const check of [
+        { name: "connection", method: "GET", path: `/instance/connectionState/${encodeURIComponent(inst.name)}` },
+        { name: "instance", method: "GET", path: `/instance/fetchInstances?instanceName=${encodeURIComponent(inst.name)}` },
+        { name: "recent_messages", method: "POST", path: `/chat/findMessages/${encodeURIComponent(inst.name)}`, body: { limit: 20 } },
+      ]) {
+        try {
+          const response = await apiCall(`${instApiUrl}${check.path}`, {
+            method: check.method,
+            headers: { "Content-Type": "application/json", apikey: instApiKey },
+            body: check.body ? JSON.stringify(check.body) : undefined,
+          });
+          const text = await response.text();
+          let payload: any = null;
+          try { payload = text ? JSON.parse(text) : null; } catch { payload = null; }
+
+          if (check.name === "recent_messages") {
+            const messages = extractMessages(payload).slice(0, 20).map((message: any) => ({
+              id: message?.key?.id || message?.messageId || message?.id || null,
+              from_me: message?.key?.fromMe ?? null,
+              status: message?.status || message?.messageStatus || message?.deliveryStatus || null,
+              timestamp: message?.messageTimestamp || message?.timestamp || message?.createdAt || null,
+            }));
+            checks[check.name] = { ok: response.ok, status: response.status, messages };
+          } else {
+            checks[check.name] = { ok: response.ok, status: response.status, payload };
+          }
+        } catch (error) {
+          checks[check.name] = { ok: false, error: String(error instanceof Error ? error.message : error) };
+        }
+      }
+
+      return new Response(JSON.stringify({ success: true, instance_name: inst.name, checks }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ─── RECOVER MISSED PIX RECEIPTS ───
     if (action === "recover_pix_receipts") {
       const hours = Number(body.hours || 24);
