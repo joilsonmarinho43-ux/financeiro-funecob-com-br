@@ -19,6 +19,13 @@ function normalizeBRPhone(raw: string): string {
 }
 
 function extractEvolutionMessageId(payload: any): string | null {
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const id = extractEvolutionMessageId(item);
+      if (id) return id;
+    }
+    return null;
+  }
   const candidates = [
     payload?.key?.id,
     payload?.message?.key?.id,
@@ -27,6 +34,30 @@ function extractEvolutionMessageId(payload: any): string | null {
     payload?.id,
   ];
   return candidates.find((value) => typeof value === "string" && value.trim().length > 0) || null;
+}
+
+async function resolveWhatsAppNumber(apiUrl: string, apiKey: string, instanceName: string, phone: string): Promise<string> {
+  const candidates = [phone];
+  if (phone.startsWith("55") && phone.length === 13 && phone[4] === "9") {
+    candidates.push(phone.slice(0, 4) + phone.slice(5));
+  } else if (phone.startsWith("55") && phone.length === 12) {
+    candidates.push(phone.slice(0, 4) + "9" + phone.slice(4));
+  }
+
+  try {
+    const response = await fetch(`${apiUrl}/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify({ numbers: candidates }),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !Array.isArray(body)) return phone;
+    const match = body.find((item: any) => item?.exists === true);
+    const resolved = String(match?.jid || match?.number || "").replace(/@.*$/, "").replace(/\D/g, "");
+    return resolved || phone;
+  } catch {
+    return phone;
+  }
 }
 
 // ─── Advanced message variation (anti-ban) ──────────────
@@ -336,6 +367,7 @@ Deno.serve(async (req) => {
         }
 
         const phone = normalizeBRPhone(item.phone);
+        const destination = await resolveWhatsAppNumber(apiUrl, apiKey, instanceName, phone);
         const sendUrl = `${apiUrl}/message/sendText/${instanceName}`;
         const variedMessage = varyMessage(item.message, config.randomness_level || "medium");
 
@@ -347,7 +379,7 @@ Deno.serve(async (req) => {
           headers: { "Content-Type": "application/json", apikey: apiKey },
           // Evolution API v2 expects `text` at the root. The old `textMessage`
           // envelope can return HTTP 200 without producing a valid WA message.
-          body: JSON.stringify({ number: phone, text: variedMessage, linkPreview: false }),
+          body: JSON.stringify({ number: destination, text: variedMessage, linkPreview: false }),
         });
 
         const responseBody = await response.text();
