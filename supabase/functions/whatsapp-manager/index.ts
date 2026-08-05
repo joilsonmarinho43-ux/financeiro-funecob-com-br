@@ -629,6 +629,68 @@ Deno.serve(async (req) => {
     }
 
     // ─── RECOVER MISSED PIX RECEIPTS ───
+    if (action === "diagnose_delivery") {
+      if (!instance_id) {
+        return new Response(JSON.stringify({ error: "instance_id required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: inst } = await supabase
+        .from("whatsapp_instances")
+        .select("*")
+        .eq("id", instance_id)
+        .single();
+
+      if (!inst) {
+        return new Response(JSON.stringify({ error: "Instance not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
+      const instApiKey = inst.api_key || globalApiKey;
+      const checks: Record<string, unknown> = {};
+
+      for (const check of [
+        { name: "connection", method: "GET", path: `/instance/connectionState/${encodeURIComponent(inst.name)}` },
+        { name: "instance", method: "GET", path: `/instance/fetchInstances?instanceName=${encodeURIComponent(inst.name)}` },
+        { name: "recent_messages", method: "POST", path: `/chat/findMessages/${encodeURIComponent(inst.name)}`, body: { limit: 20 } },
+      ]) {
+        try {
+          const response = await apiCall(`${instApiUrl}${check.path}`, {
+            method: check.method,
+            headers: { "Content-Type": "application/json", apikey: instApiKey },
+            body: check.body ? JSON.stringify(check.body) : undefined,
+          });
+          const text = await response.text();
+          let payload: any = null;
+          try { payload = text ? JSON.parse(text) : null; } catch { payload = null; }
+
+          if (check.name === "recent_messages") {
+            const messages = extractMessages(payload).slice(0, 20).map((message: any) => ({
+              id: message?.key?.id || message?.messageId || message?.id || null,
+              from_me: message?.key?.fromMe ?? null,
+              status: message?.status || message?.messageStatus || message?.deliveryStatus || null,
+              timestamp: message?.messageTimestamp || message?.timestamp || message?.createdAt || null,
+            }));
+            checks[check.name] = { ok: response.ok, status: response.status, messages };
+          } else {
+            checks[check.name] = { ok: response.ok, status: response.status, payload };
+          }
+        } catch (error) {
+          checks[check.name] = { ok: false, error: String(error instanceof Error ? error.message : error) };
+        }
+      }
+
+      return new Response(JSON.stringify({ success: true, instance_name: inst.name, checks }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ─── RECOVER MISSED PIX RECEIPTS ───
     if (action === "recover_pix_receipts") {
       const hours = Number(body.hours || 24);
       const targetInstances = instance_id
