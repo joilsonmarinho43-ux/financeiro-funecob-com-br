@@ -113,7 +113,8 @@ Deno.serve(async (req) => {
     let result: any = null;
     try { result = responseBody ? JSON.parse(responseBody) : null; } catch { /* validated below */ }
     const providerMessageId = extractEvolutionMessageId(result);
-    if (!providerMessageId) {
+    const providerStatus = String(result?.status || result?.data?.status || "").toUpperCase();
+    if (!providerMessageId || providerStatus === "ERROR") {
       console.error(`[send-now] API returned no message id: ${responseBody.slice(0, 300)}`);
       return new Response(
         JSON.stringify({ error: "O servidor do WhatsApp não confirmou o envio. A mensagem não foi marcada como enviada." }),

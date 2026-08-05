@@ -359,7 +359,8 @@ Deno.serve(async (req) => {
         let evolutionResult: any = null;
         try { evolutionResult = responseBody ? JSON.parse(responseBody) : null; } catch { /* validated below */ }
         const providerMessageId = extractEvolutionMessageId(evolutionResult);
-        if (!providerMessageId) {
+        const providerStatus = String(evolutionResult?.status || evolutionResult?.data?.status || "").toUpperCase();
+        if (!providerMessageId || providerStatus === "ERROR") {
           throw new Error(`API ${response.status} sem identificador de mensagem: ${responseBody.slice(0, 300)}`);
         }
         console.log(`[whatsapp-sender] Accepted ${providerMessageId.slice(0, 8)} for ${phone.slice(0, 4)}****`);
