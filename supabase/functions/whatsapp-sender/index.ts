@@ -147,7 +147,16 @@ Deno.serve(async (req) => {
     const now = new Date();
     const nowISO = now.toISOString();
 
+    // Reclaim messages stuck in "sending" (worker died mid-flight) — evita fila travada
+    const staleISO = new Date(Date.now() - 10 * 60_000).toISOString();
+    await supabase
+      .from("whatsapp_queue")
+      .update({ status: "queued", scheduled_for: null })
+      .eq("status", "sending")
+      .lt("created_at", staleISO);
+
     // Get queued + retry messages
+
     const { data: queueItems, error: queueErr } = await supabase
       .from("whatsapp_queue")
       .select("*")
@@ -365,8 +374,23 @@ Deno.serve(async (req) => {
 
         const lowerError = errorMsg.toLowerCase();
         const isConnectionClosed = lowerError.includes("connection closed") || lowerError.includes("not connected") || lowerError.includes("connection close");
+        // Instância inexistente / credencial inválida no servidor: não gastar tentativas,
+        // marcar instância como desconectada para o painel refletir a realidade.
+        const isInstanceInvalid = lowerError.includes("does not exist") || lowerError.includes("api 401") || lowerError.includes("unauthorized");
 
-        if (isConnectionClosed) {
+        if (isInstanceInvalid) {
+          await supabase
+            .from("whatsapp_instances")
+            .update({ status: "disconnected" })
+            .eq("organization_id", item.organization_id);
+          const retryAt = new Date(Date.now() + 10 * 60_000).toISOString();
+          await supabase.from("whatsapp_queue").update({
+            status: "queued",
+            scheduled_for: retryAt,
+            error_message: "Instância do WhatsApp inválida no servidor — reconecte para retomar os envios",
+          }).eq("id", item.id);
+          failed++;
+        } else if (isConnectionClosed) {
           const retryAt = new Date(Date.now() + 5 * 60_000).toISOString();
           await supabase.from("whatsapp_queue").update({
             status: "queued",
@@ -375,6 +399,7 @@ Deno.serve(async (req) => {
           }).eq("id", item.id);
           failed++;
         } else if (nextRetry < MAX_RETRIES) {
+
           const backoffMs = 30000 * Math.pow(2, retryCount);
           const retryAt = new Date(Date.now() + backoffMs).toISOString();
           await supabase.from("whatsapp_queue").update({
