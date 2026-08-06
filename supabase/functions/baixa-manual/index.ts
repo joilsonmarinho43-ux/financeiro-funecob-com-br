@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getOrCreatePortalLink } from "../_shared/portalLink.ts";
 import { removePaymentConfirmationLinks } from "../_shared/paymentReceipt.ts";
+import { sendEvolutionText } from "../_shared/evolutionSend.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -147,15 +148,11 @@ Deno.serve(async (req) => {
 
           let errBody = "";
           try {
-            const response = await fetch(sendUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", apikey: apiKey },
-              body: JSON.stringify({ number: cleanPhone, text: message, linkPreview: false }),
-            });
-            whatsapp_sent = response.ok;
-            if (!response.ok) {
-              errBody = await response.text();
-              console.error(`[baixa-manual] WhatsApp error: ${response.status} - ${errBody.slice(0, 200)}`);
+            const result = await sendEvolutionText(sendUrl, apiKey, cleanPhone, message);
+            whatsapp_sent = result.ok;
+            if (!result.ok) {
+              errBody = result.body || `Resposta ${result.status} sem identificador de mensagem`;
+              console.error(`[baixa-manual] WhatsApp error: ${result.status} - ${errBody.slice(0, 200)}`);
             }
           } catch (fetchErr) {
             errBody = String(fetchErr);
