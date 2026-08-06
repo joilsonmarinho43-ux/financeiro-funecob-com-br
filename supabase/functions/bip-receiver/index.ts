@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getOrCreatePortalLink } from "../_shared/portalLink.ts";
 import { removePaymentConfirmationLinks } from "../_shared/paymentReceipt.ts";
+import { sendEvolutionText } from "../_shared/evolutionSend.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -92,12 +93,11 @@ async function trySendWhatsApp(instance: any, phone: string, message: string): P
     const apiUrl = instance.api_url.replace(/\/$/, "");
     const apiKey = instance.api_key;
     const sendUrl = `${apiUrl}/message/sendText/${instance.name}`;
-    const resp = await fetch(sendUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: apiKey },
-      body: JSON.stringify({ number: cleanPhone, text: message, linkPreview: false }),
-    });
-    return resp.ok;
+    const result = await sendEvolutionText(sendUrl, apiKey, cleanPhone, message);
+    if (!result.ok) {
+      console.error(`WhatsApp provider rejected message [${result.status}]: ${result.body.slice(0, 200)}`);
+    }
+    return result.ok;
   } catch (e) {
     console.error("WhatsApp send failed (masked):", (e as Error).message?.replace(/apikey[=:]\s*\S+/gi, "apikey=***"));
     return false;

@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://esm.sh/zod@3.23.8";
+import { sendEvolutionText } from "../_shared/evolutionSend.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,24 +13,6 @@ const BodySchema = z.object({
   message: z.string().min(1).max(4096),
   organization_id: z.string().uuid(),
 });
-
-function extractEvolutionMessageId(payload: any): string | null {
-  if (Array.isArray(payload)) {
-    for (const item of payload) {
-      const id = extractEvolutionMessageId(item);
-      if (id) return id;
-    }
-    return null;
-  }
-  const candidates = [
-    payload?.key?.id,
-    payload?.message?.key?.id,
-    payload?.data?.key?.id,
-    payload?.data?.message?.key?.id,
-    payload?.id,
-  ];
-  return candidates.find((value) => typeof value === "string" && value.trim().length > 0) || null;
-}
 
 async function resolveWhatsAppNumber(apiUrl: string, apiKey: string, instanceName: string, phone: string): Promise<string> {
   const candidates = [phone];
@@ -116,16 +99,10 @@ Deno.serve(async (req) => {
     const maskedKey = apiKey.length > 4 ? apiKey.slice(0, 2) + "***" + apiKey.slice(-2) : "***";
     console.log(`[send-now] Sending to ${cleanPhone.slice(0, 4)}**** via ${instanceName} (key: ${maskedKey})`);
 
-    const response = await fetch(sendUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: apiKey },
-      body: JSON.stringify({ number: destination, text: message, linkPreview: false }),
-    });
-
-    const responseBody = await response.text();
-    if (!response.ok) {
-      const errorBody = responseBody;
-      console.error(`[send-now] API error: ${response.status} - ${errorBody.slice(0, 300)}`);
+    const sendResult = await sendEvolutionText(sendUrl, apiKey, destination, message);
+    if (!sendResult.ok) {
+      const errorBody = sendResult.body;
+      console.error(`[send-now] API error: ${sendResult.status} - ${errorBody.slice(0, 300)}`);
 
       // Detect common Evolution errors and return user-friendly messages
       let userMsg = "Falha no envio. Verifique se seu WhatsApp está conectado.";
@@ -134,27 +111,18 @@ Deno.serve(async (req) => {
         userMsg = "WhatsApp desconectado. Reconecte sua instância em WhatsApp → Conectar.";
       } else if (lower.includes("not exists") || lower.includes("number does not exist") || lower.includes("invalid number")) {
         userMsg = "Número de WhatsApp inválido ou inexistente.";
-      } else if (response.status === 401 || response.status === 403) {
+      } else if (sendResult.status === 401 || sendResult.status === 403) {
         userMsg = "Credenciais do WhatsApp inválidas. Verifique a configuração da instância.";
       }
 
       return new Response(
-        JSON.stringify({ error: userMsg, details: errorBody.slice(0, 200), status: response.status }),
+        JSON.stringify({ error: userMsg, details: errorBody.slice(0, 200), status: sendResult.status }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    let result: any = null;
-    try { result = responseBody ? JSON.parse(responseBody) : null; } catch { /* validated below */ }
-    const providerMessageId = extractEvolutionMessageId(result);
-    const providerStatus = String(result?.status || result?.data?.status || "").toUpperCase();
-    if (!providerMessageId || providerStatus === "ERROR") {
-      console.error(`[send-now] API returned no message id: ${responseBody.slice(0, 300)}`);
-      return new Response(
-        JSON.stringify({ error: "O servidor do WhatsApp não confirmou o envio. A mensagem não foi marcada como enviada." }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const providerMessageId = sendResult.messageId;
+    if (!providerMessageId) throw new Error("Evolution accepted a message without an identifier");
 
     // Log the sent message
     await supabase.from("whatsapp_messages").insert({
@@ -170,7 +138,7 @@ Deno.serve(async (req) => {
     console.log(`[send-now] Accepted ${providerMessageId.slice(0, 8)} for ${cleanPhone.slice(0, 4)}****`);
 
     return new Response(
-      JSON.stringify({ success: true, result }),
+      JSON.stringify({ success: true, message_id: providerMessageId }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
