@@ -331,6 +331,7 @@ Deno.serve(async (req) => {
         }
       }
 
+      let selectedInstanceId: string | null = null;
       try {
         const retryCount = parseInt(item.error_message?.match(/\[retry:(\d+)\]/)?.[1] || "0");
 
@@ -349,8 +350,11 @@ Deno.serve(async (req) => {
           .select("*")
           .eq("organization_id", item.organization_id)
           .eq("status", "connected")
+          .order("updated_at", { ascending: false })
           .limit(1)
           .maybeSingle();
+
+        selectedInstanceId = instance?.id || null;
 
         const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
         const apiKey = instance?.api_key || gs.global_api_key || "";
@@ -432,10 +436,12 @@ Deno.serve(async (req) => {
         const isInstanceInvalid = lowerError.includes("does not exist") || lowerError.includes("api 401") || lowerError.includes("unauthorized");
 
         if (isInstanceInvalid) {
-          await supabase
-            .from("whatsapp_instances")
-            .update({ status: "disconnected" })
-            .eq("organization_id", item.organization_id);
+          if (selectedInstanceId) {
+            await supabase
+              .from("whatsapp_instances")
+              .update({ status: "disconnected" })
+              .eq("id", selectedInstanceId);
+          }
           const retryAt = new Date(Date.now() + 10 * 60_000).toISOString();
           await supabase.from("whatsapp_queue").update({
             status: "queued",

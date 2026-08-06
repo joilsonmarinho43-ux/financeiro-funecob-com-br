@@ -267,6 +267,8 @@ Deno.serve(async (req) => {
             .eq("organization_id", orgParam)
             .eq("collector_id", client.collector_id)
             .eq("status", "connected")
+            .order("updated_at", { ascending: false })
+            .limit(1)
             .maybeSingle();
           if (ci?.api_url && ci?.api_key) directSent = await trySendWhatsApp(ci, client.phone, message);
         }
@@ -277,6 +279,7 @@ Deno.serve(async (req) => {
             .eq("organization_id", orgParam)
             .is("collector_id", null)
             .eq("status", "connected")
+            .order("updated_at", { ascending: false })
             .limit(1)
             .maybeSingle();
           if (mi?.api_url && mi?.api_key) directSent = await trySendWhatsApp(mi, client.phone, message);
@@ -513,6 +516,8 @@ Deno.serve(async (req) => {
           .eq("organization_id", organizationId)
           .eq("collector_id", client.collector_id)
           .eq("status", "connected")
+          .order("updated_at", { ascending: false })
+          .limit(1)
           .maybeSingle();
         if (ci?.api_url && ci?.api_key) directSent = await trySendWhatsApp(ci, client.phone, message);
       }
@@ -522,6 +527,7 @@ Deno.serve(async (req) => {
           .eq("organization_id", organizationId)
           .is("collector_id", null)
           .eq("status", "connected")
+          .order("updated_at", { ascending: false })
           .limit(1)
           .maybeSingle();
         if (mi?.api_url && mi?.api_key) directSent = await trySendWhatsApp(mi, client.phone, message);

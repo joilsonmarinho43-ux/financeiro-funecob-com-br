@@ -610,7 +610,26 @@ Deno.serve(async (req) => {
       if (state === "open" || state === "connected") mappedStatus = "connected";
       else if (state === "connecting" || state === "qrcode") mappedStatus = "pairing";
 
-      await supabase.from("whatsapp_instances").update({ status: mappedStatus }).eq("id", instance_id);
+      // Keep only one authoritative connection for the same routing slot.
+      // Main instances compete only with other main instances; collector
+      // instances compete only with the same collector, preserving multi-instance routing.
+      if (mappedStatus === "connected") {
+        let staleQuery = supabase
+          .from("whatsapp_instances")
+          .update({ status: "disconnected" })
+          .eq("organization_id", inst.organization_id)
+          .eq("status", "connected")
+          .neq("id", instance_id);
+        staleQuery = inst.collector_id
+          ? staleQuery.eq("collector_id", inst.collector_id)
+          : staleQuery.is("collector_id", null);
+        await staleQuery;
+      }
+
+      await supabase
+        .from("whatsapp_instances")
+        .update({ status: mappedStatus, updated_at: new Date().toISOString() })
+        .eq("id", instance_id);
 
       // Connected instances must always point to the PIX OCR webhook. This
       // self-heals older instances that were created before the webhook fix.
