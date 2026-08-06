@@ -81,6 +81,7 @@ Deno.serve(async (req) => {
       .select("*")
       .eq("organization_id", organization_id)
       .eq("status", "connected")
+      .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 

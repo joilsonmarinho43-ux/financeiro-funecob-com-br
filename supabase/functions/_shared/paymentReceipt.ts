@@ -399,6 +399,7 @@ export async function deliverPaymentConfirmation(
   const { data: instance } = await supabase
     .from("whatsapp_instances").select("*")
     .eq("organization_id", args.organizationId).eq("status", "connected")
+    .order("updated_at", { ascending: false })
     .limit(1).maybeSingle();
   const { data: gsRows } = await supabase
     .from("global_settings").select("key, value")
