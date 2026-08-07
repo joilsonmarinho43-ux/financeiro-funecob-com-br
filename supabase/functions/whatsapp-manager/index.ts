@@ -178,21 +178,33 @@ async function requestQrCode(
   apiKey: string,
   instanceName: string,
 ) {
-  const qrResp = await apiCall(`${baseUrl}/instance/connect/${encodeURIComponent(instanceName)}`, {
-    method: "GET",
-    headers: { apikey: apiKey },
-  });
+  const url = `${baseUrl}/instance/connect/${encodeURIComponent(instanceName)}`;
+  const maskedKey = apiKey.length > 4 ? `${apiKey.slice(0, 2)}***${apiKey.slice(-2)}` : "***";
+  console.log(`[whatsapp-manager] QR REQUEST url=${url} instance=${instanceName} key=${maskedKey}`);
+
+  const qrResp = await apiCall(url, { method: "GET", headers: { apikey: apiKey } });
   const text = await qrResp.text();
   let data: any = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+  const qrCode = qrResp.ok ? extractQrCode(data) : null;
+
+  console.log(
+    `[whatsapp-manager] QR RESPONSE instance=${instanceName} status=${qrResp.status} shape=${
+      JSON.stringify(responseShape(data))
+    } has_base64=${typeof data?.base64 === "string"} has_code=${typeof data?.code === "string"} qr_len=${
+      qrCode ? qrCode.length : 0
+    } body=${text.slice(0, 200)}`,
+  );
+
   return {
     ok: qrResp.ok,
     status: qrResp.status,
     data,
-    qrCode: qrResp.ok ? extractQrCode(data) : null,
+    qrCode,
     body: text.slice(0, 300),
   };
 }
+
 
 async function createEvolutionInstance(
   apiCall: (url: string, options: RequestInit) => Promise<Response>,
