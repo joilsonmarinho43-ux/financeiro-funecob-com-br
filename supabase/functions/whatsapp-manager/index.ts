@@ -441,10 +441,10 @@ Deno.serve(async (req) => {
       const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
       const instApiKey = inst.api_key || globalApiKey;
 
-      // A Evolution devolve o MESMO QR (já expirado) enquanto a instância está
-      // presa em "connecting". Isso faz o WhatsApp mostrar "não foi possível conectar".
-      // Então: se não estiver "open", derruba a sessão pendente antes de pedir o QR.
-      let freshSession = false;
+      // Evolution v1.6.0 já devolve um QR válido em /instance/connect mesmo com
+      // o estado "connecting". Então pedimos o QR primeiro e só derrubamos a
+      // sessão (logout) se a API realmente não devolver QR nenhum.
+      let state = "";
       try {
         const stateResp = await apiCall(`${instApiUrl}/instance/connectionState/${encodeURIComponent(inst.name)}`, {
           method: "GET",
@@ -453,24 +453,40 @@ Deno.serve(async (req) => {
         const stateText = await stateResp.text();
         let stateData: any = null;
         try { stateData = stateText ? JSON.parse(stateText) : null; } catch { /* ignore */ }
-        const state = stateData?.instance?.state || stateData?.state || "";
-        if (state !== "open" && state !== "connected") {
-          await apiCall(`${instApiUrl}/instance/logout/${encodeURIComponent(inst.name)}`, {
-            method: "DELETE",
-            headers: { apikey: instApiKey },
-          }).catch(() => null);
-          await new Promise((r) => setTimeout(r, 1500));
-          freshSession = true;
-        }
+        state = String(stateData?.instance?.state || stateData?.state || "");
+        console.log(`[whatsapp-manager] state instance=${inst.name} status=${stateResp.status} state=${state}`);
       } catch (e) {
-        console.warn("[whatsapp-manager] state/logout pre-check failed", String(e));
+        console.warn("[whatsapp-manager] state pre-check failed", String(e));
       }
 
-      const qr = await requestQrCode(apiCall, instApiUrl, instApiKey, inst.name);
+      if (state === "open" || state === "connected") {
+        await supabase.from("whatsapp_instances").update({ status: "connected" }).eq("id", instance_id);
+        return new Response(JSON.stringify({ success: true, status: "connected", instance_name: inst.name }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
-      if (!qr.ok) {
-        return new Response(JSON.stringify({ error: `Erro ao obter QR: ${qr.body}` }), {
-          status: 500,
+      let qr = await requestQrCode(apiCall, instApiUrl, instApiKey, inst.name);
+      let recovered = false;
+
+      // Sem QR (ou credencial recusada) → derruba a sessão presa e tenta de novo.
+      if (!qr.ok || !qr.qrCode) {
+        await apiCall(`${instApiUrl}/instance/logout/${encodeURIComponent(inst.name)}`, {
+          method: "DELETE",
+          headers: { apikey: instApiKey },
+        }).catch(() => null);
+        await new Promise((r) => setTimeout(r, 1500));
+        qr = await requestQrCode(apiCall, instApiUrl, instApiKey, inst.name);
+        recovered = true;
+      }
+
+      if (!qr.ok && !qr.qrCode) {
+        return new Response(JSON.stringify({
+          error: `Erro ao obter QR (HTTP ${qr.status}): ${qr.body}`,
+          status_code: qr.status,
+          instance_name: inst.name,
+        }), {
+          status: 502,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -490,12 +506,17 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({
         success: true,
         qr_code: qrCode,
+        pairing_code: qr.data?.pairingCode || null,
         instance_name: inst.name,
         status: qrCode ? "pairing" : "qr_unavailable",
+        recovered,
+        provider_status: qr.status,
+        provider_shape: responseShape(qr.data),
         diagnostic: qrCode ? null : "A Evolution API respondeu sem QR Code. A instância pode estar travada em connecting/pairing; use reset_session ou reinicie a instância no servidor Evolution.",
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+
     }
 
     // ─── RESET STUCK SESSION ───
