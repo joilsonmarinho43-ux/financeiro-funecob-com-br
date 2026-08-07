@@ -37,13 +37,38 @@ async function postMessage(
   sendUrl: string,
   apiKey: string,
   payload: Record<string, unknown>,
+  variant: string,
 ): Promise<EvolutionSendResult> {
-  const response = await fetch(sendUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", apikey: apiKey },
-    body: JSON.stringify(payload),
-  });
+  const instanceName = decodeURIComponent(sendUrl.split("/").pop() || "");
+  const maskedKey = apiKey.length > 4 ? `${apiKey.slice(0, 2)}***${apiKey.slice(-2)}` : "***";
+  console.log(
+    `[evolution] REQUEST variant=${variant} url=${sendUrl} instance=${instanceName} key=${maskedKey} payload=${
+      JSON.stringify(payload).slice(0, 400)
+    }`,
+  );
+
+  let response: Response;
+  const startedAt = Date.now();
+  try {
+    response = await fetch(sendUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error(
+      `[evolution] NETWORK ERROR variant=${variant} url=${sendUrl} instance=${instanceName} error=${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    throw err;
+  }
   const body = await response.text();
+  console.log(
+    `[evolution] RESPONSE variant=${variant} url=${sendUrl} instance=${instanceName} status=${response.status} ms=${
+      Date.now() - startedAt
+    } body=${body.slice(0, 800)}`,
+  );
   let parsed: unknown = null;
   try {
     parsed = body ? JSON.parse(body) : null;
@@ -79,12 +104,12 @@ export async function sendEvolutionText(
     number,
     textMessage: { text },
     options: { linkPreview: false },
-  });
+  }, "v1-textMessage");
   if (legacy.ok || !shouldRetryWithRootText(legacy.status, legacy.body)) return legacy;
 
   return postMessage(sendUrl, apiKey, {
     number,
     text,
     linkPreview: false,
-  });
+  }, "v2-text");
 }
