@@ -797,6 +797,18 @@ function PairTab({ organizationId }: { organizationId: string }) {
         body: JSON.stringify({ action: "get_qr", instance_id: instanceId }),
       });
       const result = await res.json();
+      console.log("[whatsapp] get_qr response", {
+        http_status: res.status,
+        ok: res.ok,
+        has_qr: !!result?.qr_code,
+        qr_prefix: typeof result?.qr_code === "string" ? result.qr_code.slice(0, 30) : null,
+        qr_length: typeof result?.qr_code === "string" ? result.qr_code.length : 0,
+        status: result?.status,
+        provider_status: result?.provider_status,
+        provider_shape: result?.provider_shape,
+        diagnostic: result?.diagnostic,
+        error: result?.error,
+      });
       if (!res.ok) throw new Error(result.error || "Erro ao obter QR Code");
 
       if (result.qr_code) {
@@ -806,8 +818,9 @@ function PairTab({ organizationId }: { organizationId: string }) {
         queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
         setQrDialogOpen(false);
       } else {
-        throw new Error("QR Code não retornado pela instância");
+        throw new Error(result.diagnostic || "QR Code não retornado pela instância");
       }
+
     } catch (err) {
       toast({ title: "Erro ao obter QR Code", description: (err as Error).message, variant: "destructive" });
     } finally {
@@ -1188,7 +1201,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
             ) : (
               <div className="h-52 w-52 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-muted-foreground/20 text-center p-4">
                 <AlertTriangle className="h-8 w-8 text-warning mb-2" />
-                <p className="text-xs text-muted-foreground">Não foi possível obter o QR Code. Verifique as Configurações Globais.</p>
+                <p className="text-xs text-muted-foreground">Não foi possível obter o QR Code. Toque em "Gerar Novo QR" — se persistir, use Resetar Sessão.</p>
               </div>
             )}
             <p className="text-xs text-muted-foreground text-center">

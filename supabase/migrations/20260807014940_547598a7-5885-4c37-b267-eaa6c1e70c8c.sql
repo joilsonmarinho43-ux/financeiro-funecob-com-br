@@ -1,0 +1,2 @@
+UPDATE public.whatsapp_instances SET api_key='64DBC93C-584A-4278-974D-A95763AB5DDE', updated_at=now() WHERE api_url ILIKE '%161.97.181.130%';
+UPDATE public.global_settings SET value='64DBC93C-584A-4278-974D-A95763AB5DDE', updated_at=now() WHERE key='global_api_key';
