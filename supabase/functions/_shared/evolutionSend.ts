@@ -104,12 +104,12 @@ export async function sendEvolutionText(
     number,
     textMessage: { text },
     options: { linkPreview: false },
-  });
+  }, "v1-textMessage");
   if (legacy.ok || !shouldRetryWithRootText(legacy.status, legacy.body)) return legacy;
 
   return postMessage(sendUrl, apiKey, {
     number,
     text,
     linkPreview: false,
-  });
+  }, "v2-text");
 }
