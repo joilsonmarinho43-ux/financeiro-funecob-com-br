@@ -797,6 +797,18 @@ function PairTab({ organizationId }: { organizationId: string }) {
         body: JSON.stringify({ action: "get_qr", instance_id: instanceId }),
       });
       const result = await res.json();
+      console.log("[whatsapp] get_qr response", {
+        http_status: res.status,
+        ok: res.ok,
+        has_qr: !!result?.qr_code,
+        qr_prefix: typeof result?.qr_code === "string" ? result.qr_code.slice(0, 30) : null,
+        qr_length: typeof result?.qr_code === "string" ? result.qr_code.length : 0,
+        status: result?.status,
+        provider_status: result?.provider_status,
+        provider_shape: result?.provider_shape,
+        diagnostic: result?.diagnostic,
+        error: result?.error,
+      });
       if (!res.ok) throw new Error(result.error || "Erro ao obter QR Code");
 
       if (result.qr_code) {
@@ -806,8 +818,9 @@ function PairTab({ organizationId }: { organizationId: string }) {
         queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
         setQrDialogOpen(false);
       } else {
-        throw new Error("QR Code não retornado pela instância");
+        throw new Error(result.diagnostic || "QR Code não retornado pela instância");
       }
+
     } catch (err) {
       toast({ title: "Erro ao obter QR Code", description: (err as Error).message, variant: "destructive" });
     } finally {
