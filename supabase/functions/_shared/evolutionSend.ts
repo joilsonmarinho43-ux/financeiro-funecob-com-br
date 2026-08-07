@@ -26,11 +26,12 @@ function extractMessageId(payload: unknown): string | null {
   return candidates.find((candidate) => typeof candidate === "string" && candidate.trim()) || null;
 }
 
-function shouldRetryWithTextMessage(status: number, body: string): boolean {
+function shouldRetryWithRootText(status: number, body: string): boolean {
   if (status !== 400 && status !== 422) return false;
   const lower = body.toLowerCase();
-  return lower.includes("textmessage") || lower.includes("requires property");
+  return lower.includes("\"text\"") || lower.includes("requires property") || lower.includes("property text");
 }
+
 
 async function postMessage(
   sendUrl: string,
@@ -64,8 +65,9 @@ async function postMessage(
 
 /**
  * Supports both Evolution API sendText contracts found in deployed versions.
- * It starts with the current root `text` contract and retries with the legacy
- * `textMessage` envelope only when the server explicitly requests it.
+ * The VPS runs Evolution API v1.6.0, which requires the legacy `textMessage`
+ * envelope, so that contract is tried first and the v2 root `text` contract is
+ * used only as a fallback when the server rejects the legacy schema.
  */
 export async function sendEvolutionText(
   sendUrl: string,
@@ -73,16 +75,16 @@ export async function sendEvolutionText(
   number: string,
   text: string,
 ): Promise<EvolutionSendResult> {
-  const current = await postMessage(sendUrl, apiKey, {
-    number,
-    text,
-    linkPreview: false,
-  });
-  if (current.ok || !shouldRetryWithTextMessage(current.status, current.body)) return current;
-
-  return postMessage(sendUrl, apiKey, {
+  const legacy = await postMessage(sendUrl, apiKey, {
     number,
     textMessage: { text },
     options: { linkPreview: false },
+  });
+  if (legacy.ok || !shouldRetryWithRootText(legacy.status, legacy.body)) return legacy;
+
+  return postMessage(sendUrl, apiKey, {
+    number,
+    text,
+    linkPreview: false,
   });
 }
