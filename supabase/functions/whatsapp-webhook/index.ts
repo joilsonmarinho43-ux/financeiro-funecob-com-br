@@ -2,6 +2,7 @@
 // Receives Evolution API events (messages.upsert) and forwards PIX receipts
 // to pix-ocr-settlement. Decoupled — never touches existing billing logic.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { envEvolutionUrl, envEvolutionKey } from "../_shared/evolutionConfig.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -521,8 +522,8 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
       .in("key", ["api_host", "global_api_key"]);
     const map: Record<string, string> = {};
     (gs || []).forEach((s: any) => { map[s.key] = s.value; });
-    apiUrl = apiUrl || map.api_host || "";
-    apiKey = apiKey || map.global_api_key || "";
+    apiUrl = apiUrl || map.api_host || envEvolutionUrl();
+    apiKey = apiKey || map.global_api_key || envEvolutionKey();
   }
 
   // Se só temos o @lid, tenta resolver para telefone real.

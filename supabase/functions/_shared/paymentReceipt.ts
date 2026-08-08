@@ -1,6 +1,7 @@
 // Recibo PDF + envio WhatsApp (texto enriquecido + anexo)
 // Usado por pix-ocr-settlement e auto-settlement-assign-client.
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
+import { envEvolutionUrl, envEvolutionKey } from "./evolutionConfig.ts";
 
 export interface PaidInvoice {
   id: string;
@@ -406,8 +407,8 @@ export async function deliverPaymentConfirmation(
     .in("key", ["api_host", "global_api_key"]);
   const gs: Record<string, string> = {};
   (gsRows || []).forEach((s: any) => { gs[s.key] = s.value; });
-  const apiUrl = instance?.api_url || gs.api_host || "";
-  const apiKey = instance?.api_key || gs.global_api_key || "";
+  const apiUrl = instance?.api_url || gs.api_host || envEvolutionUrl();
+  const apiKey = instance?.api_key || gs.global_api_key || envEvolutionKey();
   const instanceName = instance?.name || "";
   if (!apiUrl || !apiKey || !instanceName) {
     await supabase.from("auto_settlement_logs").insert({

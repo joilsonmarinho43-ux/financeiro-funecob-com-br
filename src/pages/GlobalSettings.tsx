@@ -96,7 +96,7 @@ export default function GlobalSettings() {
                   <Label htmlFor="api_host" className="flex items-center gap-2"><Globe className="h-4 w-4" /> API Host (URL)</Label>
                   <Input
                     id="api_host"
-                    placeholder="http://161.97.181.130:8080"
+                    placeholder="http://SEU_IP_OU_DOMINIO:8080"
                     value={form.api_host}
                     onChange={(e) => setForm({ ...form, api_host: e.target.value })}
                   />

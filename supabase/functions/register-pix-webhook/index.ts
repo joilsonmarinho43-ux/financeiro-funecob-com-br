@@ -1,6 +1,7 @@
 // Registers the whatsapp-webhook URL on each Evolution API instance
 // so that incoming PIX receipts actually reach the PIX OCR motor.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { envEvolutionUrl, envEvolutionKey } from "../_shared/evolutionConfig.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,8 +94,8 @@ Deno.serve(async (req) => {
 
     const results: any[] = [];
     for (const inst of instances || []) {
-      const apiUrl = inst.api_url || gmap.api_host || "";
-      const apiKey = inst.api_key || gmap.global_api_key || "";
+      const apiUrl = inst.api_url || gmap.api_host || envEvolutionUrl();
+      const apiKey = inst.api_key || gmap.global_api_key || envEvolutionKey();
       if (!apiUrl || !apiKey) {
         results.push({ instance: inst.name, ok: false, error: "missing api creds" });
         continue;

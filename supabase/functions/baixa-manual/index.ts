@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getOrCreatePortalLink } from "../_shared/portalLink.ts";
 import { removePaymentConfirmationLinks } from "../_shared/paymentReceipt.ts";
 import { sendEvolutionText } from "../_shared/evolutionSend.ts";
+import { envEvolutionUrl, envEvolutionKey } from "../_shared/evolutionConfig.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -134,8 +135,8 @@ Deno.serve(async (req) => {
           gs[s.key] = s.value;
         });
 
-        const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
-        const apiKey = instance?.api_key || gs.global_api_key || "";
+        const apiUrl = (instance?.api_url || gs.api_host || envEvolutionUrl()).replace(/\/$/, "");
+        const apiKey = instance?.api_key || gs.global_api_key || envEvolutionKey();
         const instanceName = instance?.name || "";
 
         if (instanceName && apiUrl && apiKey) {

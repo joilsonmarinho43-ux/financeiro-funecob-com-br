@@ -5,7 +5,7 @@
 export function getPortalBaseUrl(): string {
   const env = Deno.env.get("PORTAL_BASE_URL") || "";
   if (/^https?:\/\//i.test(env)) return env.replace(/\/+$/, "");
-  return "https://financeiro.funecob.com.br";
+  return "https://financeiro.funecob.com.br"; // fallback: defina PORTAL_BASE_URL no ambiente
 }
 
 export async function getOrCreatePortalLink(
@@ -31,5 +31,5 @@ export async function getOrCreatePortalLink(
   } catch (e) {
     console.error("[portalLink] error:", e);
   }
-  return "";
+  return "https://financeiro.funecob.com.br"; // fallback: defina PORTAL_BASE_URL no ambiente
 }

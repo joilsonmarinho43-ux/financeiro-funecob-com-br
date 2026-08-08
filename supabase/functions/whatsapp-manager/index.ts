@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { envEvolutionUrl, envEvolutionKey } from "../_shared/evolutionConfig.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -282,8 +283,8 @@ Deno.serve(async (req) => {
     const gs: Record<string, string> = {};
     (globalSettings || []).forEach((s: any) => { gs[s.key] = s.value; });
 
-    const apiHost = gs.api_host;
-    const globalApiKey = gs.global_api_key;
+    const apiHost = gs.api_host || envEvolutionUrl();
+    const globalApiKey = gs.global_api_key || envEvolutionKey();
     const pixWebhookUrl = `${supabaseUrl}/functions/v1/whatsapp-webhook`;
 
     if (!apiHost || !globalApiKey) {
