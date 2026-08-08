@@ -54,7 +54,7 @@ do RLS no banco.
 | `EVOLUTION_API_URL` | recomendada | Base da Evolution API, sem barra final. Ex.: `http://10.0.0.5:8080`. |
 | `EVOLUTION_API_KEY` | recomendada | Global API Key da Evolution. |
 
-**Ordem de resolução** (implementada em `_shared/evolutionConfig.ts`):
+**Ordem de resolução** (helpers `envEvolutionUrl()` / `envEvolutionKey()` em cada Edge Function):
 
 1. `whatsapp_instances.api_url` / `api_key` — por organização;
 2. `global_settings.api_host` / `global_api_key` — tela Configurações Globais;

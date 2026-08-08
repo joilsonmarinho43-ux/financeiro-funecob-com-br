@@ -53,8 +53,7 @@ Não há backend monolítico. A lógica de servidor está em 14 Edge Functions
 | `register-pix-webhook` | Registra webhooks nas instâncias | true |
 
 Código compartilhado em `supabase/functions/_shared/`:
-`evolutionSend.ts` (envio com compat v1.6.0/v2), `evolutionConfig.ts`
-(credenciais por ENV), `paymentReceipt.ts` (recibo PDF + envio),
+`evolutionSend.ts` (envio com compat v1.6.0/v2), `paymentReceipt.ts` (recibo PDF + envio),
 `portalLink.ts`, `pix/*` (score, duplicidade, pagadores confiáveis,
 estatísticas de OCR).
 
