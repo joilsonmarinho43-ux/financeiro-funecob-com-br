@@ -1,7 +1,16 @@
 // Registers the whatsapp-webhook URL on each Evolution API instance
 // so that incoming PIX receipts actually reach the PIX OCR motor.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { envEvolutionUrl, envEvolutionKey } from "../_shared/evolutionConfig.ts";
+
+// --- Evolution API: fallback por variáveis de ambiente (VPS própria) ---
+// Precedência: whatsapp_instances > global_settings > ENV.
+function envEvolutionUrl(): string {
+  return (Deno.env.get("EVOLUTION_API_URL") || "").replace(/\/+$/, "");
+}
+function envEvolutionKey(): string {
+  return Deno.env.get("EVOLUTION_API_KEY") || "";
+}
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

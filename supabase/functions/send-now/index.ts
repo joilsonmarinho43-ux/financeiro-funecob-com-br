@@ -1,7 +1,16 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://esm.sh/zod@3.23.8";
 import { sendEvolutionText } from "../_shared/evolutionSend.ts";
-import { envEvolutionUrl, envEvolutionKey } from "../_shared/evolutionConfig.ts";
+
+// --- Evolution API: fallback por variáveis de ambiente (VPS própria) ---
+// Precedência: whatsapp_instances > global_settings > ENV.
+function envEvolutionUrl(): string {
+  return (Deno.env.get("EVOLUTION_API_URL") || "").replace(/\/+$/, "");
+}
+function envEvolutionKey(): string {
+  return Deno.env.get("EVOLUTION_API_KEY") || "";
+}
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

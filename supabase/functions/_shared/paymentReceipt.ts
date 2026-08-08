@@ -1,7 +1,16 @@
 // Recibo PDF + envio WhatsApp (texto enriquecido + anexo)
 // Usado por pix-ocr-settlement e auto-settlement-assign-client.
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
-import { envEvolutionUrl, envEvolutionKey } from "./evolutionConfig.ts";
+
+// --- Evolution API: fallback por variáveis de ambiente (VPS própria) ---
+// Precedência: whatsapp_instances > global_settings > ENV.
+function envEvolutionUrl(): string {
+  return (Deno.env.get("EVOLUTION_API_URL") || "").replace(/\/+$/, "");
+}
+function envEvolutionKey(): string {
+  return Deno.env.get("EVOLUTION_API_KEY") || "";
+}
+
 
 export interface PaidInvoice {
   id: string;
