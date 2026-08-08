@@ -1,6 +1,16 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendEvolutionText } from "../_shared/evolutionSend.ts";
 
+// --- Evolution API: fallback por variáveis de ambiente (VPS própria) ---
+// Precedência: whatsapp_instances > global_settings > ENV.
+function envEvolutionUrl(): string {
+  return (Deno.env.get("EVOLUTION_API_URL") || "").replace(/\/+$/, "");
+}
+function envEvolutionKey(): string {
+  return Deno.env.get("EVOLUTION_API_KEY") || "";
+}
+
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -357,8 +367,8 @@ Deno.serve(async (req) => {
 
         selectedInstanceId = instance?.id || null;
 
-        const apiUrl = (instance?.api_url || gs.api_host || "").replace(/\/$/, "");
-        const apiKey = instance?.api_key || gs.global_api_key || "";
+        const apiUrl = (instance?.api_url || gs.api_host || envEvolutionUrl()).replace(/\/$/, "");
+        const apiKey = instance?.api_key || gs.global_api_key || envEvolutionKey();
         const instanceName = instance?.name || "";
 
         if (!instanceName || !apiUrl || !apiKey) {

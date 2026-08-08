@@ -1,0 +1,16 @@
+node_modules
+dist
+.git
+.github
+.env
+.env.*
+!.env.example
+.lovable
+.workspace
+extension-tests/node_modules
+extension-tests/test-results
+*.log
+.DS_Store
+coverage
+.vscode
+.idea

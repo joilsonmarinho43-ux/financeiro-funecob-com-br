@@ -3,6 +3,16 @@
 // to pix-ocr-settlement. Decoupled — never touches existing billing logic.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
+// --- Evolution API: fallback por variáveis de ambiente (VPS própria) ---
+// Precedência: whatsapp_instances > global_settings > ENV.
+function envEvolutionUrl(): string {
+  return (Deno.env.get("EVOLUTION_API_URL") || "").replace(/\/+$/, "");
+}
+function envEvolutionKey(): string {
+  return Deno.env.get("EVOLUTION_API_KEY") || "";
+}
+
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -521,8 +531,8 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
       .in("key", ["api_host", "global_api_key"]);
     const map: Record<string, string> = {};
     (gs || []).forEach((s: any) => { map[s.key] = s.value; });
-    apiUrl = apiUrl || map.api_host || "";
-    apiKey = apiKey || map.global_api_key || "";
+    apiUrl = apiUrl || map.api_host || envEvolutionUrl();
+    apiKey = apiKey || map.global_api_key || envEvolutionKey();
   }
 
   // Se só temos o @lid, tenta resolver para telefone real.

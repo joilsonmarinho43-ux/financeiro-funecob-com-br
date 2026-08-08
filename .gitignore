@@ -22,3 +22,21 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Segredos e ambiente — NUNCA versionar
+.env
+.env.*
+!.env.example
+
+# Chaves e certificados
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+
+# Artefatos de teste
+extension-tests/node_modules
+extension-tests/test-results
+playwright-report
+coverage
