@@ -559,6 +559,21 @@ function BulkTab({ organizationId }: { organizationId: string }) {
     staleTime: 60000,
   });
 
+  const nameByPhone: Record<string, string> = {};
+  (clients as any[]).forEach((c: any) => {
+    const d = String(c.phone || "").replace(/\D/g, "");
+    if (d) nameByPhone[d.slice(-8)] = c.name;
+  });
+  const lookupName = (phone: string) => nameByPhone[String(phone || "").replace(/\D/g, "").slice(-8)] || null;
+
+  const personalize = (message: string, phone: string) => {
+    const name = lookupName(phone);
+    if (!name) return message.replace(/\{nome\}/gi, "").replace(/^\s+/, "");
+    const bold = `*${name}*`;
+    if (/\{nome\}/i.test(message)) return message.replace(/\{nome\}/gi, bold);
+    return `Olá ${bold}!\n\n${message}`;
+  };
+
   const sendBulk = useMutation({
     mutationFn: async () => {
       const phones = form.phones
@@ -572,11 +587,12 @@ function BulkTab({ organizationId }: { organizationId: string }) {
       const items = phones.map((phone, i) => ({
         organization_id: organizationId,
         phone: phone.replace(/\D/g, ""),
-        message: form.message,
+        message: personalize(form.message, phone),
         status: "queued" as const,
         campaign_id: null,
         scheduled_for: new Date(Date.now() + i * ((Math.random() * (maxD - minD) + minD) * 1000)).toISOString(),
       }));
+
 
       const { error } = await supabase.from("whatsapp_queue").insert(items);
       if (error) throw error;
