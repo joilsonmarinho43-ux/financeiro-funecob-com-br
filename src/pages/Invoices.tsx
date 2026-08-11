@@ -606,7 +606,7 @@ export default function Invoices() {
                     <TableBody>
                       {filtered.slice(0, visibleCount).map((inv) => (
                         <TableRow key={inv.id}>
-                          <TableCell className="font-medium">{inv.clients?.name || "—"}</TableCell>
+                          <TableCell className="font-bold">{inv.clients?.name || "—"}</TableCell>
                           <TableCell className="max-w-[200px] truncate">{inv.description || "—"}</TableCell>
                           <TableCell>{format(parseISO(inv.due_date), "dd/MM/yyyy")}</TableCell>
                           <TableCell className="text-right font-semibold tabular-nums">{formatCurrency(Number(inv.amount))}</TableCell>

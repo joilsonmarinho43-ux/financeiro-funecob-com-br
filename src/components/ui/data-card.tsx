@@ -53,7 +53,7 @@ export function DataCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm font-semibold text-foreground truncate">{title}</p>
+            <p className="text-sm font-bold text-foreground truncate">{title}</p>
             {pill}
           </div>
           {subtitle && <p className="mt-0.5 text-xs text-muted-foreground truncate">{subtitle}</p>}
