@@ -510,6 +510,7 @@ function QueueTab({ organizationId }: { organizationId: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Cliente</TableHead>
                   <TableHead>Telefone</TableHead>
                   <TableHead>Mensagem</TableHead>
                   <TableHead>Status</TableHead>
@@ -521,6 +522,7 @@ function QueueTab({ organizationId }: { organizationId: string }) {
               <TableBody>
                 {queue.map((q: any) => (
                   <TableRow key={q.id}>
+                    <TableCell className="font-bold">{clientName(q.phone) || "—"}</TableCell>
                     <TableCell className="font-mono text-sm">{q.phone}</TableCell>
                     <TableCell className="max-w-[200px] truncate">{q.message}</TableCell>
                     <TableCell>{statusBadge(q.status)}</TableCell>
@@ -529,6 +531,7 @@ function QueueTab({ organizationId }: { organizationId: string }) {
                     <TableCell className="text-xs text-destructive max-w-[150px] truncate">{q.error_message || "—"}</TableCell>
                   </TableRow>
                 ))}
+
               </TableBody>
             </Table>
           </div>
