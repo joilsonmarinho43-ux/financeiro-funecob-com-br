@@ -510,6 +510,7 @@ function QueueTab({ organizationId }: { organizationId: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Cliente</TableHead>
                   <TableHead>Telefone</TableHead>
                   <TableHead>Mensagem</TableHead>
                   <TableHead>Status</TableHead>
@@ -521,6 +522,7 @@ function QueueTab({ organizationId }: { organizationId: string }) {
               <TableBody>
                 {queue.map((q: any) => (
                   <TableRow key={q.id}>
+                    <TableCell className="font-bold">{clientName(q.phone) || "—"}</TableCell>
                     <TableCell className="font-mono text-sm">{q.phone}</TableCell>
                     <TableCell className="max-w-[200px] truncate">{q.message}</TableCell>
                     <TableCell>{statusBadge(q.status)}</TableCell>
@@ -529,6 +531,7 @@ function QueueTab({ organizationId }: { organizationId: string }) {
                     <TableCell className="text-xs text-destructive max-w-[150px] truncate">{q.error_message || "—"}</TableCell>
                   </TableRow>
                 ))}
+
               </TableBody>
             </Table>
           </div>
@@ -556,6 +559,21 @@ function BulkTab({ organizationId }: { organizationId: string }) {
     staleTime: 60000,
   });
 
+  const nameByPhone: Record<string, string> = {};
+  (clients as any[]).forEach((c: any) => {
+    const d = String(c.phone || "").replace(/\D/g, "");
+    if (d) nameByPhone[d.slice(-8)] = c.name;
+  });
+  const lookupName = (phone: string) => nameByPhone[String(phone || "").replace(/\D/g, "").slice(-8)] || null;
+
+  const personalize = (message: string, phone: string) => {
+    const name = lookupName(phone);
+    if (!name) return message.replace(/\{nome\}/gi, "").replace(/^\s+/, "");
+    const bold = `*${name}*`;
+    if (/\{nome\}/i.test(message)) return message.replace(/\{nome\}/gi, bold);
+    return `Olá ${bold}!\n\n${message}`;
+  };
+
   const sendBulk = useMutation({
     mutationFn: async () => {
       const phones = form.phones
@@ -569,11 +587,12 @@ function BulkTab({ organizationId }: { organizationId: string }) {
       const items = phones.map((phone, i) => ({
         organization_id: organizationId,
         phone: phone.replace(/\D/g, ""),
-        message: form.message,
+        message: personalize(form.message, phone),
         status: "queued" as const,
         campaign_id: null,
         scheduled_for: new Date(Date.now() + i * ((Math.random() * (maxD - minD) + minD) * 1000)).toISOString(),
       }));
+
 
       const { error } = await supabase.from("whatsapp_queue").insert(items);
       if (error) throw error;
@@ -596,8 +615,12 @@ function BulkTab({ organizationId }: { organizationId: string }) {
           <form onSubmit={(e) => { e.preventDefault(); sendBulk.mutate(); }} className="space-y-4">
             <div className="space-y-2">
               <Label>Mensagem *</Label>
-              <Textarea placeholder="Digite a mensagem que será enviada para todos..." value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={4} required />
+              <Textarea placeholder="Digite a mensagem que será enviada para todos... Use {nome} para inserir o nome do cliente." value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={4} required />
+              <p className="text-xs text-muted-foreground">
+                Use <code>{"{nome}"}</code> para inserir o nome do cliente em negrito. Se não usar, a mensagem inicia automaticamente com "Olá *Nome*!".
+              </p>
             </div>
+
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Telefones (um por linha) *</Label>
