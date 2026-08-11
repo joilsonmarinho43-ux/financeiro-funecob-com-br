@@ -615,8 +615,12 @@ function BulkTab({ organizationId }: { organizationId: string }) {
           <form onSubmit={(e) => { e.preventDefault(); sendBulk.mutate(); }} className="space-y-4">
             <div className="space-y-2">
               <Label>Mensagem *</Label>
-              <Textarea placeholder="Digite a mensagem que será enviada para todos..." value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={4} required />
+              <Textarea placeholder="Digite a mensagem que será enviada para todos... Use {nome} para inserir o nome do cliente." value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={4} required />
+              <p className="text-xs text-muted-foreground">
+                Use <code>{"{nome}"}</code> para inserir o nome do cliente em negrito. Se não usar, a mensagem inicia automaticamente com "Olá *Nome*!".
+              </p>
             </div>
+
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Telefones (um por linha) *</Label>
