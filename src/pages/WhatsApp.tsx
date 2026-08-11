@@ -385,8 +385,27 @@ function QueueTab({ organizationId }: { organizationId: string }) {
     staleTime: 10000,
   });
 
+  const { data: clientsByPhone = {} } = useQuery({
+    queryKey: ["whatsapp-clients-map", organizationId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("clients").select("name, phone").eq("organization_id", organizationId).not("phone", "is", null);
+      if (error) throw error;
+      const map: Record<string, string> = {};
+      (data || []).forEach((c: any) => {
+        const digits = String(c.phone || "").replace(/\D/g, "");
+        if (digits) map[digits.slice(-8)] = c.name;
+      });
+      return map;
+    },
+    enabled: !!organizationId,
+    staleTime: 60000,
+  });
+
+  const clientName = (phone: string) => clientsByPhone[String(phone || "").replace(/\D/g, "").slice(-8)] || null;
+
   const { data: queue = [], isLoading } = useQuery({
     queryKey: ["whatsapp-queue", organizationId, page, statusFilter],
+
     queryFn: async () => {
       const from = (page - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
