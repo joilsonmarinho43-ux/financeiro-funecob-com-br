@@ -1256,7 +1256,7 @@ export default function Clients() {
                     <TableBody>
                       {visible.map((client) => (
                         <TableRow key={client.id}>
-                          <TableCell className="font-medium">{client.name}</TableCell>
+                          <TableCell className="font-bold">{client.name}</TableCell>
                           <TableCell>{maskPhone(client.phone) || "—"}</TableCell>
                           <TableCell>{maskCPFCNPJ(client.document) || "—"}</TableCell>
                           <TableCell>
