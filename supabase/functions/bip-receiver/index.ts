@@ -251,7 +251,7 @@ Deno.serve(async (req) => {
         const compBR = invoice.due_date ? new Date(invoice.due_date + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" }) : "";
         const reciboNo = "REC-" + String(invoice.id).replace(/-/g, "").slice(0, 10).toUpperCase();
         const message = removePaymentConfirmationLinks(tpl
-          .replace(/{nome}/g, client.name || "Cliente")
+          .replace(/\*?\{nome\}\*?/g, `**`)
           .replace(/{valor}/g, valorFmt)
           .replace(/{data_pagamento}/g, paidDate.split("-").reverse().join("/"))
           .replace(/{data_vencimento}/g, vencBR || paidDate.split("-").reverse().join("/"))
@@ -487,7 +487,7 @@ Deno.serve(async (req) => {
         const compBR = invoice?.due_date ? new Date(invoice.due_date + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" }) : "";
         const reciboNo = "REC-" + String(invoice?.id || "").replace(/-/g, "").slice(0, 10).toUpperCase();
         message = removePaymentConfirmationLinks(tpl
-          .replace(/{nome}/g, client.name)
+          .replace(/\*?\{nome\}\*?/g, `**`)
           .replace(/{valor}/g, valorFmt)
           .replace(/{data_pagamento}/g, paidDate.split("-").reverse().join("/"))
           .replace(/{data_vencimento}/g, vencBR || paidDate.split("-").reverse().join("/"))
@@ -498,14 +498,14 @@ Deno.serve(async (req) => {
         const tpl = billingSettings?.template_remarcar || "Olá {nome}! 📅\n\nSua fatura no valor de R$ {valor} foi remarcada.\nNova data de vencimento: {nova_data}\n\nQualquer dúvida, estamos à disposição!";
         const valorFmt = Number(invoice?.amount || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         message = tpl
-          .replace(/{nome}/g, client.name)
+          .replace(/\*?\{nome\}\*?/g, `**`)
           .replace(/{valor}/g, valorFmt)
           .replace(/{nova_data}/g, new_due_date ? new_due_date.split("-").reverse().join("/") : "")
           .replace(/{link_portal}/g, portalLink);
       } else {
         const tpl = billingSettings?.template_retorno || "Olá {nome}! 👋\n\nNosso cobrador esteve no endereço cadastrado e não encontrou ninguém.\nPor favor, entre em contato para agendar uma nova visita.";
         message = tpl
-          .replace(/{nome}/g, client.name)
+          .replace(/\*?\{nome\}\*?/g, `**`)
           .replace(/{link_portal}/g, portalLink);
       }
 

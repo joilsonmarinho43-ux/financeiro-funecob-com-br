@@ -262,7 +262,7 @@ export default function Invoices() {
 
       const template = settings?.template_reminder || "Olá {nome}! Sua fatura de {valor} vence em {vencimento}. {link_ou_chave_pix}";
       const message = template
-        .replace(/{nome}/g, client.name || "Cliente")
+        .replace(/\*?\{nome\}\*?/g, `**`)
         .replace(/{valor}/g, amount)
         .replace(/{vencimento}/g, dueFormatted)
         .replace(/{link_ou_chave_pix}/g, pixOrLink)

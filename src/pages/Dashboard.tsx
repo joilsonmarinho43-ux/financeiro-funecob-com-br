@@ -150,7 +150,7 @@ export default function Dashboard() {
       const template = billingSettings?.template_overdue ||
         "Olá {nome}! Sua fatura no valor de {valor} com vencimento em {vencimento} está em atraso. Por favor, regularize o pagamento. {link_ou_chave_pix}";
       const message = template
-        .replace(/{nome}/g, client?.name || "Cliente")
+        .replace(/\*?\{nome\}\*?/g, `**`)
         .replace(/{valor}/g, amount)
         .replace(/{vencimento}/g, dueFormatted)
         .replace(/{link_ou_chave_pix}/g, pixOrLink)

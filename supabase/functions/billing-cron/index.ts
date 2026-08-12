@@ -230,7 +230,7 @@ Deno.serve(async (req) => {
           const pixOrLink = staticPix ?? await getGatewayLink(invoice.id);
 
           const message = reminder.template
-            .replace(/{nome}/g, client.name || "Cliente")
+            .replace(/\*?\{nome\}\*?/g, `**`)
             .replace(/{valor}/g, amount)
             .replace(/{vencimento}/g, formattedDueDate)
             .replace(/{link_ou_chave_pix}/g, pixOrLink)

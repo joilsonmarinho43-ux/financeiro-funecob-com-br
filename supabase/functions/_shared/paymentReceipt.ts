@@ -233,7 +233,7 @@ export function buildConfirmationText(params: {
   // Se houver template custom, faz substituição preservando-o
   if (params.customTemplate && params.customTemplate.trim()) {
     let msg = params.customTemplate
-      .replace(/{nome}/g, params.clientName)
+      .replace(/\*?\{nome\}\*?/g, `**`)
       .replace(/{valor}/g, valor)
       .replace(/{data_pagamento}/g, dataPgto)
       .replace(/{data_vencimento}/g, venc || dataPgto)
