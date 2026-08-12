@@ -1,0 +1,1 @@
+UPDATE public.clients SET name = btrim(regexp_replace(name, '\s+', ' ', 'g')) WHERE name IS DISTINCT FROM btrim(regexp_replace(name, '\s+', ' ', 'g'));

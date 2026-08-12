@@ -567,12 +567,13 @@ function BulkTab({ organizationId }: { organizationId: string }) {
   const lookupName = (phone: string) => nameByPhone[String(phone || "").replace(/\D/g, "").slice(-8)] || null;
 
   const personalize = (message: string, phone: string) => {
-    const name = lookupName(phone);
-    if (!name) return message.replace(/\{nome\}/gi, "").replace(/^\s+/, "");
+    const name = (lookupName(phone) || "").trim();
+    if (!name) return message.replace(/\*?\{nome\}\*?/gi, "").replace(/^\s+/, "");
     const bold = `*${name}*`;
-    if (/\{nome\}/i.test(message)) return message.replace(/\{nome\}/gi, bold);
+    if (/\{nome\}/i.test(message)) return message.replace(/\*?\{nome\}\*?/gi, bold);
     return `Olá ${bold}!\n\n${message}`;
   };
+
 
   const sendBulk = useMutation({
     mutationFn: async () => {

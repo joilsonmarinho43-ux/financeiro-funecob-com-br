@@ -94,17 +94,34 @@ async function postMessage(
  * envelope, so that contract is tried first and the v2 root `text` contract is
  * used only as a fallback when the server rejects the legacy schema.
  */
+/**
+ * WhatsApp só renderiza negrito quando não há espaço logo após o "*" de
+ * abertura nem antes do "*" de fechamento. Nomes cadastrados com espaço
+ * sobrando produziam "*Nome *" e o negrito não aparecia.
+ */
+export function normalizeWhatsAppBold(text: string): string {
+  return (text || "").replace(/\*([^*\n]+)\*/g, (full, inner: string) => {
+    const trimmed = inner.trim();
+    if (!trimmed) return full;
+    const leading = inner.startsWith(" ") ? " " : "";
+    const trailing = inner.endsWith(" ") ? " " : "";
+    return `${leading}*${trimmed}*${trailing}`;
+  });
+}
+
 export async function sendEvolutionText(
   sendUrl: string,
   apiKey: string,
   number: string,
-  text: string,
+  rawText: string,
 ): Promise<EvolutionSendResult> {
+  const text = normalizeWhatsAppBold(rawText);
   const legacy = await postMessage(sendUrl, apiKey, {
     number,
     textMessage: { text },
     options: { linkPreview: false },
   }, "v1-textMessage");
+
   if (legacy.ok || !shouldRetryWithRootText(legacy.status, legacy.body)) return legacy;
 
   return postMessage(sendUrl, apiKey, {
