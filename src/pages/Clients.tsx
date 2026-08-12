@@ -531,7 +531,7 @@ export default function Clients() {
               "Olá {nome}! 👋\n\nSeja muito bem-vindo(a)! Seu cadastro foi realizado com sucesso. 🎉\n\nQualquer dúvida, estamos à disposição! 😊";
             if (enabled && tpl) {
               const msg = String(tpl)
-                .replace(/\*?\{nome\}\*?/g, `*${insertPayload.name || ""}*`)
+                .replace(/\*?\{nome\}\*?/g, `*${(insertPayload.name || "").trim()}*`)
                 .replace(/\{empresa\}/g, organization?.name || "");
               const phoneClean = String(insertPayload.phone).replace(/\D/g, "");
               const { data: sendData, error: sendErr } = await supabase.functions.invoke("send-now", {
@@ -616,7 +616,7 @@ export default function Clients() {
             const tpl = (bs as any)?.template_reminder
               || "Olá {nome}! Sua fatura no valor de {valor} vence em {vencimento}.";
             const msg = String(tpl)
-              .replace(/\*?\{nome\}\*?/g, `*${form.name}*`)
+              .replace(/\*?\{nome\}\*?/g, `*${(form.name || "").trim()}*`)
               .replace(/\{valor\}/g, valor)
               .replace(/\{vencimento\}/g, venc)
               .replace(/\{link_ou_chave_pix\}/g, pixLine.trim()) + pixLine;

@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
           "Pagamento confirmado! ✅\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}";
         await getOrCreatePortalLink(supabase, clientId, organization_id);
         let message = template
-          .replace(/\*?\{nome\}\*?/g, `*${client.name || "Cliente"}*`)
+          .replace(/\*?\{nome\}\*?/g, `*${(client.name || "Cliente").trim()}*`)
           .replace(/{valor}/g, amount)
           .replace(/{data_pagamento}/g, paid_date.split("-").reverse().join("/"))
           .replace(/{data_vencimento}/g, vencimentoBR || paid_date.split("-").reverse().join("/"))
