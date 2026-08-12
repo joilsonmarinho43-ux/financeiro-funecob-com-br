@@ -41,7 +41,7 @@ export function CustomerCommunicationTab({ client }: { client: any }) {
   const sendCobranca = async () => {
     const { data: bs } = await supabase.from("billing_settings").select("template_overdue, pix_key").eq("organization_id", organizationId!).maybeSingle();
     const msg = (bs?.template_overdue || "Olá {nome}, regularize sua fatura.")
-      .replace(/{nome}/g, client.name)
+      .replace(/\*?\{nome\}\*?/g, `*${client.name}*`)
       .replace(/{link_ou_chave_pix}/g, bs?.pix_key ? `Chave PIX: ${bs.pix_key}` : "")
       .replace(/{valor}/g, "").replace(/{vencimento}/g, "").replace(/{link_portal}/g, "").replace(/{titular_pix}/g, "");
     sendBackend(msg, "cob");
@@ -50,7 +50,7 @@ export function CustomerCommunicationTab({ client }: { client: any }) {
   const sendLembrete = async () => {
     const { data: bs } = await supabase.from("billing_settings").select("template_reminder").eq("organization_id", organizationId!).maybeSingle();
     const msg = (bs?.template_reminder || "Olá {nome}, lembrete de vencimento.")
-      .replace(/{nome}/g, client.name)
+      .replace(/\*?\{nome\}\*?/g, `*${client.name}*`)
       .replace(/{valor}/g, "").replace(/{vencimento}/g, "");
     sendBackend(msg, "lem");
   };
