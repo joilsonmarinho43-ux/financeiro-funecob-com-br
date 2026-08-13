@@ -1,5 +1,7 @@
 # =====================================================================
 # FUNecob — build de produção do frontend (Vite + React) servido por nginx
+# Fase 1: a VPS executa APENAS o aplicativo web. Nenhum cron, worker,
+# Edge Function ou processamento de fila roda neste container.
 # =====================================================================
 
 # ---------- Stage 1: build ----------
@@ -24,9 +26,11 @@ RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npm run build
 
-# ---------- Stage 2: runtime ----------
-FROM nginx:1.27-alpine AS runtime
+# ---------- Stage 2: runtime (nginx sem root) ----------
+# nginx-unprivileged roda como UID 101 (nginx), sem necessidade de root.
+FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
 
+USER root
 ENV TZ=America/Sao_Paulo
 RUN apk add --no-cache tzdata curl \
     && cp /usr/share/zoneinfo/$TZ /etc/localtime \
@@ -34,7 +38,11 @@ RUN apk add --no-cache tzdata curl \
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
+RUN chown -R 101:101 /usr/share/nginx/html
 
+USER 101
+
+# Única porta exposta. Nenhum serviço interno é publicado.
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
