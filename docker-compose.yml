@@ -7,14 +7,20 @@ services:
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
         VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY}
         VITE_SUPABASE_PROJECT_ID: ${VITE_SUPABASE_PROJECT_ID}
-        VITE_PORTAL_BASE_URL: ${VITE_PORTAL_BASE_URL}
+        VITE_PORTAL_BASE_URL: ${VITE_PORTAL_BASE_URL:-https://financeiro.funecob.com.br}
     image: funecob/web:latest
     container_name: funecob-web
     restart: unless-stopped
+    user: "101:101"
     environment:
       TZ: ${TZ:-America/Sao_Paulo}
+    # Publica somente na interface local: o Nginx do host faz o TLS e o proxy.
     ports:
-      - "${APP_PORT:-8080}:8080"
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
       interval: 30s
