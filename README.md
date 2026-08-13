@@ -17,7 +17,10 @@ cliente, relatórios, robô de cobrança e envio de mensagens por WhatsApp via
 > [Arquitetura](./docs/ARCHITECTURE.md) ·
 > [Webhooks](./docs/WEBHOOKS.md) ·
 > [Banco de dados](./docs/DATABASE.md) ·
-> [Backup](./docs/BACKUP.md)
+> [Backup](./docs/BACKUP.md) ·
+> [**Fase 1 — VPS**](./docs/PHASE1-VPS.md) ·
+> [Edge Functions (futuro)](./docs/EDGE-FUNCTIONS-FUTURE.md) ·
+> [Segurança](./docs/SECURITY.md)
 
 ---
 
@@ -47,6 +50,11 @@ cp .env.example .env
 nano .env                 # preencha as variáveis
 docker compose up -d --build
 ```
+
+> **Fase 1 (atual):** a VPS executa apenas o aplicativo web. Banco, Auth,
+> Storage, RLS, Realtime, Edge Functions e cron continuam no Supabase atual.
+> Nenhum processamento é duplicado na VPS. Detalhes e comandos completos em
+> [docs/PHASE1-VPS.md](./docs/PHASE1-VPS.md).
 
 Verificar, ver logs, reiniciar e atualizar:
 
