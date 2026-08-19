@@ -80,8 +80,9 @@ export default function Gateways() {
     }
   }, [settings]);
 
+  const webhookSecret = (settings as any)?.gateway_webhook_secret || "";
   const webhookUrl = settings?.gateway_provider && organizationId
-    ? `${SUPABASE_URL}/functions/v1/bip-receiver?org=${organizationId}&provider=${settings.gateway_provider}`
+    ? `${SUPABASE_URL}/functions/v1/bip-receiver?org=${organizationId}&provider=${settings.gateway_provider}${webhookSecret ? `&key=${webhookSecret}` : ""}`
     : "";
 
   const updateMutation = useMutation({
@@ -90,7 +91,7 @@ export default function Gateways() {
       const payload = {
         ...values,
         billing_mode: "gateway",
-        gateway_webhook_url: values.gateway_webhook_url || `${SUPABASE_URL}/functions/v1/bip-receiver?org=${organizationId}&provider=${values.gateway_provider}`,
+        gateway_webhook_url: values.gateway_webhook_url || `${SUPABASE_URL}/functions/v1/bip-receiver?org=${organizationId}&provider=${values.gateway_provider}${webhookSecret ? `&key=${webhookSecret}` : ""}`,
       };
       if (settings) {
         const { error } = await supabase
