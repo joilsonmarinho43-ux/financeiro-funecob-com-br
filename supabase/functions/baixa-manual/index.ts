@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { invoice_id, paid_date, organization_id, user_id } = await req.json();
+    const { invoice_id, paid_date, organization_id } = await req.json();
 
     if (!invoice_id || !paid_date || !organization_id) {
       return new Response(
@@ -34,9 +34,56 @@ Deno.serve(async (req) => {
       );
     }
 
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRe.test(String(invoice_id)) || !uuidRe.test(String(organization_id)) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(String(paid_date))) {
+      return new Response(
+        JSON.stringify({ error: "Parâmetros inválidos" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // === AUTH: exige JWT válido e vínculo com a organização ===
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authErr } = await userClient.auth.getUser();
+    if (authErr || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const user_id = user.id;
+
+    const { data: isAdmin } = await supabase.rpc("has_role", { _user_id: user_id, _role: "admin" });
+    if (!isAdmin) {
+      const { data: membership } = await supabase
+        .from("organization_members")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("organization_id", organization_id)
+        .maybeSingle();
+      if (!membership) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     // === ATOMIC TRANSACTION via RPC (SELECT FOR UPDATE inside PostgreSQL) ===
     const { data: rpcResult, error: rpcError } = await supabase.rpc("perform_baixa_manual", {
