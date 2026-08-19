@@ -6,8 +6,67 @@ import { sendEvolutionText } from "../_shared/evolutionSend.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-api-key",
+    "authorization, x-client-info, apikey, content-type, x-api-key, x-webhook-secret, x-signature, x-request-id, asaas-access-token",
 };
+
+function safeEqual(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function hmacSha256Hex(secret: string, payload: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Verifies that a gateway webhook really comes from the configured provider.
+ * Accepts (in order):
+ *  - shared secret via `?key=` query param or `x-webhook-secret` header (all providers);
+ *  - Mercado Pago `x-signature` HMAC-SHA256 manifest;
+ *  - Asaas `asaas-access-token` header.
+ */
+async function verifyWebhookAuth(
+  req: Request,
+  url: URL,
+  provider: string,
+  body: any,
+  secret: string,
+): Promise<boolean> {
+  const queryKey = (url.searchParams.get("key") || "").trim();
+  if (queryKey && safeEqual(queryKey, secret)) return true;
+
+  const headerSecret = (req.headers.get("x-webhook-secret") || "").trim();
+  if (headerSecret && safeEqual(headerSecret, secret)) return true;
+
+  if (provider === "asaas") {
+    const token = (req.headers.get("asaas-access-token") || "").trim();
+    if (token && safeEqual(token, secret)) return true;
+  }
+
+  if (provider === "mercadopago") {
+    const xSignature = req.headers.get("x-signature") || "";
+    const xRequestId = req.headers.get("x-request-id") || "";
+    const parts = Object.fromEntries(
+      xSignature.split(",").map((p) => {
+        const [k, ...rest] = p.split("=");
+        return [k.trim(), rest.join("=").trim()];
+      }),
+    ) as Record<string, string>;
+    if (parts.ts && parts.v1) {
+      const dataId = String(body?.data?.id ?? body?.id ?? "").toLowerCase();
+      const manifest = `id:${dataId};request-id:${xRequestId};ts:${parts.ts};`;
+      const expected = await hmacSha256Hex(secret, manifest);
+      if (safeEqual(expected, parts.v1.toLowerCase())) return true;
+    }
+  }
+
+  return false;
+}
 
 // ─── Provider-specific webhook payload parsers ───
 function parseWebhookPayload(provider: string, body: any): { paid: boolean; externalId?: string; amount?: number } | null {
