@@ -275,7 +275,7 @@ export default function BillingSettings() {
           ? JSON.stringify(gatewayCredentials)
           : gatewayApiKey || null,
         gateway_webhook_url: billingMode === "gateway" && gatewayProvider
-          ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bip-receiver?org=${organizationId}&provider=${gatewayProvider}`
+          ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bip-receiver?org=${organizationId}&provider=${gatewayProvider}${(settings as any)?.gateway_webhook_secret ? `&key=${(settings as any).gateway_webhook_secret}` : ""}`
           : null,
         reminder_enabled: reminderEnabled,
         reminder_days_before: reminderDaysBefore,
@@ -764,7 +764,7 @@ export default function BillingSettings() {
                       <div className="flex items-center gap-2">
                         <Input
                           readOnly
-                          value={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bip-receiver?org=${organizationId}&provider=${gatewayProvider}`}
+                          value={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bip-receiver?org=${organizationId}&provider=${gatewayProvider}${(settings as any)?.gateway_webhook_secret ? `&key=${(settings as any).gateway_webhook_secret}` : ""}`}
                           className="font-mono text-xs bg-muted/50"
                         />
                         <Button
@@ -773,7 +773,7 @@ export default function BillingSettings() {
                           variant="outline"
                           onClick={() => {
                             navigator.clipboard.writeText(
-                              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bip-receiver?org=${organizationId}&provider=${gatewayProvider}`
+                              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bip-receiver?org=${organizationId}&provider=${gatewayProvider}${(settings as any)?.gateway_webhook_secret ? `&key=${(settings as any).gateway_webhook_secret}` : ""}`
                             );
                             toast({ title: "URL copiada!" });
                           }}
