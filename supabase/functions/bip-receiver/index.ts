@@ -176,6 +176,25 @@ Deno.serve(async (req) => {
         });
       }
 
+      // ─── Webhook authenticity verification (mandatory) ───
+      const expectedSecret = String((billingSettings as any).gateway_webhook_secret || "").trim();
+      if (!expectedSecret) {
+        await logWebhook("rejected_no_secret_configured", 401, { error: "Webhook secret not configured" });
+        return new Response(JSON.stringify({ error: "Webhook secret not configured for this organization" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const authorized = await verifyWebhookAuth(req, url, providerParam, body, expectedSecret);
+      if (!authorized) {
+        await logWebhook("rejected_invalid_signature", 401, { error: "Invalid webhook signature" });
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       // Parse payload based on provider
       const parsed = parseWebhookPayload(providerParam, body);
       if (!parsed || !parsed.paid) {
