@@ -190,11 +190,58 @@ Build de produção, proxy HTTPS, logs com rotação, `restart: unless-stopped`,
 timezone e health check já estão configurados no `Dockerfile` /
 `docker-compose.yml`. Guia operacional: [docs/PRODUCTION.md](./docs/PRODUCTION.md).
 
+## Docker, Nginx e domínio
+
+```bash
+docker compose config          # valida o compose e as variáveis do .env
+docker compose up -d --build   # build + subida do container funecob-web
+```
+
+O container publica apenas em `127.0.0.1:${APP_PORT:-8080}`. O TLS e o domínio
+ficam no Nginx do host: use o template
+[`deploy/nginx/financeiro.funecob.com.br.conf`](./deploy/nginx/financeiro.funecob.com.br.conf)
+(copie para `/etc/nginx/sites-available/`, crie o symlink em `sites-enabled/`,
+rode `nginx -t && systemctl reload nginx` e emita o certificado com Certbot).
+O domínio oficial de produção é `financeiro.funecob.com.br`.
+
+## Relação com o Supabase (Fase 1)
+
+A VPS executa **somente o frontend**. Permanecem no Supabase, sem alteração:
+
+- PostgreSQL, RLS, RPCs, Realtime e Storage (`logos`, `receipts`);
+- Auth (`auth.users`, sessões, e-mails de confirmação);
+- **Edge Functions** — continuam rodando no runtime Deno do Supabase; a VPS
+  não executa nenhuma delas;
+- **Cron (`pg_cron`)** — `billing-cron`, `whatsapp-sender` e `pix-ocr-retry`
+  continuam agendados no banco; nenhum worker ou cron roda na VPS.
+
+Isso evita qualquer duplicidade de processamento (cobrança, baixa PIX, envio de
+WhatsApp) entre a VPS e o Supabase.
+
 ## Backup
 
 O que precisa de backup (banco, buckets de Storage, `.env`, segredos das Edge
 Functions, sessões da Evolution API) e os comandos:
 [docs/BACKUP.md](./docs/BACKUP.md).
+
+## Rollback
+
+Como a VPS serve apenas o frontend, o rollback é local e não afeta dados:
+
+```bash
+git log --oneline -n 10          # identifique o commit estável
+git checkout <COMMIT_ESTAVEL>    # ou: git revert <COMMIT_RUIM>
+docker compose up -d --build     # reconstrói o bundle com o código anterior
+docker compose ps                # confirme healthy
+curl -f http://localhost:8080/healthz
+```
+
+Se a imagem anterior ainda existir localmente
+(`docker images funecob/web`), basta apontar a tag antiga em
+`docker-compose.yml` e rodar `docker compose up -d`.
+Rollback de banco/Edge Functions é feito no Supabase (migrations e
+`supabase functions deploy`), nunca pela VPS.
+
 
 ## Desenvolvimento local
 
