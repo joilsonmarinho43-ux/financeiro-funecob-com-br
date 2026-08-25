@@ -32,6 +32,7 @@ check "Supabase REST"     curl -fsS -H "apikey: ${ANON_KEY}" "${KONG}/rest/v1/"
 check "Realtime"          dc exec -T funecob-kong curl -fsS "http://funecob-realtime:4000/api/tenants/funecob/health"
 check "Storage"           dc exec -T funecob-kong curl -fsS "http://funecob-storage:5000/status"
 check "Edge Functions"    dc exec -T funecob-kong curl -fsS -o /dev/null "http://funecob-edge-functions:9000/client-portal"
+check "Cron (agendador)"  dc exec -T funecob-cron sh -c "test -f /opt/funecob-cron.sh"
 check "Kong (API GW)"     curl -fsS -o /dev/null "${KONG}/auth/v1/health"
 check "FUNecob Web"       dc exec -T funecob-web curl -fsS "http://localhost:8080/healthz"
 check "Frontend (host)"   curl -fsS -o /dev/null "http://127.0.0.1:${WEB_HTTP_PORT:-54320}/healthz"
@@ -44,7 +45,7 @@ check "Evolution a partir do container" dc exec -T funecob-edge-functions \
 
 echo "------------------- isolamento de rede ----------------------"
 for c in funecob-db funecob-auth funecob-rest funecob-realtime funecob-storage \
-         funecob-edge-functions funecob-kong funecob-web; do
+         funecob-edge-functions funecob-kong funecob-web funecob-cron; do
   nets="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$c" 2>/dev/null)"
   if [ -z "$nets" ]; then
     printf "${C_YEL}[--]${C_RESET}    %s não está em execução\n" "$c"

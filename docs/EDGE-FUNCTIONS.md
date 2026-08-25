@@ -1,10 +1,13 @@
-# Migração futura das Edge Functions (Fase 2+) — apenas planejamento
+# Edge Functions do FUNecob (self-hosted)
 
-Na **Fase 1 nada disso é executado**. As 14 Edge Functions e os 4 cron jobs
-continuam rodando no Supabase. Este documento existe para que a Fase 2 seja
-feita sem improviso.
+As 14 funções em `supabase/functions/` **rodam na VPS** no container
+`funecob-edge-functions` (`supabase/edge-runtime`), montado em
+`/home/deno/functions` e exposto pelo Kong em `/functions/v1/<nome>`.
+Os agendamentos ficam no container `funecob-cron` (`deploy/cron/funecob-cron.sh`).
+Nenhuma função depende de `*.supabase.co` nem do Lovable.
 
 ## Inventário
+
 
 | Função | Gatilho | Efeito colateral | Risco de duplicar |
 |---|---|---|---|

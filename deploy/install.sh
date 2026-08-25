@@ -179,7 +179,7 @@ else
   dc up -d
 fi
 for s in funecob-auth funecob-rest funecob-storage funecob-realtime \
-         funecob-edge-functions funecob-kong funecob-web; do
+         funecob-edge-functions funecob-kong funecob-web funecob-cron; do
   wait_healthy "$s" 40 || true
 done
 

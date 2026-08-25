@@ -87,6 +87,17 @@ section "5. Redes e volumes"
 grep -nE 'name: funecob' docker-compose.yml || true
 grep -qE 'name: (nexus33|deploy)_' docker-compose.yml && fail "rede/volume de outro projeto" || pass "somente recursos funecob_*"
 
+# ------------------------------------------------ Stack completa presente
+section "5b. Stack self-hosted completa no compose"
+for s in funecob-db funecob-auth funecob-rest funecob-realtime funecob-storage \
+         funecob-edge-functions funecob-kong funecob-web funecob-cron; do
+  grep -qE "^  ${s}:" docker-compose.yml && pass "serviço ${s} definido" \
+    || fail "serviço ${s} AUSENTE do docker-compose.yml"
+done
+[ -f deploy/cron/funecob-cron.sh ] && pass "agendador deploy/cron/funecob-cron.sh presente" \
+  || fail "agendador deploy/cron/funecob-cron.sh ausente"
+
+
 # ------------------------------------------------------ Frontend / código
 section "6. URLs externas no código de runtime"
 SBCO="$($GREP $EXCL 'supabase\.co' src supabase/functions 2>/dev/null | grep -v 'functionsUrl.ts' || true)"

@@ -156,22 +156,26 @@ MERCADOPAGO_NOTIFICATION_URL=https://api.funecob.com.br/functions/v1/gateway-cre
 ```
 Depois `./deploy/update.sh`. Links antigos apontam para o ambiente anterior — veja [MIGRATION.md](MIGRATION.md).
 
-## 9. Cron (pg_cron, dentro do `funecob-db`)
+## 9. Cron / rotinas automáticas
 
-```sql
-SELECT cron.schedule('funecob-billing-cron', '0 11 * * *', $$
-  SELECT net.http_post(
-    url := 'http://funecob-kong:8000/functions/v1/billing-cron',
-    headers := '{"Content-Type":"application/json","Authorization":"Bearer <SERVICE_ROLE_KEY>"}'::jsonb);
-$$);
+O compose já sobe o container **`funecob-cron`** (`deploy/cron/funecob-cron.sh`),
+que substitui o pg_cron do Supabase Cloud e chama as Edge Functions pelo Kong interno:
 
-SELECT cron.schedule('funecob-whatsapp-sender', '*/2 * * * *', $$
-  SELECT net.http_post(
-    url := 'http://funecob-kong:8000/functions/v1/whatsapp-sender',
-    headers := '{"Content-Type":"application/json","Authorization":"Bearer <SERVICE_ROLE_KEY>"}'::jsonb);
-$$);
+| Rotina             | Frequência                  |
+| ------------------ | --------------------------- |
+| `whatsapp-sender`  | a cada `CRON_TICK_SECONDS` (padrão 120s) |
+| `pix-ocr-retry`    | a cada `CRON_TICK_SECONDS`  |
+| `billing-cron`     | 1x por dia, às `BILLING_CRON_HOUR:00` (padrão 08:00, TZ do `.env`) |
+
+```bash
+docker compose -p funecob logs -f funecob-cron   # ver execuções
 ```
-Cada rotina deve aparecer **uma única vez** em `SELECT jobid, jobname, schedule FROM cron.job;`.
+
+> **Não** agende as mesmas rotinas também no pg_cron — isso duplicaria cobranças e envios.
+> Se preferir pg_cron (o `funecob-db` já carrega a extensão), remova o serviço
+> `funecob-cron` do compose antes de criar os jobs, e garanta que cada rotina apareça
+> **uma única vez** em `SELECT jobid, jobname, schedule FROM cron.job;`.
+
 
 ## 10. Operação
 
