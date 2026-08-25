@@ -76,6 +76,8 @@ nano .env
 | `funecob-realtime`        | supabase/realtime         | Subscriptions                      |
 | `funecob-storage`         | supabase/storage-api      | Buckets `logos` / `receipts`       |
 | `funecob-edge-functions`  | supabase/edge-runtime     | 14 funções Deno                    |
+| `funecob-cron`            | alpine:3.20               | Agendador (billing, sender, OCR)   |
+
 
 > WhatsApp: o FUNecob **não** possui container de Evolution API nem MongoDB.
 > Usa o `evolution` (`v1.6.0`, porta 8080) e o `mongodb-lab` **já existentes na VPS**.
