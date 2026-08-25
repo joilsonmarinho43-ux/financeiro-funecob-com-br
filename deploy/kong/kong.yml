@@ -1,0 +1,102 @@
+_format_version: "2.1"
+_transform: true
+
+# =====================================================================
+# FUNecob — API Gateway próprio (funecob-kong)
+# Expõe Auth, REST, Realtime, Storage e Edge Functions em uma única URL.
+# =====================================================================
+
+consumers:
+  - username: anon
+    keyauth_credentials:
+      - key: $SUPABASE_ANON_KEY
+  - username: service_role
+    keyauth_credentials:
+      - key: $SUPABASE_SERVICE_KEY
+
+acls:
+  - consumer: anon
+    group: anon
+  - consumer: service_role
+    group: admin
+
+plugins:
+  - name: cors
+    config:
+      origins: ["*"]
+      methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD]
+      headers:
+        - Accept
+        - Authorization
+        - Content-Type
+        - apikey
+        - x-client-info
+        - x-bip-key
+        - x-signature
+        - prefer
+        - range
+      credentials: true
+      max_age: 3600
+
+services:
+  - name: auth-v1-open
+    url: http://funecob-auth:9999/
+    routes:
+      - name: auth-v1-open
+        strip_path: true
+        paths: [/auth/v1/]
+    plugins:
+      - name: cors
+
+  - name: rest-v1
+    url: http://funecob-rest:3000/
+    routes:
+      - name: rest-v1-all
+        strip_path: true
+        paths: [/rest/v1/]
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: true
+          key_names: [apikey]
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow: [admin, anon]
+
+  - name: realtime-v1
+    url: http://funecob-realtime:4000/socket/
+    protocol: http
+    routes:
+      - name: realtime-v1-all
+        strip_path: true
+        paths: [/realtime/v1/]
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+          key_names: [apikey]
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow: [admin, anon]
+
+  - name: storage-v1
+    url: http://funecob-storage:5000/
+    routes:
+      - name: storage-v1-all
+        strip_path: true
+        paths: [/storage/v1/]
+    plugins:
+      - name: cors
+
+  - name: functions-v1
+    url: http://funecob-edge-functions:9000/
+    routes:
+      - name: functions-v1-all
+        strip_path: true
+        paths: [/functions/v1/]
+    plugins:
+      - name: cors

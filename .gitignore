@@ -40,3 +40,10 @@ extension-tests/node_modules
 extension-tests/test-results
 playwright-report
 coverage
+
+# Backups e segredos do deploy (FUNecob)
+backups/
+secrets/
+*.dump
+*.sql.gz
+deploy/**/*.local

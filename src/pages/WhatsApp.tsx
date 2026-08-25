@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Progress } from "@/components/ui/progress";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { functionUrl } from "@/lib/functionsUrl";
 import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -827,8 +828,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
     setQrLoading(true);
     setQrBase64(null);
     try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const url = `https://${projectId}.supabase.co/functions/v1/whatsapp-manager`;
+      const url = functionUrl("whatsapp-manager");
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(url, {
         method: "POST",
@@ -900,8 +900,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
 
   const handleCheckStatus = async (inst: any) => {
     try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const url = `https://${projectId}.supabase.co/functions/v1/whatsapp-manager`;
+      const url = functionUrl("whatsapp-manager");
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(url, {
         method: "POST",
@@ -925,8 +924,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
 
   const handleDisconnect = async (inst: any) => {
     try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const url = `https://${projectId}.supabase.co/functions/v1/whatsapp-manager`;
+      const url = functionUrl("whatsapp-manager");
       const { data: { session } } = await supabase.auth.getSession();
       await fetch(url, {
         method: "POST",
@@ -948,8 +946,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
   const handleResetSession = async (inst: any) => {
     if (!window.confirm(`Resetar a sessão travada da instância "${inst.name}" e tentar gerar um novo QR Code?`)) return;
     try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const url = `https://${projectId}.supabase.co/functions/v1/whatsapp-manager`;
+      const url = functionUrl("whatsapp-manager");
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(url, {
         method: "POST",
@@ -988,8 +985,7 @@ function PairTab({ organizationId }: { organizationId: string }) {
         throw new Error("Use um nome com letras ou números para a instância.");
       }
 
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const url = `https://${projectId}.supabase.co/functions/v1/whatsapp-manager`;
+      const url = functionUrl("whatsapp-manager");
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(url, {
         method: "POST",
