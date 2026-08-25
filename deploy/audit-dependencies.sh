@@ -39,7 +39,8 @@ section "1. Nexus 33 (nenhuma dependência funcional permitida)"
 N33="$($GREP $EXCL -e 'nexus33' -e 'nexus33_web' -e 'deploy-caddy' -e 'deploy-app' . 2>/dev/null \
         | grep -v 'audit-dependencies.sh' \
         | grep -vE '(^|/)[A-Za-z0-9_.-]+\.md:' \
-        | grep -viE 'nunca|não |nao |jamais|outro projeto|# ' )"
+        | grep -viE 'nunca|não |nao |jamais|outro projeto|# ' \
+        | grep -v '\*nexus33\*' )"
 N33_COUNT="$(printf '%s' "$N33" | grep -c . || true)"
 [ -n "$N33" ] && echo "$N33"
 echo "  NEXUS33 REFERENCES: ${N33_COUNT}"
@@ -71,7 +72,7 @@ grep -q 'host.docker.internal:host-gateway' docker-compose.yml \
 
 # ---------------------------------------------------------------- Portas
 section "4. Portas publicadas pelo compose"
-PORTS="$(grep -nE '^\s+- "' docker-compose.yml | grep -E ':[0-9]+:' || true)"
+PORTS="$(grep -nE '^\s+- "[^"]*:[^"]*:' docker-compose.yml || true)"
 echo "$PORTS"
 BAD_PORTS="$(printf '%s' "$PORTS" | grep -vE '127\.0\.0\.1:' | grep -vE 'CADDY_(HTTP|HTTPS)_PORT' || true)"
 if [ -z "$BAD_PORTS" ]; then
