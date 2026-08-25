@@ -82,7 +82,7 @@ alterada ou executada.
 `pix-ocr-settlement`, `register-pix-webhook`, `send-now`, `whatsapp-manager`,
 `whatsapp-sender`, `whatsapp-webhook`, `auto-settlement-assign-client`.
 
-Plano de migração futura: [EDGE-FUNCTIONS-FUTURE.md](./EDGE-FUNCTIONS-FUTURE.md).
+Plano de migração futura: [EDGE-FUNCTIONS.md](./EDGE-FUNCTIONS.md).
 
 ## 5. Evolution API
 
