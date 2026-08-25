@@ -3,15 +3,22 @@
 SaaS white-label de cobrança e crediário (funerárias e carnês) — multi-tenant, com WhatsApp,
 PIX com OCR de comprovantes, gateway de pagamento e portal do cliente.
 
-Esta instalação é **totalmente independente**: PostgreSQL, Supabase self-hosted, Evolution API,
-MongoDB e Caddy são exclusivos do FUNecob. Nenhum recurso é compartilhado com outros projetos
-da VPS (em especial o **Nexus 33**): rede, volumes, containers, portas e proxy são próprios.
+Esta instalação é **independente**: PostgreSQL, Supabase self-hosted e frontend são exclusivos
+do FUNecob (rede `funecob_network`, volumes `funecob_*`, projeto compose `funecob`). Nenhum
+recurso é compartilhado com outros projetos da VPS — em especial o **Nexus 33**.
+
+> **Evolution API e MongoDB já existentes na VPS NÃO são recriados.**
+> O FUNecob reutiliza o container `evolution` (`atendai/evolution-api:v1.6.0`, porta 8080) e o
+> `mongodb-lab` (`mongo:7`) através de `EVOLUTION_API_URL` / `EVOLUTION_API_KEY`.
+> Detalhes em [DEPLOY.md](DEPLOY.md) §0.
 
 ## Instalação em um comando
 
 ```bash
 git clone https://github.com/joilsonmarinho43-ux/financeiro-funecob-com-br.git funecob
 cd funecob
+cp .env.example .env
+nano .env
 ./deploy/install.sh
 ```
 
@@ -28,28 +35,32 @@ cd funecob
 ## Arquitetura
 
 ```text
-                         Internet (443)
-                               │
-                      ┌────────▼────────┐
-                      │  funecob-caddy  │  HTTPS Let's Encrypt
-                      └───┬────────┬────┘
-        financeiro.…      │        │      api.…  /  wa.…
-                  ┌───────▼──┐  ┌──▼───────────┐   ┌────────────────┐
-                  │funecob-  │  │ funecob-kong │   │funecob-evolution│
-                  │   web    │  │  API Gateway │   │   (WhatsApp)    │
-                  └──────────┘  └──┬───────────┘   └────────┬────────┘
-                                   │                        │
-   ┌──────────────┬────────────────┼──────────────┐   ┌─────▼──────────┐
-   │              │                │              │   │funecob-mongodb │
-┌──▼─────────┐ ┌──▼─────────┐ ┌────▼──────┐ ┌─────▼───────────┐└────────┘
-│funecob-auth│ │funecob-rest│ │funecob-   │ │funecob-edge-    │
-│  (GoTrue)  │ │(PostgREST) │ │ realtime  │ │   functions     │
-└──────┬─────┘ └──────┬─────┘ └────┬──────┘ └─────┬───────────┘
-       │              │            │              │      ┌────────────────┐
-       └──────────────┴────────────┴──────────────┴──────►│  funecob-db    │
-                                          funecob-storage │ (PostgreSQL 15)│
-                                                          └────────────────┘
-                     rede: funecob_network   │   projeto compose: funecob
+                Internet 443 → proxy JÁ EXISTENTE na VPS
+                (ou funecob-caddy, apenas se USE_OWN_PROXY=true)
+                     │                          │
+     financeiro.funecob.com.br        api.funecob.com.br
+        127.0.0.1:54320                 127.0.0.1:54321
+                     │                          │
+              ┌──────▼─────┐            ┌───────▼──────┐
+              │ funecob-web│            │ funecob-kong │
+              └────────────┘            └──┬───────────┘
+                                           │
+   ┌──────────────┬────────────────┬───────┴──────┬──────────────────┐
+┌──▼─────────┐ ┌──▼─────────┐ ┌────▼──────┐ ┌─────▼───────────┐ ┌────▼──────────┐
+│funecob-auth│ │funecob-rest│ │ funecob-  │ │ funecob-edge-   │ │funecob-storage│
+│  (GoTrue)  │ │(PostgREST) │ │ realtime  │ │   functions     │ │               │
+└──────┬─────┘ └──────┬─────┘ └────┬──────┘ └─────┬───────────┘ └────┬──────────┘
+       └──────────────┴────────────┴──────────────┴──────────────────┘
+                                   │
+                          ┌────────▼────────┐
+                          │   funecob-db    │ PostgreSQL 15 (127.0.0.1:54322)
+                          └─────────────────┘
+
+  rede: funecob_network   │   projeto compose: funecob
+
+  EXTERNO / REUTILIZADO (não gerenciado por este compose):
+     container "evolution"   → EVOLUTION_API_URL=http://host.docker.internal:8080
+     container "mongodb-lab" → pertence à Evolution existente
 ```
 
 ### Serviços
