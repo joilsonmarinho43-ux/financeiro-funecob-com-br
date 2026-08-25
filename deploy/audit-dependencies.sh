@@ -14,9 +14,10 @@
 #   * lovable-tagger (devDependency) e LOVABLE_API_KEY (fallback de OCR
 #       opcional) podem permanecer.
 # =====================================================================
-set -uo pipefail
+set +e
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 cd "$FUNECOB_ROOT"
+set +e   # auditoria é somente leitura: nenhuma verificação pode abortar o script
 
 if command -v rg >/dev/null 2>&1; then
   GREP="rg -n --hidden"
@@ -40,7 +41,7 @@ N33="$($GREP $EXCL -e 'nexus33' -e 'nexus33_web' -e 'deploy-caddy' -e 'deploy-ap
         | grep -v 'audit-dependencies.sh' \
         | grep -vE '(^|/)[A-Za-z0-9_.-]+\.md:' \
         | grep -viE 'nunca|não |nao |jamais|outro projeto|# ' \
-        | grep -v '\*nexus33\*' )"
+        | grep -v '\*nexus33\*' || true )"
 N33_COUNT="$(printf '%s' "$N33" | grep -c . || true)"
 [ -n "$N33" ] && echo "$N33"
 echo "  NEXUS33 REFERENCES: ${N33_COUNT}"
