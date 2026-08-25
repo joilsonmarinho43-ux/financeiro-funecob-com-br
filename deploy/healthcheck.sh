@@ -45,7 +45,7 @@ check "Evolution a partir do container" dc exec -T funecob-edge-functions \
 
 echo "------------------- isolamento de rede ----------------------"
 for c in funecob-db funecob-auth funecob-rest funecob-realtime funecob-storage \
-         funecob-edge-functions funecob-kong funecob-web; do
+         funecob-edge-functions funecob-kong funecob-web funecob-cron; do
   nets="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$c" 2>/dev/null)"
   if [ -z "$nets" ]; then
     printf "${C_YEL}[--]${C_RESET}    %s não está em execução\n" "$c"
