@@ -23,14 +23,16 @@ sign() {
 }
 
 cat <<EOF
+
+# NOTA: EVOLUTION_API_KEY NÃO é gerada aqui — use a chave da Evolution API
+# JÁ EXISTENTE na VPS (container "evolution"). Gerar uma nova quebraria a
+# integração com as instâncias de WhatsApp em produção.
 JWT_SECRET=${JWT_SECRET}
 ANON_KEY=$(sign anon)
 SERVICE_ROLE_KEY=$(sign service_role)
 POSTGRES_PASSWORD=$(openssl rand -hex 24)
-MONGO_PASSWORD=$(openssl rand -hex 24)
 REALTIME_ENC_KEY=$(openssl rand -hex 16)
 REALTIME_SECRET_KEY_BASE=$(openssl rand -hex 32)
-EVOLUTION_API_KEY=$(openssl rand -hex 32)
 EVOLUTION_WEBHOOK_SECRET=$(openssl rand -hex 32)
 BIP_API_KEY=$(openssl rand -hex 32)
 EOF
