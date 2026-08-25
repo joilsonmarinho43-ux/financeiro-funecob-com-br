@@ -67,7 +67,7 @@ nano .env
 
 | Container                 | Imagem                    | Papel                              |
 | ------------------------- | ------------------------- | ---------------------------------- |
-| `funecob-caddy`           | caddy:2-alpine            | HTTPS + reverse proxy              |
+| `funecob-caddy`           | caddy:2-alpine            | HTTPS (OPCIONAL — `USE_OWN_PROXY=true`) |
 | `funecob-web`             | build local (nginx)       | Frontend React/Vite                |
 | `funecob-kong`            | kong:2.8.1                | API Gateway do Supabase            |
 | `funecob-db`              | supabase/postgres:15.8.1  | PostgreSQL + pg_cron + pg_net      |
@@ -76,16 +76,18 @@ nano .env
 | `funecob-realtime`        | supabase/realtime         | Subscriptions                      |
 | `funecob-storage`         | supabase/storage-api      | Buckets `logos` / `receipts`       |
 | `funecob-edge-functions`  | supabase/edge-runtime     | 14 funções Deno                    |
-| `funecob-evolution`       | atendai/evolution-api     | WhatsApp                           |
-| `funecob-mongodb`         | mongo:7                   | Base do Evolution API              |
+
+> WhatsApp: o FUNecob **não** possui container de Evolution API nem MongoDB.
+> Usa o `evolution` (`v1.6.0`, porta 8080) e o `mongodb-lab` **já existentes na VPS**.
 
 ### Redes, volumes e portas
 
 - Rede: `funecob_network` (bridge, exclusiva)
-- Volumes: `funecob_db_data`, `funecob_storage_data`, `funecob_mongo_data`,
-  `funecob_evolution_data`, `funecob_caddy_data`, `funecob_caddy_config`
-- Portas públicas: **80** e **443** (Caddy)
-- Portas locais (só `127.0.0.1`): **54321** (Kong), **54322** (PostgreSQL)
+- Volumes: `funecob_db_data`, `funecob_storage_data`, `funecob_caddy_data`, `funecob_caddy_config`
+- Portas publicadas (todas em `127.0.0.1`): **54320** (frontend), **54321** (Kong/API),
+  **54322** (PostgreSQL)
+- **Nenhuma** porta em 80/443/8080/8000/5432/6543 por padrão — o proxy já existente na VPS
+  encaminha os domínios para 54320/54321 (veja DEPLOY.md §3)
 
 ### Domínios
 
@@ -93,7 +95,8 @@ nano .env
 | ---------------------------- | -------------------------- |
 | `financeiro.funecob.com.br`  | Frontend + portal cliente  |
 | `api.funecob.com.br`         | Supabase self-hosted (Kong)|
-| `wa.funecob.com.br`          | Evolution API              |
+
+A Evolution API continua no endereço atual dela — o FUNecob não cria domínio novo para WhatsApp.
 
 ## Stack do aplicativo
 

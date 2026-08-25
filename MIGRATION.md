@@ -14,14 +14,15 @@ própria na VPS. Nenhum passo utiliza infraestrutura do **Nexus 33**.
 | Edge Functions  | Supabase Functions                | `funecob-edge-functions` (edge-runtime)      |
 | Realtime        | Supabase Realtime                 | `funecob-realtime`                           |
 | Cron            | pg_cron gerenciado                | pg_cron no `funecob-db`                      |
-| WhatsApp        | Evolution API externa             | `funecob-evolution` + `funecob-mongodb`      |
-| Frontend        | Hospedagem Lovable                | `funecob-web` atrás do `funecob-caddy`       |
+| WhatsApp        | Evolution API externa             | Evolution **já existente** na VPS (reutilizada) |
+| Frontend        | Hospedagem Lovable                | `funecob-web` atrás do proxy da VPS          |
 
 ## Fase 0 — Preparação (sem downtime)
 
 1. VPS pronta, DNS de `api.` e `wa.` já apontando para o novo IP
    (mantenha `financeiro.` no ambiente antigo até o corte).
 2. `./deploy/install.sh` — sobe a stack limpa e cria o schema pelas migrations.
+   (Não é criada nenhuma Evolution API: a existente é reutilizada.)
 3. Valide com `./deploy/healthcheck.sh`.
 
 ## Fase 1 — Exportar os dados do ambiente atual
@@ -118,13 +119,15 @@ explicitamente (defesa em profundidade).
 
 ## Fase 5 — Integrações
 
-**Evolution API** — recrie as instâncias e leia o QR Code novamente (as sessões do
-Baileys não são portáveis entre servidores). Atualize as linhas de
-`whatsapp_instances` e as configurações globais para a nova URL/API key:
+**Evolution API** — a instância existente na VPS **continua como está**; não recrie nada.
+Apenas garanta que as linhas do banco apontem para ela (elas têm precedência sobre o `.env`):
 
 ```sql
 UPDATE public.whatsapp_instances
-SET api_url = 'http://funecob-evolution:8080', api_key = '<EVOLUTION_API_KEY>';
+SET api_url = 'http://host.docker.internal:8080', api_key = '<EVOLUTION_API_KEY existente>';
+
+UPDATE public.global_settings
+SET api_host = 'http://host.docker.internal:8080';
 ```
 
 **Mercado Pago** — links já emitidos apontam para o ambiente antigo. Não apague nada;
