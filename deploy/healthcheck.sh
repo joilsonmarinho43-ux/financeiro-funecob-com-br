@@ -2,7 +2,8 @@
 # =====================================================================
 # FUNecob — HEALTHCHECK
 #   ./deploy/healthcheck.sh
-# Verifica somente os serviços do FUNecob.
+# Verifica SOMENTE os serviços do FUNecob + a conectividade com a
+# Evolution API já existente (que não é gerenciada por este projeto).
 # =====================================================================
 set -uo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -15,12 +16,13 @@ check() { # nome, comando
   if "$@" >/dev/null 2>&1; then
     printf "${C_GREEN}[OK]${C_RESET}    %s\n" "$name"
   else
-    printf "${C_RED}[FALHA]${C_RESET} %s\n" "$name"
+    printf "${C_RED}[ERRO]${C_RESET}  %s\n" "$name"
     FAILED=$((FAILED+1))
   fi
 }
 
 KONG="http://127.0.0.1:${KONG_HTTP_PORT:-54321}"
+EV_HOST_URL="${EVOLUTION_API_URL//host.docker.internal/127.0.0.1}"
 
 echo
 echo "=============== FUNecob — status dos serviços ==============="
@@ -31,19 +33,38 @@ check "Realtime"          dc exec -T funecob-kong curl -fsS "http://funecob-real
 check "Storage"           dc exec -T funecob-kong curl -fsS "http://funecob-storage:5000/status"
 check "Edge Functions"    dc exec -T funecob-kong curl -fsS -o /dev/null "http://funecob-edge-functions:9000/client-portal"
 check "Kong (API GW)"     curl -fsS -o /dev/null "${KONG}/auth/v1/health"
-check "MongoDB"           dc exec -T funecob-mongodb mongosh --quiet --eval "db.adminCommand('ping')"
-check "Evolution API"     dc exec -T funecob-kong curl -fsS -o /dev/null "http://funecob-evolution:8080/"
 check "FUNecob Web"       dc exec -T funecob-web curl -fsS "http://localhost:8080/healthz"
-check "Caddy"             dc exec -T funecob-caddy caddy version
+check "Frontend (host)"   curl -fsS -o /dev/null "http://127.0.0.1:${WEB_HTTP_PORT:-54320}/healthz"
+
+echo "---------------- infraestrutura reutilizada ------------------"
+check "Evolution API (existente)" curl -fsS -o /dev/null --max-time 8 \
+      -H "apikey: ${EVOLUTION_API_KEY}" "${EV_HOST_URL%/}/"
+check "Evolution a partir do container" dc exec -T funecob-edge-functions \
+      curl -fsS -o /dev/null --max-time 8 -H "apikey: ${EVOLUTION_API_KEY}" "${EVOLUTION_API_URL%/}/"
+
+echo "----------------------- DNS e HTTPS -------------------------"
+check "DNS ${APP_DOMAIN}"  getent hosts "${APP_DOMAIN}"
+check "DNS ${API_DOMAIN}"  getent hosts "${API_DOMAIN}"
+if [ "${USE_OWN_PROXY:-false}" = "true" ]; then
+  check "Caddy FUNecob"    dc exec -T funecob-caddy caddy version
+fi
 check "HTTPS (${APP_DOMAIN})" curl -fsS -o /dev/null --max-time 15 "https://${APP_DOMAIN}/healthz"
 check "HTTPS (${API_DOMAIN})" curl -fsS -o /dev/null --max-time 15 "https://${API_DOMAIN}/auth/v1/health"
 
 echo "-------------------------------------------------------------"
 if [ "$FAILED" -eq 0 ]; then
-  printf "${C_GREEN}Todos os serviços do FUNecob estão saudáveis.${C_RESET}\n\n"
+  printf "${C_GREEN}OK — todos os serviços do FUNecob estão saudáveis.${C_RESET}\n\n"
   exit 0
 fi
-printf "${C_YEL}%s verificação(ões) falharam.${C_RESET}\n" "$FAILED"
-echo "Logs: docker compose -p funecob logs -f <serviço>"
+printf "${C_YEL}ERRO — %s verificação(ões) falharam.${C_RESET}\n" "$FAILED"
+cat <<'EOF'
+Causas mais comuns:
+  * HTTPS falhando .......... DNS ainda não propagou, ou o proxy do host não
+                              está encaminhando para 127.0.0.1:WEB_HTTP_PORT /
+                              127.0.0.1:KONG_HTTP_PORT (veja DEPLOY.md §Proxy).
+  * Evolution inacessível ... EVOLUTION_API_URL errada. Dentro do Docker use
+                              http://host.docker.internal:8080 (nunca localhost).
+  * Auth/REST/Storage ....... veja: docker compose -p funecob logs -f <serviço>
+EOF
 echo
 exit 1
