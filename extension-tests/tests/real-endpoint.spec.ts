@@ -2,8 +2,12 @@ import { test, expect } from "@playwright/test";
 
 // Real E2E against production bip-receiver — action=retorno (safe, doesn't change invoice status)
 const ENDPOINT = "https://jxhgssqzyhrlfpvlqliv.supabase.co/functions/v1/bip-receiver";
-const API_KEY  = "5dbe682ca66b279859d609373679d9f3d6d21d838c0699c148bef8743371e3b4";
+const API_KEY  = process.env.BIP_API_KEY;
 const ORG_ID   = "eaf58dbe-f43a-479e-97d8-e0078f3a7af9";
+
+if (!API_KEY) {
+  throw new Error("BIP_API_KEY environment variable is required to run these real endpoint tests.");
+}
 
 // Org config: client_id_length=7, year_length=4, month_length=2 → total 13
 // Cliente real: client_code=0021674 (Sebastiana), invoice due 2026-04-22 → 0021674 + 2026 + 04
