@@ -2,7 +2,7 @@
 # =====================================================================
 # FUNecob — RESTORE
 #   ./deploy/restore.sh backups/2026-08-25_120000
-# DESTRUTIVO: substitui banco, Storage, Evolution e MongoDB do FUNecob.
+# DESTRUTIVO: substitui banco e Storage do FUNecob (nada fora do FUNecob).
 # Exige confirmação explícita digitando RESTAURAR.
 # Nenhum dado de outros projetos é tocado.
 # =====================================================================
@@ -27,7 +27,7 @@ title "Backup de segurança do estado atual"
 
 title "Parando serviços de aplicação"
 dc stop funecob-web funecob-kong funecob-rest funecob-auth funecob-realtime \
-        funecob-storage funecob-edge-functions funecob-evolution >/dev/null
+        funecob-storage funecob-edge-functions >/dev/null
 
 title "Restaurando PostgreSQL"
 [ -f "${SRC}/postgres.sql.gz" ] || die "postgres.sql.gz ausente no backup"
@@ -42,21 +42,8 @@ if [ -f "${SRC}/storage.tar.gz" ]; then
   ok "Storage restaurado"
 fi
 
-if [ -f "${SRC}/evolution.tar.gz" ]; then
-  title "Restaurando Evolution API"
-  docker run --rm -v funecob_evolution_data:/data -v "${SRC}":/in:ro alpine \
-    sh -c 'rm -rf /data/* && tar xzf /in/evolution.tar.gz -C /data'
-  ok "Instâncias restauradas"
-fi
-
-if [ -f "${SRC}/mongodb.archive.gz" ]; then
-  title "Restaurando MongoDB"
-  dc up -d funecob-mongodb >/dev/null; wait_healthy funecob-mongodb 40 || true
-  dc exec -T funecob-mongodb mongorestore --quiet --archive --gzip --drop \
-    -u "${MONGO_USER:-funecob}" -p "${MONGO_PASSWORD}" --authenticationDatabase admin \
-    < "${SRC}/mongodb.archive.gz"
-  ok "MongoDB restaurado"
-fi
+# Evolution API / MongoDB da VPS não são restaurados aqui: pertencem à
+# infraestrutura existente e permanecem intactos.
 
 title "Subindo os serviços"
 dc up -d
