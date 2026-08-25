@@ -69,3 +69,52 @@ wait_healthy() {
 psql_root() {
   dc exec -T funecob-db psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" "$@"
 }
+
+# ---------------------------------------------------------------------
+# VPS COMPARTILHADA — utilidades de detecção (somente leitura).
+# Nenhuma destas funções altera, para ou remove qualquer recurso.
+# ---------------------------------------------------------------------
+
+# check_port <porta> <descrição> — falha se a porta já estiver ocupada
+# por algo que NÃO seja o próprio FUNecob.
+check_port() {
+  local port="$1" desc="${2:-}" owner=""
+  owner="$(docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null \
+            | grep -E "(:|\.)${port}->" | awk '{print $1}' | head -1 || true)"
+  if [ -n "$owner" ]; then
+    case "$owner" in
+      funecob-*) ok "porta ${port} (${desc}) já usada pelo próprio ${owner}"; return 0 ;;
+      *) err "porta ${port} (${desc}) ocupada pelo container '${owner}' — NÃO será alterado"; return 1 ;;
+    esac
+  fi
+  if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -qE "[:.]${port}[[:space:]]"; then
+    err "porta ${port} (${desc}) já está em uso no host"; return 1
+  fi
+  ok "porta ${port} livre (${desc})"
+  return 0
+}
+
+# Mostra a infraestrutura já existente que o FUNecob apenas REUTILIZA.
+detect_existing_infra() {
+  local ev mg
+  ev="$(docker ps --format '{{.Names}}\t{{.Image}}' 2>/dev/null | grep -iE '^evolution' || true)"
+  mg="$(docker ps --format '{{.Names}}\t{{.Image}}' 2>/dev/null | grep -iE '^mongodb' || true)"
+  if [ -n "$ev" ]; then
+    ok "Evolution API existente detectada: $(echo "$ev" | tr '\t' ' ')"
+    log "  -> NÃO será recriada, substituída nem reiniciada."
+  else
+    warn "Nenhum container 'evolution' em execução neste host."
+    log "  -> Se a Evolution roda em outro servidor, aponte EVOLUTION_API_URL para a URL pública."
+  fi
+  [ -n "$mg" ] && { ok "MongoDB existente detectado: $(echo "$mg" | tr '\t' ' ')"; \
+                    log "  -> Pertence à Evolution existente. O FUNecob não cria MongoDB."; }
+  return 0
+}
+
+# Testa a Evolution reutilizada a partir do host (traduzindo host.docker.internal).
+evolution_reachable() {
+  local url="${EVOLUTION_API_URL:-}"
+  [ -n "$url" ] || return 1
+  url="${url//host.docker.internal/127.0.0.1}"
+  curl -fsS -o /dev/null --max-time 8 -H "apikey: ${EVOLUTION_API_KEY:-}" "${url%/}/" 2>/dev/null
+}

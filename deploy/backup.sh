@@ -5,8 +5,6 @@
 # Gera backups/AAAA-MM-DD_HHMMSS/ contendo:
 #   postgres.sql.gz        dump completo do banco próprio
 #   storage.tar.gz         arquivos do Storage (logos/receipts)
-#   evolution.tar.gz       sessões/instâncias do Evolution API
-#   mongodb.archive.gz     base do Evolution API
 #   env.enc | env.bak      cópia do .env (cifrada se BACKUP_PASSPHRASE existir)
 #   config/                docker-compose.yml, Caddyfile, kong.yml
 #   MANIFEST.txt           inventário e versões
@@ -34,21 +32,9 @@ docker run --rm -v funecob_storage_data:/data:ro -v "${DEST}":/out alpine \
   tar czf /out/storage.tar.gz -C /data . 2>/dev/null || warn "Storage vazio ou indisponível"
 [ -f "${DEST}/storage.tar.gz" ] && ok "storage.tar.gz"
 
-# ----------------------------------------------------------- Evolution
-log "Instâncias do Evolution API..."
-docker run --rm -v funecob_evolution_data:/data:ro -v "${DEST}":/out alpine \
-  tar czf /out/evolution.tar.gz -C /data . 2>/dev/null || warn "Evolution sem dados"
-[ -f "${DEST}/evolution.tar.gz" ] && ok "evolution.tar.gz"
-
-# ------------------------------------------------------------- MongoDB
-log "MongoDB..."
-if dc exec -T funecob-mongodb mongodump --quiet --archive --gzip \
-     -u "${MONGO_USER:-funecob}" -p "${MONGO_PASSWORD}" --authenticationDatabase admin \
-     > "${DEST}/mongodb.archive.gz" 2>/dev/null; then
-  ok "mongodb.archive.gz"
-else
-  warn "mongodump indisponível"; rm -f "${DEST}/mongodb.archive.gz"
-fi
+# NOTA: Evolution API e MongoDB da VPS pertencem à infraestrutura existente
+# e NÃO são gerenciados por este projeto — portanto não entram neste backup.
+# Faça o backup deles pelo procedimento próprio da Evolution existente.
 
 # ----------------------------------------------------------------- ENV
 if [ -n "${BACKUP_PASSPHRASE:-}" ]; then

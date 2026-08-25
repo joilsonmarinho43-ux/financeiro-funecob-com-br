@@ -15,8 +15,23 @@ Variável obrigatória vazia no `.env`. O erro cita o nome. Preencha e rode de n
 `./deploy/install.sh` (é idempotente).
 
 **`Bind for 0.0.0.0:443 failed: port is already allocated`**
-Outro proxy da VPS ocupa 80/443. Libere as portas ou ajuste
-`CADDY_HTTP_PORT`/`CADDY_HTTPS_PORT` no `.env`. **Não altere o proxy do outro projeto.**
+Outro proxy da VPS ocupa 80/443. Mantenha `USE_OWN_PROXY=false` (padrão) e aponte o proxy
+existente para `127.0.0.1:54320` (frontend) e `127.0.0.1:54321` (API) — veja DEPLOY.md §3.
+**Não altere o proxy do outro projeto.**
+
+**`install.sh` aborta em "Conflito de portas"**
+Alguma das portas `WEB_HTTP_PORT`/`KONG_HTTP_PORT`/`POSTGRES_PORT` já está em uso.
+Troque os valores no `.env` e rode novamente. O script nunca para o serviço concorrente.
+
+**WhatsApp não envia / "connection refused" nas Edge Functions**
+`EVOLUTION_API_URL` provavelmente está como `http://localhost:8080` — dentro do container isso
+é o próprio container. Use `http://host.docker.internal:8080` (ou `http://172.17.0.1:8080`).
+Lembre-se: a URL gravada em `whatsapp_instances.api_url` / `global_settings.api_host` tem
+precedência sobre o `.env`.
+
+**Não crie uma segunda Evolution API**
+Os containers `evolution` e `mongodb-lab` são da infraestrutura existente. O compose do
+FUNecob não os define — confirme com `./deploy/audit-dependencies.sh`.
 
 **`network funecob_network not found`**
 `docker network create funecob_network` — ou rode `./deploy/install.sh`, que já cria.
@@ -93,8 +108,10 @@ Inclua-a no bloco `environment` de `funecob-edge-functions` e reinicie o serviç
 ## WhatsApp / Evolution
 
 **QR Code não aparece**
-`docker compose -p funecob logs -f funecob-evolution`. Verifique
-`EVOLUTION_API_KEY` no app e `SERVER_URL` = `EVOLUTION_PUBLIC_URL`.
+A Evolution é a **já existente** na VPS: `docker logs -f evolution` (fora do compose do
+FUNecob). Verifique `EVOLUTION_API_KEY` no app e a acessibilidade de `EVOLUTION_API_URL`
+(`./deploy/healthcheck.sh` testa isso de dentro e de fora do container).
+
 
 **Instância desconecta sozinha**
 Nomes de instância colidindo entre organizações ou bloqueio do WhatsApp por volume.

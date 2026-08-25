@@ -1,77 +1,137 @@
-# DEPLOY — FUNecob na VPS
+# DEPLOY — FUNecob em VPS compartilhada
 
-Instalação independente. Nada aqui toca em outros projetos hospedados na mesma VPS
-(incluindo o **Nexus 33**): projeto Compose `funecob`, rede `funecob_network`,
-volumes `funecob_*` e Caddy próprio.
+Instalação independente. **Nada aqui recria, altera ou remove serviços já existentes na VPS.**
+
+## 0. Infraestrutura existente (NÃO MEXER)
+
+| Recurso | Container | Imagem | Situação |
+|---|---|---|---|
+| Evolution API (WhatsApp) | `evolution` | `atendai/evolution-api:v1.6.0` | **REUTILIZADA** — nunca recriar |
+| MongoDB da Evolution | `mongodb-lab` | `mongo:7` (rede `evolution-lab`) | **INTACTO** — o FUNecob não cria MongoDB |
+| Nexus 33 (rede/volumes/Caddy/DB) | `deploy-*`, `nexus33_*` | — | **NÃO UTILIZADO** |
+
+O `docker-compose.yml` do FUNecob **não define** Evolution nem MongoDB. A integração é
+feita apenas por variáveis de ambiente (`EVOLUTION_API_URL`, `EVOLUTION_API_KEY`).
+
+### Como o FUNecob alcança a Evolution existente
+
+Dentro do Docker, `localhost` é o **próprio container**. Para chegar à Evolution
+publicada na porta `8080` do host, o compose adiciona `host.docker.internal:host-gateway`
+ao container de Edge Functions. No `.env`:
+
+```
+EVOLUTION_API_URL=http://host.docker.internal:8080
+EVOLUTION_API_KEY=<a chave da Evolution JÁ EXISTENTE>
+```
+
+Alternativas válidas (não altere a rede da Evolution sem necessidade):
+
+- IP do bridge do host: `http://172.17.0.1:8080`
+- Domínio público já existente: `https://wa.seudominio.com.br`
+
+> A `EVOLUTION_API_KEY` **não** é gerada pelo `genkeys.sh`: use a chave atual em produção.
+
+Precedência em runtime: `whatsapp_instances.api_url` → `global_settings.api_host` → `EVOLUTION_API_URL`.
+Se houver URLs antigas gravadas no banco, elas ganham do `.env` — confira após migrar:
+
+```sql
+SELECT id, instance_name, api_url FROM public.whatsapp_instances;
+SELECT api_host FROM public.global_settings;
+```
 
 ## 1. Requisitos
 
-- Ubuntu 22.04+ / Debian 12+ com root ou sudo
-- 4 vCPU · 8 GB RAM · 60 GB SSD (mínimo recomendado)
-- Docker Engine 24+ e plugin `docker compose` v2
-- Git, OpenSSL, Python 3
+Ubuntu 22.04+/Debian 12+, Docker Engine 24+, plugin `docker compose` v2, Git, OpenSSL, Python 3.
 
-```bash
-curl -fsSL https://get.docker.com | sh
-apt-get install -y git openssl python3
+## 2. Portas
+
+O FUNecob publica **somente em `127.0.0.1`**:
+
+| Porta host | Serviço |
+|---|---|
+| `127.0.0.1:54320` | Frontend (`funecob-web`) |
+| `127.0.0.1:54321` | API / Kong (`funecob-kong`) |
+| `127.0.0.1:54322` | PostgreSQL do FUNecob (nunca público) |
+
+Nada é publicado em `80`, `443`, `8080`, `8000`, `5432` ou `6543`.
+O `install.sh` verifica cada porta e **aborta** (sem parar nada) em caso de conflito.
+
+## 3. Reverse proxy / HTTPS
+
+### Opção A (recomendada) — usar o proxy que já existe na VPS
+
+Mantenha `USE_OWN_PROXY=false`. O `funecob-caddy` fica desligado (profile `proxy`).
+Adicione ao proxy existente:
+
+**Caddy**
+```
+financeiro.funecob.com.br {
+    reverse_proxy 127.0.0.1:54320
+}
+api.funecob.com.br {
+    request_body { max_size 50MB }
+    reverse_proxy 127.0.0.1:54321
+}
 ```
 
-## 2. Portas 80 e 443
+**Nginx**
+```nginx
+server {
+    server_name financeiro.funecob.com.br;
+    location / { proxy_pass http://127.0.0.1:54320; proxy_set_header Host $host; }
+}
+server {
+    server_name api.funecob.com.br;
+    client_max_body_size 50m;
+    location / {
+        proxy_pass http://127.0.0.1:54321;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
+}
+```
+(HTTPS via `certbot --nginx -d financeiro.funecob.com.br -d api.funecob.com.br`.)
 
-O Caddy do FUNecob precisa das portas 80/443. Se outro serviço já as ocupa
-(por exemplo o proxy de outro projeto), há duas saídas:
+**Traefik** — publique os labels apontando para `http://127.0.0.1:54320` e `:54321`
+no seu arquivo dinâmico; não altere a rede do FUNecob.
 
-1. **Recomendado** — dedicar 80/443 ao `funecob-caddy` (não altere o proxy do outro projeto:
-   apenas pare o que estiver escutando, ou use um IP secundário na VPS).
-2. **Alternativa** — mudar `CADDY_HTTP_PORT`/`CADDY_HTTPS_PORT` no `.env` e apontar
-   manualmente o proxy existente para essas portas. Neste caso o HTTPS deixa de ser
-   emitido pelo Caddy do FUNecob.
+### Opção B — proxy dedicado do FUNecob
 
-## 3. DNS
+Só se `80/443` estiverem livres. No `.env`: `USE_OWN_PROXY=true` (ou mude
+`CADDY_HTTP_PORT`/`CADDY_HTTPS_PORT`/`CADDY_BIND_IP`). O `deploy/Caddyfile` já serve
+`APP_DOMAIN` e `API_DOMAIN` — a Evolution existente **não** é servida por ele.
 
-Aponte três registros A para o IP da VPS:
+## 4. DNS
 
 ```
 financeiro.funecob.com.br   A   <IP-DA-VPS>
 api.funecob.com.br          A   <IP-DA-VPS>
-wa.funecob.com.br           A   <IP-DA-VPS>
 ```
 
-O Let's Encrypt só emite após o DNS propagar. Confirme com `dig +short api.funecob.com.br`.
-
-## 4. Clone e instalação
+## 5. Instalação
 
 ```bash
 git clone https://github.com/joilsonmarinho43-ux/financeiro-funecob-com-br.git funecob
 cd funecob
+cp .env.example .env
+nano .env          # domínios, ACME_EMAIL, EVOLUTION_API_URL/KEY, Mercado Pago, Gemini
 ./deploy/install.sh
 ```
 
-O instalador:
+O instalador (15 etapas): Docker → diretórios → `.env` (+ segredos) → validação de
+variáveis → **verificação de portas** → **detecção da Evolution existente** → rede
+`funecob_network` → volumes `funecob_*` → build do frontend → PostgreSQL → migrations →
+serviços → buckets → healthcheck → relatório final.
 
-1. verifica Docker, Compose, Git e OpenSSL;
-2. cria diretórios (`backups/`, `deploy/db/init`, `deploy/kong`);
-3. cria `.env` a partir de `.env.example` **e gera todos os segredos**
-   (`JWT_SECRET`, `ANON_KEY`, `SERVICE_ROLE_KEY`, senhas do Postgres/Mongo,
-   chaves do Realtime, `EVOLUTION_API_KEY`, `BIP_API_KEY`) — abre o editor para os domínios;
-4. valida as variáveis obrigatórias e `docker compose config`;
-5. cria a rede `funecob_network`;
-6. constrói a imagem do frontend com as variáveis `VITE_*` corretas;
-7. sobe o PostgreSQL e espera o healthcheck;
-8. aplica as migrations (`deploy/migrate.sh`, idempotente);
-9. sobe Auth, REST, Realtime, Storage, Edge Functions, Kong, MongoDB, Evolution, Web e Caddy;
-10. cria os buckets `logos` e `receipts`;
-11. roda o healthcheck e imprime o resumo.
+Rodar de novo é seguro: `.env` preservado, volumes intactos, migrations idempotentes.
+O script **nunca** executa `prune`, `rm -f`, `volume rm` ou `network rm`.
 
-**Rodar de novo é seguro**: o `.env` é preservado, volumes não são apagados e
-migrations já aplicadas são puladas.
+## 6. Primeiro acesso
 
-## 5. Primeiro acesso
-
-1. Abra `https://financeiro.funecob.com.br`.
-2. Crie a conta na tela de cadastro — o trigger `handle_new_user` cria perfil,
-   organização, vínculo `organization_members` e assinatura trial.
-3. Promova a conta a administrador global:
+1. Abra `https://financeiro.funecob.com.br` e crie a conta (o trigger `handle_new_user`
+   cria perfil, organização, vínculo e assinatura trial).
+2. Promova a admin:
 
 ```bash
 docker compose -p funecob exec funecob-db psql -U postgres -d postgres -c \
@@ -80,64 +140,48 @@ docker compose -p funecob exec funecob-db psql -U postgres -d postgres -c \
    ON CONFLICT DO NOTHING;"
 ```
 
-## 6. WhatsApp (Evolution API)
+## 7. WhatsApp
 
-1. Em **Configurações Globais** do app, informe:
-   - URL: `http://funecob-evolution:8080` (interno) ou `https://wa.funecob.com.br`
-   - API Key: valor de `EVOLUTION_API_KEY` do `.env`
-2. Crie a instância pelo painel de WhatsApp e leia o QR Code.
-3. Webhook das mensagens:
-   `https://api.funecob.com.br/functions/v1/whatsapp-webhook`
+No painel **Configurações Globais**, informe a URL e a API Key da **Evolution existente**
+(a mesma do `.env`). As instâncias já pareadas continuam funcionando — não recrie nada.
 
-## 7. Mercado Pago
+Webhook: `https://api.funecob.com.br/functions/v1/whatsapp-webhook`
 
-No `.env`:
+## 8. Mercado Pago
 
 ```
 MERCADOPAGO_ACCESS_TOKEN=...
 MERCADOPAGO_WEBHOOK_SECRET=...
 MERCADOPAGO_NOTIFICATION_URL=https://api.funecob.com.br/functions/v1/gateway-create-payment
 ```
+Depois `./deploy/update.sh`. Links antigos apontam para o ambiente anterior — veja [MIGRATION.md](MIGRATION.md).
 
-Depois `./deploy/update.sh`. Links de pagamento antigos apontam para o ambiente anterior —
-veja a estratégia de reemissão em [MIGRATION.md](MIGRATION.md).
-
-## 8. Cron (pg_cron)
-
-As rotinas rodam dentro do `funecob-db`. Após a instalação, agende:
+## 9. Cron (pg_cron, dentro do `funecob-db`)
 
 ```sql
 SELECT cron.schedule('funecob-billing-cron', '0 11 * * *', $$
   SELECT net.http_post(
     url := 'http://funecob-kong:8000/functions/v1/billing-cron',
-    headers := '{"Content-Type":"application/json","Authorization":"Bearer <SERVICE_ROLE_KEY>"}'::jsonb
-  );
+    headers := '{"Content-Type":"application/json","Authorization":"Bearer <SERVICE_ROLE_KEY>"}'::jsonb);
 $$);
 
 SELECT cron.schedule('funecob-whatsapp-sender', '*/2 * * * *', $$
   SELECT net.http_post(
     url := 'http://funecob-kong:8000/functions/v1/whatsapp-sender',
-    headers := '{"Content-Type":"application/json","Authorization":"Bearer <SERVICE_ROLE_KEY>"}'::jsonb
-  );
+    headers := '{"Content-Type":"application/json","Authorization":"Bearer <SERVICE_ROLE_KEY>"}'::jsonb);
 $$);
 ```
-
-Confira duplicidades com `SELECT jobid, jobname, schedule FROM cron.job;` —
-cada rotina deve aparecer **uma única vez**.
-
-## 9. Verificação
-
-```bash
-./deploy/healthcheck.sh
-./deploy/audit-dependencies.sh
-```
+Cada rotina deve aparecer **uma única vez** em `SELECT jobid, jobname, schedule FROM cron.job;`.
 
 ## 10. Operação
 
 ```bash
 docker compose -p funecob ps
 docker compose -p funecob logs -f funecob-edge-functions
-docker compose -p funecob restart funecob-web
+./deploy/healthcheck.sh
+./deploy/audit-dependencies.sh
+./deploy/update.sh        # atualiza SOMENTE o FUNecob
+./deploy/backup.sh
 ```
 
-Use **sempre** `-p funecob`. Nunca rode `docker compose down` na raiz de outro projeto.
+Use **sempre** `-p funecob`. Nunca rode `docker compose down` fora desta pasta.
