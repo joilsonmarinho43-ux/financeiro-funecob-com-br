@@ -19,10 +19,6 @@ volumes:
     name: funecob_db_data
   funecob_storage_data:
     name: funecob_storage_data
-  funecob_mongo_data:
-    name: funecob_mongo_data
-  funecob_evolution_data:
-    name: funecob_evolution_data
   funecob_caddy_data:
     name: funecob_caddy_data
   funecob_caddy_config:
@@ -211,6 +207,10 @@ services:
       LOVABLE_API_KEY: ${LOVABLE_API_KEY:-}
       BIP_API_KEY: ${BIP_API_KEY:-}
       TZ: ${TZ:-America/Sao_Paulo}
+    # Permite alcançar a Evolution API JÁ EXISTENTE na VPS (container "evolution",
+    # publicado em 8080 no host). EVOLUTION_API_URL deve usar host.docker.internal.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./supabase/functions:/home/deno/functions:ro
     command: ["start", "--main-service", "/home/deno/functions"]
@@ -258,6 +258,10 @@ services:
       TZ: ${TZ:-America/Sao_Paulo}
     security_opt:
       - no-new-privileges:true
+    # Porta só no loopback: permite que um proxy já existente na VPS
+    # (Caddy/Nginx/Traefik de outro projeto) faça proxy sem expor nada.
+    ports:
+      - "127.0.0.1:${WEB_HTTP_PORT:-54320}:8080"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
       interval: 30s
@@ -265,54 +269,23 @@ services:
       retries: 3
       start_period: 10s
 
-  # --------------------------------------------------------- MONGODB
-  funecob-mongodb:
-    <<: *common
-    image: mongo:7
-    container_name: funecob-mongodb
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-funecob}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?defina MONGO_PASSWORD no .env}
-      TZ: ${TZ:-America/Sao_Paulo}
-    volumes:
-      - funecob_mongo_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
-      interval: 20s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
-
-  # -------------------------------------------------------- EVOLUTION
-  funecob-evolution:
-    <<: *common
-    image: atendai/evolution-api:v2.1.1
-    container_name: funecob-evolution
-    depends_on:
-      funecob-mongodb:
-        condition: service_healthy
-    environment:
-      SERVER_URL: ${EVOLUTION_PUBLIC_URL}
-      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?defina EVOLUTION_API_KEY no .env}
-      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
-      DATABASE_ENABLED: "true"
-      DATABASE_PROVIDER: mongodb
-      DATABASE_CONNECTION_URI: mongodb://${MONGO_USER:-funecob}:${MONGO_PASSWORD}@funecob-mongodb:27017/funecob-evolution?authSource=admin
-      DATABASE_CONNECTION_DB_PREFIX_NAME: funecob
-      CACHE_REDIS_ENABLED: "false"
-      CACHE_LOCAL_ENABLED: "true"
-      CONFIG_SESSION_PHONE_CLIENT: FUNecob
-      CONFIG_SESSION_PHONE_NAME: Chrome
-      DEL_INSTANCE: "false"
-      QRCODE_LIMIT: "10"
-      LOG_LEVEL: ERROR
-      TZ: ${TZ:-America/Sao_Paulo}
-    volumes:
-      - funecob_evolution_data:/evolution/instances
+  # ---------------------------------------------------------------
+  # EVOLUTION API / MONGODB — NÃO SÃO DEFINIDOS AQUI DE PROPÓSITO.
+  # A VPS já possui em produção:
+  #   container "evolution"    (atendai/evolution-api:v1.6.0, porta 8080)
+  #   container "mongodb-lab"  (mongo:7, rede "evolution-lab")
+  # O FUNecob REUTILIZA esses serviços via EVOLUTION_API_URL/EVOLUTION_API_KEY.
+  # NUNCA recriar, substituir ou remover esses containers.
+  # ---------------------------------------------------------------
 
   # ----------------------------------------------------------- CADDY
+  # Proxy DEDICADO do FUNecob — OPCIONAL.
+  # Só sobe com: COMPOSE_PROFILES=proxy  (ou USE_OWN_PROXY=true no .env).
+  # Se a VPS já usa 80/443 em outro proxy, NÃO habilite este serviço:
+  # aponte o proxy existente para 127.0.0.1:${WEB_HTTP_PORT} e :${KONG_HTTP_PORT}.
   funecob-caddy:
     <<: *common
+    profiles: ["proxy"]
     image: caddy:2-alpine
     container_name: funecob-caddy
     depends_on:
@@ -321,11 +294,10 @@ services:
     environment:
       APP_DOMAIN: ${APP_DOMAIN}
       API_DOMAIN: ${API_DOMAIN}
-      EVOLUTION_DOMAIN: ${EVOLUTION_DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL}
     ports:
-      - "${CADDY_HTTP_PORT:-80}:80"
-      - "${CADDY_HTTPS_PORT:-443}:443"
+      - "${CADDY_BIND_IP:-0.0.0.0}:${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_BIND_IP:-0.0.0.0}:${CADDY_HTTPS_PORT:-443}:443"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - funecob_caddy_data:/data
