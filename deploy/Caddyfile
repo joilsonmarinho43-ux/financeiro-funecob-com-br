@@ -1,0 +1,64 @@
+# =====================================================================
+# FUNecob — Reverse proxy / HTTPS PRÓPRIO (funecob-caddy)
+# Não substitui, não lê e não altera o Caddy de nenhum outro projeto.
+# Certificados Let's Encrypt automáticos no volume funecob_caddy_data.
+# =====================================================================
+
+{
+	email {$ACME_EMAIL}
+}
+
+# --------------------------------------------------- Frontend (SPA)
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy funecob-web:8080
+}
+
+# ------------------------------------ API própria do FUNecob (Kong)
+{$API_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	request_body {
+		max_size 50MB
+	}
+
+	reverse_proxy funecob-kong:8000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		transport http {
+			read_timeout 300s
+		}
+	}
+}
+
+# ------------------------------------------- Evolution API (WhatsApp)
+{$EVOLUTION_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	reverse_proxy funecob-evolution:8080 {
+		transport http {
+			read_timeout 300s
+		}
+	}
+}
