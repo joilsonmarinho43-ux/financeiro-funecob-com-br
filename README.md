@@ -112,4 +112,17 @@ React 18 · Vite 5 · TypeScript · Tailwind · shadcn/ui · TanStack Query · S
 
 ## Segurança
 
-Nunca versione `.env`, chaves ou backups. Veja `.gitignore` e `.env.example`.
+Nunca versione `.env`, chaves ou backups. Veja `.gitignore` e `.env.example`
+(o exemplo contém apenas **nomes** de variáveis, nunca valores reais).
+
+> **Pendência obrigatória antes do `git push`:** o `.env` está no `.gitignore`,
+> porém ainda **rastreado** pelo Git. Execute uma única vez:
+>
+> ```bash
+> git rm --cached .env
+> git commit -m "chore: remove .env do versionamento"
+> ```
+>
+> `./deploy/audit-dependencies.sh` continua reprovando enquanto isso não for feito.
+> Rotacione também a `EVOLUTION_API_KEY` que aparece no histórico das migrations.
+

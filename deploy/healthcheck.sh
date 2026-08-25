@@ -42,7 +42,25 @@ check "Evolution API (existente)" curl -fsS -o /dev/null --max-time 8 \
 check "Evolution a partir do container" dc exec -T funecob-edge-functions \
       curl -fsS -o /dev/null --max-time 8 -H "apikey: ${EVOLUTION_API_KEY}" "${EVOLUTION_API_URL%/}/"
 
+echo "------------------- isolamento de rede ----------------------"
+for c in funecob-db funecob-auth funecob-rest funecob-realtime funecob-storage \
+         funecob-edge-functions funecob-kong funecob-web; do
+  nets="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$c" 2>/dev/null)"
+  if [ -z "$nets" ]; then
+    printf "${C_YEL}[--]${C_RESET}    %s não está em execução\n" "$c"
+    continue
+  fi
+  extra="$(echo "$nets" | tr ' ' '\n' | grep -v '^funecob_network$' | grep -v '^$' | tr '\n' ' ')"
+  if [ -z "$extra" ]; then
+    printf "${C_GREEN}[OK]${C_RESET}    %s — somente funecob_network\n" "$c"
+  else
+    printf "${C_RED}[ERRO]${C_RESET}  %s conectado a rede(s) de terceiros: %s\n" "$c" "$extra"
+    FAILED=$((FAILED+1))
+  fi
+done
+
 echo "----------------------- DNS e HTTPS -------------------------"
+
 check "DNS ${APP_DOMAIN}"  getent hosts "${APP_DOMAIN}"
 check "DNS ${API_DOMAIN}"  getent hosts "${API_DOMAIN}"
 if [ "${USE_OWN_PROXY:-false}" = "true" ]; then
