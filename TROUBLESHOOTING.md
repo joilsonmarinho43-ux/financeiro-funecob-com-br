@@ -108,8 +108,10 @@ Inclua-a no bloco `environment` de `funecob-edge-functions` e reinicie o serviç
 ## WhatsApp / Evolution
 
 **QR Code não aparece**
-`docker compose -p funecob logs -f funecob-evolution`. Verifique
-`EVOLUTION_API_KEY` no app e `SERVER_URL` = `EVOLUTION_PUBLIC_URL`.
+A Evolution é a **já existente** na VPS: `docker logs -f evolution` (fora do compose do
+FUNecob). Verifique `EVOLUTION_API_KEY` no app e a acessibilidade de `EVOLUTION_API_URL`
+(`./deploy/healthcheck.sh` testa isso de dentro e de fora do container).
+
 
 **Instância desconecta sozinha**
 Nomes de instância colidindo entre organizações ou bloqueio do WhatsApp por volume.
