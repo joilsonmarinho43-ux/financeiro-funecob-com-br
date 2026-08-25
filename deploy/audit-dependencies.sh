@@ -126,8 +126,9 @@ git ls-files 2>/dev/null | grep -E '(^|/)\.env$|\.pem$|\.key$|^secrets/|^backups
   && fail "arquivo sensível rastreado — rode: git rm --cached .env && git commit" \
   || pass "nenhum arquivo sensível rastreado pelo Git"
 grep -qE '^\.env$' .gitignore && pass ".env está no .gitignore" || fail ".env fora do .gitignore"
-BADENV="$(grep -nE '^[A-Z_]+=.{12,}' .env.example | grep -vE '^[0-9]+:(APP_DOMAIN|API_DOMAIN|SITE_URL|PORTAL_BASE_URL|ADDITIONAL_REDIRECT_URLS|SUPABASE_PUBLIC_URL|VITE_|EVOLUTION_API_URL|MERCADOPAGO_NOTIFICATION_URL|CRON_|TZ|PGRST_|SMTP_ADMIN_EMAIL|SMTP_SENDER_NAME|ACME_EMAIL|STORAGE_FILE)' || true)"
-[ -z "$BADENV" ] && pass ".env.example sem valores reais de segredo" || { echo "$BADENV"; fail "possível segredo no .env.example"; }
+SECRET_KEYS='ANON_KEY|SERVICE_ROLE_KEY|JWT_SECRET|POSTGRES_PASSWORD|REALTIME_ENC_KEY|REALTIME_SECRET_KEY_BASE|EVOLUTION_API_KEY|EVOLUTION_WEBHOOK_SECRET|MERCADOPAGO_ACCESS_TOKEN|MERCADOPAGO_WEBHOOK_SECRET|GEMINI_API_KEY|LOVABLE_API_KEY|BIP_API_KEY|SMTP_PASS|VITE_SUPABASE_PUBLISHABLE_KEY'
+BADENV="$(grep -nE "^(${SECRET_KEYS})=.+" .env.example || true)"
+[ -z "$BADENV" ] && pass ".env.example contém apenas nomes de variáveis (sem valores reais)" || { echo "$BADENV"; fail "possível segredo no .env.example"; }
 
 # ------------------------------------------------------------- Scripts
 section "10. Scripts e compose"
