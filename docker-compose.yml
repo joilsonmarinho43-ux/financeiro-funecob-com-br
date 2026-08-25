@@ -46,7 +46,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
-      POSTGRES_DB: ${POSTGRES_DB:-funecob}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
       JWT_EXP: ${JWT_EXPIRY:-3600}
       TZ: ${TZ:-America/Sao_Paulo}
@@ -57,14 +57,14 @@ services:
       - -c
       - shared_preload_libraries=pg_stat_statements,pg_cron
       - -c
-      - cron.database_name=${POSTGRES_DB:-funecob}
+      - cron.database_name=${POSTGRES_DB:-postgres}
     volumes:
       - funecob_db_data:/var/lib/postgresql/data
       - ./deploy/db/init:/docker-entrypoint-initdb.d:ro
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-54322}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-funecob}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -83,7 +83,7 @@ services:
       GOTRUE_API_PORT: 9999
       API_EXTERNAL_URL: ${SUPABASE_PUBLIC_URL}
       GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@funecob-db:5432/${POSTGRES_DB:-funecob}?search_path=auth&sslmode=disable
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@funecob-db:5432/${POSTGRES_DB:-postgres}?search_path=auth&sslmode=disable
       GOTRUE_SITE_URL: ${SITE_URL}
       GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS}
       GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP:-false}
@@ -119,7 +119,7 @@ services:
       funecob-db:
         condition: service_healthy
     environment:
-      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@funecob-db:5432/${POSTGRES_DB:-funecob}
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@funecob-db:5432/${POSTGRES_DB:-postgres}
       PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS:-public,storage,graphql_public}
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: ${JWT_SECRET}
@@ -142,7 +142,7 @@ services:
       DB_PORT: 5432
       DB_USER: supabase_admin
       DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DB_NAME: ${POSTGRES_DB:-funecob}
+      DB_NAME: ${POSTGRES_DB:-postgres}
       DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
       DB_ENC_KEY: ${REALTIME_ENC_KEY:?defina REALTIME_ENC_KEY no .env}
       API_JWT_SECRET: ${JWT_SECRET}
@@ -169,7 +169,7 @@ services:
       SERVICE_KEY: ${SERVICE_ROLE_KEY}
       POSTGREST_URL: http://funecob-rest:3000
       PGRST_JWT_SECRET: ${JWT_SECRET}
-      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD}@funecob-db:5432/${POSTGRES_DB:-funecob}
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD}@funecob-db:5432/${POSTGRES_DB:-postgres}
       FILE_SIZE_LIMIT: ${STORAGE_FILE_SIZE_LIMIT:-52428800}
       STORAGE_BACKEND: file
       FILE_STORAGE_BACKEND_PATH: /var/lib/storage
@@ -198,7 +198,7 @@ services:
       SUPABASE_URL: http://funecob-kong:8000
       SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
-      SUPABASE_DB_URL: postgres://postgres:${POSTGRES_PASSWORD}@funecob-db:5432/${POSTGRES_DB:-funecob}
+      SUPABASE_DB_URL: postgres://postgres:${POSTGRES_PASSWORD}@funecob-db:5432/${POSTGRES_DB:-postgres}
       SUPABASE_JWT_SECRET: ${JWT_SECRET}
       VERIFY_JWT: "false"
       PORTAL_BASE_URL: ${PORTAL_BASE_URL}
