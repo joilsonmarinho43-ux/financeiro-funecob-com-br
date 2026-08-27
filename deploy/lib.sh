@@ -257,3 +257,13 @@ render_kong_config() {
   grep -qF "$svc"  "$out" || { err "Kong: SERVICE_ROLE_KEY não aplicada"; return 1; }
   return 0
 }
+
+# jwt_matches_secret <token> <secret> — confere se o JWT foi assinado com o
+# JWT_SECRET atual (evita ANON_KEY/SERVICE_ROLE_KEY órfãs de instalações antigas).
+jwt_matches_secret() {
+  local token="$1" secret="$2" data sig calc
+  case "$token" in *.*.*) ;; *) return 1 ;; esac
+  data="${token%.*}"; sig="${token##*.}"
+  calc="$(printf '%s' "$data" | openssl dgst -binary -sha256 -hmac "$secret" | _b64url)"
+  [ "$calc" = "$sig" ]
+}
