@@ -57,15 +57,33 @@ load_env_file() {
       [A-Za-z_][A-Za-z0-9_]*) ;;
       *) continue ;;
     esac
-    # remove aspas externas
-    if [ "${val#\"}" != "$val" ] && [ "${val%\"}" != "$val" ]; then
-      val="${val#\"}"; val="${val%\"}"
-    elif [ "${val#\'}" != "$val" ] && [ "${val%\'}" != "$val" ]; then
-      val="${val#\'}"; val="${val%\'}"
-    fi
+    val="$(sanitize_env_value "$val")"
     printf -v "$key" '%s' "$val"
     export "${key?}"
   done < "$file"
+}
+
+# Normaliza um valor lido do .env:
+#   * remove aspas externas ("valor" / 'valor')
+#   * remove comentário inline em valores NÃO aspados (ex.: 54320   # frontend)
+#   * remove espaços em branco nas pontas
+# Valores entre aspas são preservados literalmente (podem conter '#').
+sanitize_env_value() {
+  local val="$1"
+  if [ "${val#\"}" != "$val" ] && [ "${val%\"}" != "$val" ] && [ ${#val} -ge 2 ]; then
+    val="${val#\"}"; val="${val%\"}"
+    printf '%s' "$val"; return 0
+  fi
+  if [ "${val#\'}" != "$val" ] && [ "${val%\'}" != "$val" ] && [ ${#val} -ge 2 ]; then
+    val="${val#\'}"; val="${val%\'}"
+    printf '%s' "$val"; return 0
+  fi
+  # comentário inline só é reconhecido quando precedido de espaço/tab
+  val="$(printf '%s' "$val" | sed -E 's/[[:space:]]+#.*$//')"
+  # trim
+  val="${val#"${val%%[![:space:]]*}"}"
+  val="${val%"${val##*[![:space:]]}"}"
+  printf '%s' "$val"
 }
 
 require_env() {
@@ -75,10 +93,26 @@ require_env() {
 
 # Lê um valor do .env sem exportar (sem executar nada)
 env_get() {
-  local key="$1"
-  sed -n "s/^[[:space:]]*${key}=//p" "$ENV_FILE" 2>/dev/null | head -1 \
-    | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
+  local key="$1" raw
+  raw="$(sed -n "s/^[[:space:]]*${key}=//p" "$ENV_FILE" 2>/dev/null | head -1)"
+  sanitize_env_value "$raw"
 }
+
+# Reescreve no .env todos os valores numéricos/simples já sanitizados,
+# eliminando comentários inline herdados de .env.example antigos.
+normalize_env_file() {
+  local k v
+  for k in WEB_HTTP_PORT KONG_HTTP_PORT POSTGRES_PORT CADDY_HTTP_PORT CADDY_HTTPS_PORT \
+           SMTP_PORT JWT_EXPIRY CRON_TICK_SECONDS BILLING_CRON_HOUR \
+           STORAGE_FILE_SIZE_LIMIT BACKUP_RETENTION_DAYS \
+           WHATSAPP_MAX_PER_MINUTE WHATSAPP_MAX_PER_HOUR WHATSAPP_MAX_PER_DAY \
+           USE_OWN_PROXY DISABLE_SIGNUP MAILER_AUTOCONFIRM TZ CADDY_BIND_IP; do
+    grep -qE "^[[:space:]]*${k}=" "$ENV_FILE" 2>/dev/null || continue
+    v="$(env_get "$k")"
+    env_set "$k" "$v"
+  done
+}
+
 
 # Define/atualiza uma variável no .env preservando o restante do arquivo
 env_set() {
