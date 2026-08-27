@@ -64,6 +64,12 @@ else
 fi
 chmod 600 "$ENV_FILE"
 
+# Remove comentários inline / espaços herdados de .env antigos (ex.: "54320  # web")
+normalize_env_file
+ok "Valores do .env normalizados (sem comentários inline)"
+
+
+
 # --- segredos: gerados automaticamente APENAS quando ausentes/vazios ---
 JWT_S="$(env_get JWT_SECRET)"
 if [ -z "$JWT_S" ] || [ ${#JWT_S} -lt 32 ]; then
