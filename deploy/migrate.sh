@@ -12,12 +12,11 @@ MIG_DIR="${FUNECOB_ROOT}/supabase/migrations"
 
 wait_healthy funecob-db 60 || die "funecob-db indisponível"
 
-psql_root -q <<'SQL'
-CREATE TABLE IF NOT EXISTS public.schema_migrations (
-  version     text PRIMARY KEY,
-  applied_at  timestamptz NOT NULL DEFAULT now()
-);
-SQL
+# A infraestrutura interna (schemas auth/storage/_realtime, roles e funções
+# auth.*) é pré-requisito das migrations. Garantimos + validamos aqui também,
+# para que ./deploy/migrate.sh seja seguro quando executado isoladamente.
+"${FUNECOB_ROOT}/deploy/bootstrap-db.sh" \
+  || die "Bootstrap do banco falhou — nenhuma migration foi executada"
 
 applied=0; skipped=0
 for f in $(ls -1 "$MIG_DIR"/*.sql | sort); do
@@ -32,7 +31,9 @@ for f in $(ls -1 "$MIG_DIR"/*.sql | sort); do
     psql_root -q -c "INSERT INTO public.schema_migrations(version) VALUES ('${version}') ON CONFLICT DO NOTHING"
     applied=$((applied+1))
   else
-    die "Falha na migration ${version}. Nada além dela foi aplicado."
+    err "Falha na migration ${version} — ela NÃO foi marcada como aplicada."
+    err "Corrija a causa e rode novamente: ./deploy/migrate.sh (reexecução é segura)."
+    exit 3
   fi
 done
 
