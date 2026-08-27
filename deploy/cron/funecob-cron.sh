@@ -14,7 +14,12 @@ set -u
 KONG="${KONG_INTERNAL_URL:-http://funecob-kong:8000}"
 KEY="${SERVICE_ROLE_KEY:?SERVICE_ROLE_KEY ausente}"
 TICK="${CRON_TICK_SECONDS:-120}"
-DAILY_HOUR="$(printf '%02d' "$(( ${BILLING_CRON_HOUR:-08} + 0 ))" 2>/dev/null || echo 08)"
+_H="${BILLING_CRON_HOUR:-8}"
+_H="${_H#0}"                       # evita interpretação octal (08/09)
+[ -n "$_H" ] || _H=0
+case "$_H" in *[!0-9]*) _H=8 ;; esac
+DAILY_HOUR="$(printf '%02d' "$_H")"
+
 LAST_DAILY=""
 
 call() {
