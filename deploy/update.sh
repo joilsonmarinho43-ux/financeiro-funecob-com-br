@@ -34,8 +34,11 @@ fi
 verify_network_managed || warn "Rede ${NETWORK_NAME} sem labels do Compose — rode ./deploy/install.sh"
 wait_healthy funecob-db 60 || die "funecob-db indisponível após atualização"
 
-title "5/6 Migrations pendentes"
-./deploy/migrate.sh
+title "5/6 Bootstrap do banco + migrations pendentes"
+# Mesma arquitetura do instalador: nunca assumir que um volume existente já
+# possui schemas auth/storage/_realtime, roles e funções auth.*.
+./deploy/bootstrap-db.sh || die "Bootstrap do PostgreSQL falhou — update abortado"
+./deploy/migrate.sh || die "Migrations interrompidas — veja a migration indicada acima"
 dc restart funecob-rest funecob-edge-functions >/dev/null
 ok "Schema recarregado"
 

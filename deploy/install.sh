@@ -282,13 +282,27 @@ verify_network_managed || die "Rede ${NETWORK_NAME} não ficou sob gestão do Co
 wait_healthy funecob-db 60 || die "funecob-db não subiu"
 add "PostgreSQL próprio ........... OK"
 
-# ------------------------------------------------------ 11. Migrations
-title "11/15 Migrations"
-./deploy/migrate.sh
+# ------------------------------------------------------ 11. Bootstrap do banco
+title "11/15 Bootstrap idempotente do PostgreSQL"
+# Volumes já existentes NÃO reexecutam /docker-entrypoint-initdb.d; por isso o
+# bootstrap (schemas auth/storage/_realtime, roles, extensões e funções auth.*)
+# é sempre aplicado aqui, de forma idempotente e não destrutiva.
+./deploy/bootstrap-db.sh || die "Bootstrap do PostgreSQL falhou"
+add "Bootstrap do PostgreSQL ...... OK"
+
+# ------------------------------------------------------ 12. Validação do banco
+title "12/15 Validação de schemas, roles, funções e extensões"
+./deploy/bootstrap-db.sh --verify \
+  || die "Infraestrutura do banco incompleta — migrations não executadas"
+add "Infraestrutura do banco ...... OK"
+
+# ------------------------------------------------------ 13. Migrations
+title "13/15 Migrations"
+./deploy/migrate.sh || die "Migrations interrompidas — veja a migration indicada acima"
 add "Migrations ................... OK"
 
-# ------------------------------------------------------ 12. Serviços
-title "12/15 Subindo os serviços do FUNecob"
+# ------------------------------------------------------ 14. Serviços
+title "14/15 Subindo os serviços do FUNecob"
 if [ "${USE_OWN_PROXY:-false}" = "true" ]; then
   COMPOSE_PROFILES=proxy dc --profile proxy up -d
 else
@@ -299,12 +313,11 @@ for s in funecob-auth funecob-rest funecob-storage funecob-realtime \
   wait_healthy "$s" 40 || true
 done
 
-# ------------------------------------------------------ 13. Buckets
-title "13/15 Storage (buckets)"
+# Buckets de Storage (idempotente)
 ./deploy/seed-storage.sh || warn "Não foi possível criar os buckets agora — rode ./deploy/seed-storage.sh depois"
 
-# ------------------------------------------------------ 14. Healthcheck
-title "14/15 Verificação geral"
+# ------------------------------------------------------ 15. Healthcheck
+title "15/15 Verificação geral e relatório"
 if ./deploy/healthcheck.sh; then
   add "Healthcheck .................. OK"
 else
