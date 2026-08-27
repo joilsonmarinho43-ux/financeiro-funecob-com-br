@@ -136,9 +136,23 @@ for d in "$APP_DOMAIN" "$API_DOMAIN"; do
   echo "$d" | grep -qE '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$' \
     || die "Domínio inválido: $d"
 done
-for p in "${WEB_HTTP_PORT:-54320}" "${KONG_HTTP_PORT:-54321}" "${POSTGRES_PORT:-54322}"; do
-  echo "$p" | grep -qE '^[0-9]{2,5}$' || die "Porta inválida: $p"
+for pv in "WEB_HTTP_PORT:${WEB_HTTP_PORT:-54320}" "KONG_HTTP_PORT:${KONG_HTTP_PORT:-54321}" \
+          "POSTGRES_PORT:${POSTGRES_PORT:-54322}"; do
+  pname="${pv%%:*}"; p="${pv#*:}"
+  echo "$p" | grep -qE '^[0-9]{2,5}$' \
+    || die "Porta inválida em ${pname}: '${p}'. Use SOMENTE números (ex.: ${pname}=54320), sem comentário na mesma linha."
+  [ "$p" -ge 1 ] && [ "$p" -le 65535 ] || die "Porta fora da faixa em ${pname}: ${p}"
 done
+for nv in "CRON_TICK_SECONDS:${CRON_TICK_SECONDS:-120}" "BILLING_CRON_HOUR:${BILLING_CRON_HOUR:-08}" \
+          "SMTP_PORT:${SMTP_PORT:-587}" "JWT_EXPIRY:${JWT_EXPIRY:-3600}" \
+          "STORAGE_FILE_SIZE_LIMIT:${STORAGE_FILE_SIZE_LIMIT:-52428800}"; do
+  nname="${nv%%:*}"; n="${nv#*:}"
+  echo "$n" | grep -qE '^[0-9]+$' || die "Valor numérico inválido em ${nname}: '${n}'"
+done
+[ "${BILLING_CRON_HOUR:-08}" -ge 0 ] && [ "${BILLING_CRON_HOUR:-08}" -le 23 ] \
+  || die "BILLING_CRON_HOUR deve estar entre 00 e 23"
+case "${USE_OWN_PROXY:-false}" in true|false) ;; *) die "USE_OWN_PROXY deve ser true ou false (atual: '${USE_OWN_PROXY}')" ;; esac
+
 
 # Nenhuma variável pode apontar para outro projeto da VPS
 for v in SUPABASE_PUBLIC_URL SITE_URL PORTAL_BASE_URL VITE_SUPABASE_URL EVOLUTION_API_URL; do
