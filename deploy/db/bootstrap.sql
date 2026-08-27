@@ -16,6 +16,10 @@
 
 \set ON_ERROR_STOP on
 
+-- A senha vai para uma GUC de sessão: variáveis psql (:'db_password') não
+-- são interpoladas com segurança dentro de blocos DO $$ ... $$.
+SELECT set_config('funecob.db_password', :'db_password', false);
+
 -- ------------------------------------------------------------ schemas base
 CREATE SCHEMA IF NOT EXISTS extensions;
 
@@ -72,7 +76,7 @@ DECLARE r text;
 BEGIN
   FOREACH r IN ARRAY ARRAY['authenticator','supabase_admin','supabase_auth_admin','supabase_storage_admin']
   LOOP
-    EXECUTE format('ALTER ROLE %I WITH PASSWORD %L', r, :'db_password');
+    EXECUTE format('ALTER ROLE %I WITH PASSWORD %L', r, current_setting('funecob.db_password'));
   END LOOP;
 END
 $$;
