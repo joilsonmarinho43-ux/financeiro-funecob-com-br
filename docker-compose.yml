@@ -251,17 +251,31 @@ services:
         condition: service_started
     environment:
       KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
+      KONG_DECLARATIVE_CONFIG: /home/kong/kong.generated.yml
       KONG_DNS_ORDER: LAST,A,CNAME
       KONG_PLUGINS: request-transformer,cors,key-auth,acl
       KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
       KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
-      SUPABASE_ANON_KEY: ${ANON_KEY}
-      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_ANON_KEY: ${ANON_KEY:?ANON_KEY ausente no .env}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY:?SERVICE_ROLE_KEY ausente no .env}
     volumes:
-      - ./deploy/kong/kong.yml:/home/kong/kong.yml:ro
+      # Template declarativo: as variáveis são substituídas ANTES do Kong subir.
+      - ./deploy/kong/kong.yml:/home/kong/kong.template.yml:ro
+    entrypoint:
+      - bash
+      - -c
+      - |
+        set -e
+        : "${SUPABASE_ANON_KEY:?ANON_KEY ausente}"
+        : "${SUPABASE_SERVICE_KEY:?SERVICE_ROLE_KEY ausente}"
+        eval "echo \"$$(cat /home/kong/kong.template.yml)\"" > /home/kong/kong.generated.yml
+        if grep -q 'SUPABASE_ANON_KEY\|SUPABASE_SERVICE_KEY' /home/kong/kong.generated.yml; then
+          echo "ERRO: variáveis do Kong não foram substituídas" >&2; exit 1
+        fi
+        exec /docker-entrypoint.sh kong docker-start
     ports:
       - "127.0.0.1:${KONG_HTTP_PORT:-54321}:8000"
+
 
   # ------------------------------------------------------------- WEB
   funecob-web:
