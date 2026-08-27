@@ -57,6 +57,7 @@ services:
     volumes:
       - funecob_db_data:/var/lib/postgresql/data
       - ./deploy/db/init:/docker-entrypoint-initdb.d:ro
+      - ./deploy/db/bootstrap.sql:/opt/funecob/bootstrap.sql:ro
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-54322}:5432"
     healthcheck:
