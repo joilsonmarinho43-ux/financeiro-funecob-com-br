@@ -3,8 +3,9 @@
 # FUNecob — INSTALAÇÃO AUTOMÁTICA E IDEMPOTENTE EM VPS COMPARTILHADA
 #
 #   git clone <REPO> funecob && cd funecob
-#   cp .env.example .env && nano .env
-#   ./deploy/install.sh
+#   ./deploy/install.sh            # instalação completa (gera os segredos)
+#   ./deploy/install.sh --check    # apenas valida, sem alterar nada
+
 #
 # Regras absolutas deste script:
 #   * NUNCA executa prune / rm -f / volume rm / network rm
