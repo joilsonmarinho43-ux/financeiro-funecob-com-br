@@ -53,6 +53,21 @@ check "SERVICE_ROLE_KEY registrada no Kong" \
   sh -c "test \"\$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'apikey: ${SERVICE_ROLE_KEY}' '${KONG}/rest/v1/')\" != '401'"
 check "Nenhum placeholder \$SUPABASE_* carregado no Kong" \
   sh -c "! docker exec funecob-kong grep -q 'SUPABASE_ANON_KEY\|SUPABASE_SERVICE_KEY' /home/kong/kong.generated.yml"
+check "YAML do Kong íntegro (aspas preservadas)" \
+  sh -c "docker exec funecob-kong grep -q 'origins: \[\"\*\"\]' /home/kong/kong.generated.yml"
+
+echo "-------------- Kong: rotas publicadas ------------------------"
+check "/auth/v1/health" sh -c "case \"\$(http_code '${KONG}/auth/v1/health')\" in 2*) exit 0;; *) exit 1;; esac"
+check "/rest/v1/ (apikey)" sh -c "case \"\$(http_code -H 'apikey: ${ANON_KEY}' '${KONG}/rest/v1/')\" in 2*) exit 0;; *) exit 1;; esac"
+check "/graphql/v1 (roteada)" \
+  sh -c "test \"\$(http_code -X POST -H 'apikey: ${ANON_KEY}' -H 'Content-Type: application/json' -d '{\"query\":\"{__typename}\"}' '${KONG}/graphql/v1')\" != '404'"
+check "/storage/v1/ (roteada)" \
+  sh -c "test \"\$(http_code -H 'apikey: ${ANON_KEY}' '${KONG}/storage/v1/bucket')\" != '404'"
+check "/functions/v1/ (roteada)" \
+  sh -c "test \"\$(http_code -H 'apikey: ${ANON_KEY}' '${KONG}/functions/v1/client-portal')\" != '404'"
+check "/realtime/v1/ (roteada)" \
+  sh -c "test \"\$(http_code -H 'apikey: ${ANON_KEY}' '${KONG}/realtime/v1/websocket')\" != '404'"
+
 
 
 echo "---------------- infraestrutura reutilizada ------------------"

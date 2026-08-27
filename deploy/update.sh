@@ -25,7 +25,12 @@ dc build funecob-web
 ok "Imagens atualizadas"
 
 title "4/6 Reiniciando serviços do FUNecob"
-dc up -d --remove-orphans
+# Só sobe o proxy dedicado se o usuário optou por ele; o Caddy da VPS não é tocado.
+if [ "${USE_OWN_PROXY:-false}" = "true" ]; then
+  dc --profile proxy up -d --remove-orphans
+else
+  dc up -d --remove-orphans
+fi
 wait_healthy funecob-db 60 || die "funecob-db indisponível após atualização"
 
 title "5/6 Migrations pendentes"

@@ -65,7 +65,29 @@ services:
           hide_groups_header: true
           allow: [admin, anon]
 
+  - name: graphql-v1
+    url: http://funecob-rest:3000/rpc/graphql
+    routes:
+      - name: graphql-v1-all
+        strip_path: true
+        paths: [/graphql/v1]
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+          key_names: [apikey]
+      - name: request-transformer
+        config:
+          add:
+            headers: ["Content-Profile:graphql_public"]
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow: [admin, anon]
+
   - name: realtime-v1
+
     url: http://funecob-realtime:4000/socket/
     protocol: http
     routes:

@@ -266,12 +266,16 @@ services:
       - -c
       - |
         set -e
-        : "${SUPABASE_ANON_KEY:?ANON_KEY ausente}"
-        : "${SUPABASE_SERVICE_KEY:?SERVICE_ROLE_KEY ausente}"
-        eval "echo \"$$(cat /home/kong/kong.template.yml)\"" > /home/kong/kong.generated.yml
+        : "$${SUPABASE_ANON_KEY:?ANON_KEY ausente}"
+        : "$${SUPABASE_SERVICE_KEY:?SERVICE_ROLE_KEY ausente}"
+        # Substituição literal (sem eval): preserva aspas, colchetes e listas YAML.
+        awk '{ gsub(/\$$SUPABASE_ANON_KEY/, ENVIRON["SUPABASE_ANON_KEY"]);
+               gsub(/\$$SUPABASE_SERVICE_KEY/, ENVIRON["SUPABASE_SERVICE_KEY"]);
+               print }' /home/kong/kong.template.yml > /home/kong/kong.generated.yml
         if grep -q 'SUPABASE_ANON_KEY\|SUPABASE_SERVICE_KEY' /home/kong/kong.generated.yml; then
           echo "ERRO: variáveis do Kong não foram substituídas" >&2; exit 1
         fi
+        grep -qF "$$SUPABASE_ANON_KEY" /home/kong/kong.generated.yml || { echo "ERRO: ANON_KEY não aplicada" >&2; exit 1; }
         exec /docker-entrypoint.sh kong docker-start
     ports:
       - "127.0.0.1:${KONG_HTTP_PORT:-54321}:8000"

@@ -64,6 +64,12 @@ else
 fi
 chmod 600 "$ENV_FILE"
 
+# Remove comentários inline / espaços herdados de .env antigos (ex.: "54320  # web")
+normalize_env_file
+ok "Valores do .env normalizados (sem comentários inline)"
+
+
+
 # --- segredos: gerados automaticamente APENAS quando ausentes/vazios ---
 JWT_S="$(env_get JWT_SECRET)"
 if [ -z "$JWT_S" ] || [ ${#JWT_S} -lt 32 ]; then
@@ -72,8 +78,14 @@ if [ -z "$JWT_S" ] || [ ${#JWT_S} -lt 32 ]; then
   env_set ANON_KEY ""; env_set SERVICE_ROLE_KEY ""
   ok "JWT_SECRET gerado"
 fi
-[ -n "$(env_get ANON_KEY)" ]         || { env_set ANON_KEY "$(sign_jwt anon "$JWT_S")"; ok "ANON_KEY gerada"; }
-[ -n "$(env_get SERVICE_ROLE_KEY)" ] || { env_set SERVICE_ROLE_KEY "$(sign_jwt service_role "$JWT_S")"; ok "SERVICE_ROLE_KEY gerada"; }
+AK="$(env_get ANON_KEY)"; SK="$(env_get SERVICE_ROLE_KEY)"
+if [ -z "$AK" ] || ! jwt_matches_secret "$AK" "$JWT_S"; then
+  env_set ANON_KEY "$(sign_jwt anon "$JWT_S")"; ok "ANON_KEY gerada/realinhada ao JWT_SECRET"
+fi
+if [ -z "$SK" ] || ! jwt_matches_secret "$SK" "$JWT_S"; then
+  env_set SERVICE_ROLE_KEY "$(sign_jwt service_role "$JWT_S")"; ok "SERVICE_ROLE_KEY gerada/realinhada ao JWT_SECRET"
+fi
+
 for pair in "POSTGRES_PASSWORD:24" "REALTIME_SECRET_KEY_BASE:32" \
             "EVOLUTION_WEBHOOK_SECRET:32" "BIP_API_KEY:32"; do
   k="${pair%%:*}"; n="${pair##*:}"
@@ -130,9 +142,23 @@ for d in "$APP_DOMAIN" "$API_DOMAIN"; do
   echo "$d" | grep -qE '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$' \
     || die "Domínio inválido: $d"
 done
-for p in "${WEB_HTTP_PORT:-54320}" "${KONG_HTTP_PORT:-54321}" "${POSTGRES_PORT:-54322}"; do
-  echo "$p" | grep -qE '^[0-9]{2,5}$' || die "Porta inválida: $p"
+for pv in "WEB_HTTP_PORT:${WEB_HTTP_PORT:-54320}" "KONG_HTTP_PORT:${KONG_HTTP_PORT:-54321}" \
+          "POSTGRES_PORT:${POSTGRES_PORT:-54322}"; do
+  pname="${pv%%:*}"; p="${pv#*:}"
+  echo "$p" | grep -qE '^[0-9]{2,5}$' \
+    || die "Porta inválida em ${pname}: '${p}'. Use SOMENTE números (ex.: ${pname}=54320), sem comentário na mesma linha."
+  [ "$p" -ge 1 ] && [ "$p" -le 65535 ] || die "Porta fora da faixa em ${pname}: ${p}"
 done
+for nv in "CRON_TICK_SECONDS:${CRON_TICK_SECONDS:-120}" "BILLING_CRON_HOUR:${BILLING_CRON_HOUR:-08}" \
+          "SMTP_PORT:${SMTP_PORT:-587}" "JWT_EXPIRY:${JWT_EXPIRY:-3600}" \
+          "STORAGE_FILE_SIZE_LIMIT:${STORAGE_FILE_SIZE_LIMIT:-52428800}"; do
+  nname="${nv%%:*}"; n="${nv#*:}"
+  echo "$n" | grep -qE '^[0-9]+$' || die "Valor numérico inválido em ${nname}: '${n}'"
+done
+[ "${BILLING_CRON_HOUR:-08}" -ge 0 ] && [ "${BILLING_CRON_HOUR:-08}" -le 23 ] \
+  || die "BILLING_CRON_HOUR deve estar entre 00 e 23"
+case "${USE_OWN_PROXY:-false}" in true|false) ;; *) die "USE_OWN_PROXY deve ser true ou false (atual: '${USE_OWN_PROXY}')" ;; esac
+
 
 # Nenhuma variável pode apontar para outro projeto da VPS
 for v in SUPABASE_PUBLIC_URL SITE_URL PORTAL_BASE_URL VITE_SUPABASE_URL EVOLUTION_API_URL; do
@@ -161,19 +187,17 @@ grep -q 'SUPABASE_ANON_KEY' deploy/kong/kong.yml \
   && grep -q 'SUPABASE_SERVICE_KEY' deploy/kong/kong.yml \
   || die "deploy/kong/kong.yml não contém os placeholders esperados"
 RENDER="$(mktemp)"
-SUPABASE_ANON_KEY="$ANON_KEY" SUPABASE_SERVICE_KEY="$SERVICE_ROLE_KEY" \
-  bash -c 'eval "echo \"$(cat deploy/kong/kong.yml)\""' > "$RENDER"
-grep -q '\$SUPABASE_' "$RENDER" && die "Kong: substituição de variáveis falhou"
-grep -qF "$ANON_KEY" "$RENDER"         || die "Kong: ANON_KEY não foi aplicada"
-grep -qF "$SERVICE_ROLE_KEY" "$RENDER" || die "Kong: SERVICE_ROLE_KEY não foi aplicada"
+render_kong_config deploy/kong/kong.yml "$RENDER" "$ANON_KEY" "$SERVICE_ROLE_KEY" \
+  || { rm -f "$RENDER"; die "Kong: falha ao renderizar a configuração declarativa"; }
+# a renderização não pode destruir a estrutura YAML (aspas/listas)
+grep -q 'origins: \["\*"\]' "$RENDER" || { rm -f "$RENDER"; die "Kong: YAML corrompido na renderização"; }
+for r in /auth/v1/ /rest/v1/ /graphql/v1 /realtime/v1/ /storage/v1/ /functions/v1/; do
+  grep -qF "$r" "$RENDER" || { rm -f "$RENDER"; die "Kong: rota ausente no template: $r"; }
+done
 rm -f "$RENDER"
-ok "Kong renderiza ANON_KEY e SERVICE_ROLE_KEY reais"
+ok "Kong renderiza ANON_KEY/SERVICE_ROLE_KEY reais e todas as rotas"
 add "Kong (config declarativa) .... OK"
 
-
-log "Validando docker-compose.yml..."
-dc config >/dev/null || die "docker-compose.yml inválido"
-ok "docker-compose.yml válido"
 
 # ------------------------------------------------------ 5. Portas
 title "5/15 Portas do host"
