@@ -78,8 +78,14 @@ if [ -z "$JWT_S" ] || [ ${#JWT_S} -lt 32 ]; then
   env_set ANON_KEY ""; env_set SERVICE_ROLE_KEY ""
   ok "JWT_SECRET gerado"
 fi
-[ -n "$(env_get ANON_KEY)" ]         || { env_set ANON_KEY "$(sign_jwt anon "$JWT_S")"; ok "ANON_KEY gerada"; }
-[ -n "$(env_get SERVICE_ROLE_KEY)" ] || { env_set SERVICE_ROLE_KEY "$(sign_jwt service_role "$JWT_S")"; ok "SERVICE_ROLE_KEY gerada"; }
+AK="$(env_get ANON_KEY)"; SK="$(env_get SERVICE_ROLE_KEY)"
+if [ -z "$AK" ] || ! jwt_matches_secret "$AK" "$JWT_S"; then
+  env_set ANON_KEY "$(sign_jwt anon "$JWT_S")"; ok "ANON_KEY gerada/realinhada ao JWT_SECRET"
+fi
+if [ -z "$SK" ] || ! jwt_matches_secret "$SK" "$JWT_S"; then
+  env_set SERVICE_ROLE_KEY "$(sign_jwt service_role "$JWT_S")"; ok "SERVICE_ROLE_KEY gerada/realinhada ao JWT_SECRET"
+fi
+
 for pair in "POSTGRES_PASSWORD:24" "REALTIME_SECRET_KEY_BASE:32" \
             "EVOLUTION_WEBHOOK_SECRET:32" "BIP_API_KEY:32"; do
   k="${pair%%:*}"; n="${pair##*:}"
