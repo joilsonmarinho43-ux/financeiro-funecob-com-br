@@ -229,17 +229,34 @@ else
   warn "Isso pode ser normal se a Evolution só aceitar conexões internas."
   add "Evolution API existente ...... AVISO (verifique EVOLUTION_API_URL)"
 fi
-
 # ------------------------------------------------------ 7. Rede
 title "7/15 Rede Docker exclusiva"
+# Diagnóstico somente-leitura (serve também ao modo --check)
+if docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
+  _ln="$(network_label 'com.docker.compose.network')"
+  _lp="$(network_label 'com.docker.compose.project')"
+  _uc="$(network_containers)"
+  if [ "$_ln" = "$NETWORK_NAME" ] && [ "$_lp" = "$COMPOSE_PROJECT" ]; then
+    ok "Rede ${NETWORK_NAME} existente e gerenciada pelo Compose"
+  elif [ -n "$_lp" ] && [ "$_lp" != "$COMPOSE_PROJECT" ]; then
+    die "Rede ${NETWORK_NAME} pertence ao projeto '${_lp}' — nada será alterado."
+  else
+    warn "Rede ${NETWORK_NAME} existente SEM labels do Compose (órfã)"
+    [ -n "${_uc// /}" ] && log "  containers conectados: ${_uc}"
+  fi
+else
+  ok "Rede ${NETWORK_NAME} inexistente — o Compose a criará"
+fi
+
 if [ "$CHECK_ONLY" = "1" ]; then
   title "MODO --check"
   printf '%s\n' "${REPORT[@]}"
   ok "Validação concluída. Nenhum container, volume ou rede foi criado/alterado."
   exit 0
 fi
+# Corrige apenas o estado órfão do próprio FUNecob; o Compose cria a rede.
 ensure_network
-add "Rede funecob_network ......... OK"
+add "Rede funecob_network ......... OK (gerenciada pelo Compose)"
 
 
 # ------------------------------------------------------ 8. Volumes
@@ -261,6 +278,7 @@ ok "Imagem funecob/web:latest construída"
 # ------------------------------------------------------ 10. Banco
 title "10/15 PostgreSQL do FUNecob"
 dc up -d funecob-db
+verify_network_managed || die "Rede ${NETWORK_NAME} não ficou sob gestão do Compose"
 wait_healthy funecob-db 60 || die "funecob-db não subiu"
 add "PostgreSQL próprio ........... OK"
 

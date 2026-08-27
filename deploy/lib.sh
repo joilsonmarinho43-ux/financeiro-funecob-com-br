@@ -129,12 +129,86 @@ env_set() {
 }
 
 
+# ---------------------------------------------------------------------
+# REDE — estratégia única: quem cria e gerencia funecob_network é o
+# Docker Compose (projeto "funecob"). O instalador NUNCA cria a rede na
+# mão; ele apenas VALIDA o estado atual e, se encontrar uma rede órfã do
+# próprio FUNecob (sem os labels do Compose), remove-a com segurança
+# para que o Compose a recrie corretamente.
+#
+# Estados tratados:
+#   1) inexistente ................ nada a fazer (Compose cria)
+#   2) existente + labels corretos  nada a fazer (reutilizada)
+#   3) existente sem labels, sem containers ......... removida
+#   4) existente sem labels, com containers funecob-* removida (após parar
+#      apenas os containers do FUNecob que a usam)
+#   5) existente sem labels, usada por containers de TERCEIROS .... aborta
+#   6) existente com labels de OUTRO projeto Compose .............. aborta
+# Nenhuma rede de outro projeto é jamais removida.
+# ---------------------------------------------------------------------
+network_label() {
+  docker network inspect "$NETWORK_NAME" -f "{{index .Labels \"$1\"}}" 2>/dev/null || true
+}
+
+network_containers() {
+  docker network inspect "$NETWORK_NAME" \
+    -f '{{range $k,$v := .Containers}}{{$v.Name}} {{end}}' 2>/dev/null || true
+}
+
 ensure_network() {
   if ! docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
-    log "Criando rede Docker ${NETWORK_NAME}..."
-    docker network create "$NETWORK_NAME" >/dev/null
+    ok "Rede ${NETWORK_NAME} será criada e gerenciada pelo Docker Compose"
+    return 0
   fi
-  ok "Rede ${NETWORK_NAME} disponível"
+
+  local lbl_net lbl_proj used foreign c
+  lbl_net="$(network_label 'com.docker.compose.network')"
+  lbl_proj="$(network_label 'com.docker.compose.project')"
+
+  if [ "$lbl_net" = "$NETWORK_NAME" ] && [ "$lbl_proj" = "$COMPOSE_PROJECT" ]; then
+    ok "Rede ${NETWORK_NAME} já gerenciada pelo Compose (projeto ${COMPOSE_PROJECT})"
+    return 0
+  fi
+
+  if [ -n "$lbl_proj" ] && [ "$lbl_proj" != "$COMPOSE_PROJECT" ]; then
+    die "Rede ${NETWORK_NAME} pertence ao projeto Compose '${lbl_proj}'. Nada foi alterado."
+  fi
+
+  warn "Rede ${NETWORK_NAME} existe sem os labels do Compose (rede órfã do FUNecob)."
+  used="$(network_containers)"
+  foreign=""
+  for c in $used; do
+    case "$c" in
+      funecob-*) ;;
+      *) foreign="${foreign} ${c}" ;;
+    esac
+  done
+  if [ -n "${foreign// /}" ]; then
+    die "Rede ${NETWORK_NAME} está em uso por containers de terceiros:${foreign}. Nada foi alterado."
+  fi
+
+  for c in $used; do
+    log "Desconectando ${c} da rede órfã..."
+    docker network disconnect -f "$NETWORK_NAME" "$c" >/dev/null 2>&1 || true
+  done
+
+  log "Removendo rede órfã ${NETWORK_NAME} (somente esta) para o Compose recriá-la..."
+  docker network rm "$NETWORK_NAME" >/dev/null 2>&1 \
+    || die "Não foi possível remover a rede órfã ${NETWORK_NAME}."
+  ok "Rede órfã removida — o Compose criará ${NETWORK_NAME} com os labels corretos"
+}
+
+# Confirma, após o 'up', que a rede ficou sob gestão do Compose.
+verify_network_managed() {
+  local lbl_net lbl_proj
+  lbl_net="$(network_label 'com.docker.compose.network')"
+  lbl_proj="$(network_label 'com.docker.compose.project')"
+  if [ "$lbl_net" = "$NETWORK_NAME" ] && [ "$lbl_proj" = "$COMPOSE_PROJECT" ]; then
+    ok "Rede ${NETWORK_NAME} com labels corretos (project=${lbl_proj})"
+    return 0
+  fi
+  warn "Rede ${NETWORK_NAME} sem labels esperados do Compose (net='${lbl_net}' project='${lbl_proj}')"
+  return 1
 }
 
 # Aguarda um serviço ficar healthy (ou apenas running quando não há healthcheck)

@@ -31,6 +31,7 @@ if [ "${USE_OWN_PROXY:-false}" = "true" ]; then
 else
   dc up -d --remove-orphans
 fi
+verify_network_managed || warn "Rede ${NETWORK_NAME} sem labels do Compose — rode ./deploy/install.sh"
 wait_healthy funecob-db 60 || die "funecob-db indisponível após atualização"
 
 title "5/6 Migrations pendentes"
