@@ -3,8 +3,9 @@
 # FUNecob — INSTALAÇÃO AUTOMÁTICA E IDEMPOTENTE EM VPS COMPARTILHADA
 #
 #   git clone <REPO> funecob && cd funecob
-#   cp .env.example .env && nano .env
-#   ./deploy/install.sh
+#   ./deploy/install.sh            # instalação completa (gera os segredos)
+#   ./deploy/install.sh --check    # apenas valida, sem alterar nada
+
 #
 # Regras absolutas deste script:
 #   * NUNCA executa prune / rm -f / volume rm / network rm
@@ -18,6 +19,17 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 cd "$FUNECOB_ROOT"
 REPORT=()
 add() { REPORT+=("$1"); }
+
+# --check = valida tudo SEM criar/alterar containers, volumes ou redes
+CHECK_ONLY=0
+for arg in "$@"; do
+  case "$arg" in
+    --check|--dry-run) CHECK_ONLY=1 ;;
+    -h|--help) echo "uso: ./deploy/install.sh [--check]"; exit 0 ;;
+    *) echo "opção desconhecida: $arg" >&2; exit 2 ;;
+  esac
+done
+
 
 echo -e "${C_BOLD}"
 cat <<'BANNER'
@@ -45,48 +57,82 @@ ok "Estrutura de diretórios pronta"
 title "3/15 Configuração (.env)"
 if [ ! -f "$ENV_FILE" ]; then
   cp "${FUNECOB_ROOT}/.env.example" "$ENV_FILE"
-  warn ".env criado a partir de .env.example"
-  log "Gerando segredos automaticamente..."
-  TMPKEYS="$(mktemp)"; ./deploy/genkeys.sh > "$TMPKEYS"
-  while IFS='=' read -r k v; do
-    [ -z "$k" ] && continue
-    if grep -qE "^${k}=" "$ENV_FILE"; then
-      python3 - "$ENV_FILE" "$k" "$v" <<'PY'
-import sys
-path, key, val = sys.argv[1], sys.argv[2], sys.argv[3]
-lines = open(path).read().splitlines()
-out = [f"{key}={val}" if l.startswith(key + "=") else l for l in lines]
-open(path, "w").write("\n".join(out) + "\n")
-PY
-    else
-      echo "${k}=${v}" >> "$ENV_FILE"
-    fi
-  done < "$TMPKEYS"
-  rm -f "$TMPKEYS"
-  ANONV="$(grep -E '^ANON_KEY=' "$ENV_FILE" | cut -d= -f2-)"
-  sed -i "s|^VITE_SUPABASE_PUBLISHABLE_KEY=.*|VITE_SUPABASE_PUBLISHABLE_KEY=${ANONV}|" "$ENV_FILE"
   chmod 600 "$ENV_FILE"
-  ok "Segredos gerados e gravados em .env (permissão 600)"
-  echo
-  warn "AJUSTE: APP_DOMAIN, API_DOMAIN, ACME_EMAIL, EVOLUTION_API_URL, EVOLUTION_API_KEY"
-  read -rp "Abrir o .env agora para edição? [S/n] " r
-  [[ "${r:-S}" =~ ^[SsYy]?$ ]] && "${EDITOR:-nano}" "$ENV_FILE"
+  warn ".env criado a partir de .env.example"
 else
-  ok ".env já existe — preservado (nada foi sobrescrito)"
+  ok ".env já existe — segredos válidos serão preservados"
 fi
+chmod 600 "$ENV_FILE"
+
+# --- segredos: gerados automaticamente APENAS quando ausentes/vazios ---
+JWT_S="$(env_get JWT_SECRET)"
+if [ -z "$JWT_S" ] || [ ${#JWT_S} -lt 32 ]; then
+  JWT_S="$(gen_hex 32)"; env_set JWT_SECRET "$JWT_S"
+  # JWTs precisam ser reassinados com o novo segredo
+  env_set ANON_KEY ""; env_set SERVICE_ROLE_KEY ""
+  ok "JWT_SECRET gerado"
+fi
+[ -n "$(env_get ANON_KEY)" ]         || { env_set ANON_KEY "$(sign_jwt anon "$JWT_S")"; ok "ANON_KEY gerada"; }
+[ -n "$(env_get SERVICE_ROLE_KEY)" ] || { env_set SERVICE_ROLE_KEY "$(sign_jwt service_role "$JWT_S")"; ok "SERVICE_ROLE_KEY gerada"; }
+for pair in "POSTGRES_PASSWORD:24" "REALTIME_SECRET_KEY_BASE:32" \
+            "EVOLUTION_WEBHOOK_SECRET:32" "BIP_API_KEY:32"; do
+  k="${pair%%:*}"; n="${pair##*:}"
+  [ -n "$(env_get "$k")" ] || { env_set "$k" "$(gen_hex "$n")"; ok "$k gerado"; }
+done
+# REALTIME_ENC_KEY precisa ter exatamente 32 caracteres
+RK="$(env_get REALTIME_ENC_KEY)"
+[ ${#RK} -eq 32 ] || { env_set REALTIME_ENC_KEY "$(gen_hex 16)"; ok "REALTIME_ENC_KEY gerado"; }
+# frontend usa sempre a ANON_KEY vigente
+env_set VITE_SUPABASE_PUBLISHABLE_KEY "$(env_get ANON_KEY)"
+env_set VITE_SUPABASE_URL   "$(env_get SUPABASE_PUBLIC_URL)"
+env_set VITE_PORTAL_BASE_URL "$(env_get PORTAL_BASE_URL)"
+
+# --- Evolution API existente: chave NUNCA é regenerada ---
+if [ -z "$(env_get EVOLUTION_API_KEY)" ]; then
+  if EVK="$(detect_evolution_key)"; then
+    env_set EVOLUTION_API_KEY "$EVK"
+    ok "EVOLUTION_API_KEY detectada no container existente (não foi alterada)"
+  elif [ "${CHECK_ONLY:-0}" = "1" ] || [ ! -t 0 ]; then
+    die "EVOLUTION_API_KEY ausente no .env e não foi possível detectá-la automaticamente."
+  else
+    echo
+    warn "Único dado obrigatório: a chave da Evolution API JÁ EXISTENTE (não será alterada)."
+    read -rsp "EVOLUTION_API_KEY: " EVK; echo
+    [ -n "$EVK" ] || die "EVOLUTION_API_KEY é obrigatória."
+    env_set EVOLUTION_API_KEY "$EVK"
+  fi
+fi
+
 require_env
 add ".env .......................... OK"
 
 # ------------------------------------------------------ 4. Validação
 title "4/15 Validação da configuração"
 missing=()
-for v in APP_DOMAIN API_DOMAIN ACME_EMAIL SUPABASE_PUBLIC_URL ANON_KEY SERVICE_ROLE_KEY \
+for v in APP_DOMAIN API_DOMAIN SUPABASE_PUBLIC_URL ANON_KEY SERVICE_ROLE_KEY \
          POSTGRES_PASSWORD JWT_SECRET REALTIME_ENC_KEY REALTIME_SECRET_KEY_BASE \
-         EVOLUTION_API_URL EVOLUTION_API_KEY; do
+         BIP_API_KEY EVOLUTION_API_URL EVOLUTION_API_KEY; do
   [ -z "${!v:-}" ] && missing+=("$v")
 done
 [ ${#missing[@]} -gt 0 ] && die "Variáveis obrigatórias vazias no .env: ${missing[*]}"
 [ ${#JWT_SECRET} -ge 32 ] || die "JWT_SECRET precisa ter no mínimo 32 caracteres"
+
+# Placeholders nunca podem chegar à produção
+case "${ACME_EMAIL:-}" in
+  ""|seu-email@*|*example.com)
+    if [ "${USE_OWN_PROXY:-false}" = "true" ]; then
+      die "ACME_EMAIL é um placeholder — obrigatório quando USE_OWN_PROXY=true"
+    else
+      warn "ACME_EMAIL é placeholder (irrelevante com USE_OWN_PROXY=false)"
+    fi ;;
+esac
+for d in "$APP_DOMAIN" "$API_DOMAIN"; do
+  echo "$d" | grep -qE '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$' \
+    || die "Domínio inválido: $d"
+done
+for p in "${WEB_HTTP_PORT:-54320}" "${KONG_HTTP_PORT:-54321}" "${POSTGRES_PORT:-54322}"; do
+  echo "$p" | grep -qE '^[0-9]{2,5}$' || die "Porta inválida: $p"
+done
 
 # Nenhuma variável pode apontar para outro projeto da VPS
 for v in SUPABASE_PUBLIC_URL SITE_URL PORTAL_BASE_URL VITE_SUPABASE_URL EVOLUTION_API_URL; do
@@ -97,12 +143,33 @@ for v in SUPABASE_PUBLIC_URL SITE_URL PORTAL_BASE_URL VITE_SUPABASE_URL EVOLUTIO
   esac
 done
 case "${EVOLUTION_API_URL}" in
-  http://localhost:*|http://127.0.0.1:*)
+  http://localhost:*|http://127.0.0.1:*|https://localhost:*|https://127.0.0.1:*)
     die "EVOLUTION_API_URL não pode ser localhost: dentro do Docker isso é o próprio container.
      Use http://host.docker.internal:8080 (padrão) ou o IP do host / domínio público." ;;
+  http://*|https://*) ;;
+  *) die "EVOLUTION_API_URL inválida: ${EVOLUTION_API_URL}" ;;
 esac
 ok "Variáveis válidas e sem referência a outros projetos"
 add "Variáveis de ambiente ........ OK"
+
+log "Validando docker-compose.yml..."
+dc config >/dev/null || die "docker-compose.yml inválido"
+ok "docker-compose.yml válido"
+
+log "Validando template declarativo do Kong..."
+grep -q 'SUPABASE_ANON_KEY' deploy/kong/kong.yml \
+  && grep -q 'SUPABASE_SERVICE_KEY' deploy/kong/kong.yml \
+  || die "deploy/kong/kong.yml não contém os placeholders esperados"
+RENDER="$(mktemp)"
+SUPABASE_ANON_KEY="$ANON_KEY" SUPABASE_SERVICE_KEY="$SERVICE_ROLE_KEY" \
+  bash -c 'eval "echo \"$(cat deploy/kong/kong.yml)\""' > "$RENDER"
+grep -q '\$SUPABASE_' "$RENDER" && die "Kong: substituição de variáveis falhou"
+grep -qF "$ANON_KEY" "$RENDER"         || die "Kong: ANON_KEY não foi aplicada"
+grep -qF "$SERVICE_ROLE_KEY" "$RENDER" || die "Kong: SERVICE_ROLE_KEY não foi aplicada"
+rm -f "$RENDER"
+ok "Kong renderiza ANON_KEY e SERVICE_ROLE_KEY reais"
+add "Kong (config declarativa) .... OK"
+
 
 log "Validando docker-compose.yml..."
 dc config >/dev/null || die "docker-compose.yml inválido"
@@ -141,8 +208,15 @@ fi
 
 # ------------------------------------------------------ 7. Rede
 title "7/15 Rede Docker exclusiva"
+if [ "$CHECK_ONLY" = "1" ]; then
+  title "MODO --check"
+  printf '%s\n' "${REPORT[@]}"
+  ok "Validação concluída. Nenhum container, volume ou rede foi criado/alterado."
+  exit 0
+fi
 ensure_network
 add "Rede funecob_network ......... OK"
+
 
 # ------------------------------------------------------ 8. Volumes
 title "8/15 Volumes exclusivos"
