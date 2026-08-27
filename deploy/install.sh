@@ -19,6 +19,17 @@ cd "$FUNECOB_ROOT"
 REPORT=()
 add() { REPORT+=("$1"); }
 
+# --check = valida tudo SEM criar/alterar containers, volumes ou redes
+CHECK_ONLY=0
+for arg in "$@"; do
+  case "$arg" in
+    --check|--dry-run) CHECK_ONLY=1 ;;
+    -h|--help) echo "uso: ./deploy/install.sh [--check]"; exit 0 ;;
+    *) echo "opção desconhecida: $arg" >&2; exit 2 ;;
+  esac
+done
+
+
 echo -e "${C_BOLD}"
 cat <<'BANNER'
   ______ _   _ _   _        _
