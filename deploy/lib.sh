@@ -236,3 +236,24 @@ detect_evolution_key() {
   [ -n "$v" ] || return 1
   printf '%s' "$v"
 }
+
+# ---------------------------------------------------------------------
+# KONG — renderização SEGURA do template declarativo.
+# Substitui apenas $SUPABASE_ANON_KEY / $SUPABASE_SERVICE_KEY, sem usar
+# eval (que destruiria aspas e colchetes do YAML).
+#   render_kong_config <template> <destino> <anon> <service>
+# ---------------------------------------------------------------------
+render_kong_config() {
+  local tpl="$1" out="$2" anon="$3" svc="$4"
+  [ -f "$tpl" ] || { err "template do Kong não encontrado: $tpl"; return 1; }
+  [ -n "$anon" ] && [ -n "$svc" ] || { err "chaves do Kong ausentes"; return 1; }
+  ANON_V="$anon" SVC_V="$svc" awk '
+    { gsub(/\$SUPABASE_ANON_KEY/, ENVIRON["ANON_V"]);
+      gsub(/\$SUPABASE_SERVICE_KEY/, ENVIRON["SVC_V"]);
+      print }
+  ' "$tpl" > "$out" || return 1
+  grep -q 'SUPABASE_ANON_KEY\|SUPABASE_SERVICE_KEY' "$out" && { err "Kong: substituição falhou"; return 1; }
+  grep -qF "$anon" "$out" || { err "Kong: ANON_KEY não aplicada"; return 1; }
+  grep -qF "$svc"  "$out" || { err "Kong: SERVICE_ROLE_KEY não aplicada"; return 1; }
+  return 0
+}
