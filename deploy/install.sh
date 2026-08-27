@@ -326,7 +326,7 @@ else
 fi
 
 # ------------------------------------------------------ 15. Relatório
-title "15/15 Relatório final"
+title "Relatório final"
 printf '%s\n' "${REPORT[@]}"
 cat <<EOF
 
