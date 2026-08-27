@@ -278,6 +278,7 @@ ok "Imagem funecob/web:latest construída"
 # ------------------------------------------------------ 10. Banco
 title "10/15 PostgreSQL do FUNecob"
 dc up -d funecob-db
+verify_network_managed || die "Rede ${NETWORK_NAME} não ficou sob gestão do Compose"
 wait_healthy funecob-db 60 || die "funecob-db não subiu"
 add "PostgreSQL próprio ........... OK"
 
