@@ -14,7 +14,7 @@ set -u
 KONG="${KONG_INTERNAL_URL:-http://funecob-kong:8000}"
 KEY="${SERVICE_ROLE_KEY:?SERVICE_ROLE_KEY ausente}"
 TICK="${CRON_TICK_SECONDS:-120}"
-DAILY_HOUR="${BILLING_CRON_HOUR:-08}"
+DAILY_HOUR="$(printf '%02d' "$(( ${BILLING_CRON_HOUR:-08} + 0 ))" 2>/dev/null || echo 08)"
 LAST_DAILY=""
 
 call() {
