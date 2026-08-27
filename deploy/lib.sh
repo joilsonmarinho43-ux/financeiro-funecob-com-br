@@ -35,11 +35,65 @@ require_tools() {
   docker info >/dev/null 2>&1 || die "Docker não está em execução ou o usuário não tem permissão."
 }
 
+# Carregamento SEGURO do .env — nunca executa o conteúdo como shell.
+# Aceita apenas linhas KEY=VALUE; aspas externas são removidas; o valor é
+# atribuído literalmente (URLs, senhas, espaços e '*' não são interpretados).
+load_env_file() {
+  local file="$1" line key val
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    case "$line" in
+      ''|'#'*) continue ;;
+    esac
+    [ "${line#export }" != "$line" ] && line="${line#export }"
+    case "$line" in
+      *=*) ;;
+      *) continue ;;
+    esac
+    key="${line%%=*}"
+    val="${line#*=}"
+    # chave precisa ser um identificador válido
+    case "$key" in
+      [A-Za-z_][A-Za-z0-9_]*) ;;
+      *) continue ;;
+    esac
+    # remove aspas externas
+    if [ "${val#\"}" != "$val" ] && [ "${val%\"}" != "$val" ]; then
+      val="${val#\"}"; val="${val%\"}"
+    elif [ "${val#\'}" != "$val" ] && [ "${val%\'}" != "$val" ]; then
+      val="${val#\'}"; val="${val%\'}"
+    fi
+    printf -v "$key" '%s' "$val"
+    export "${key?}"
+  done < "$file"
+}
+
 require_env() {
   [ -f "$ENV_FILE" ] || die ".env não encontrado. Rode ./deploy/install.sh primeiro."
-  set -a; # shellcheck disable=SC1090
-  source "$ENV_FILE"; set +a
+  load_env_file "$ENV_FILE"
 }
+
+# Lê um valor do .env sem exportar (sem executar nada)
+env_get() {
+  local key="$1"
+  sed -n "s/^[[:space:]]*${key}=//p" "$ENV_FILE" 2>/dev/null | head -1 \
+    | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
+}
+
+# Define/atualiza uma variável no .env preservando o restante do arquivo
+env_set() {
+  local key="$1" val="$2"
+  [ -f "$ENV_FILE" ] || : > "$ENV_FILE"
+  if grep -qE "^[[:space:]]*${key}=" "$ENV_FILE"; then
+    awk -v k="$key" -v v="$val" '
+      $0 ~ "^[[:space:]]*"k"=" && !done { print k"="v; done=1; next } { print }
+    ' "$ENV_FILE" > "${ENV_FILE}.tmp" && mv "${ENV_FILE}.tmp" "$ENV_FILE"
+  else
+    printf '%s=%s\n' "$key" "$val" >> "$ENV_FILE"
+  fi
+  chmod 600 "$ENV_FILE"
+}
+
 
 ensure_network() {
   if ! docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
