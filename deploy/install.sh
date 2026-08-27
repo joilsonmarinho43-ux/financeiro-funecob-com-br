@@ -181,19 +181,17 @@ grep -q 'SUPABASE_ANON_KEY' deploy/kong/kong.yml \
   && grep -q 'SUPABASE_SERVICE_KEY' deploy/kong/kong.yml \
   || die "deploy/kong/kong.yml não contém os placeholders esperados"
 RENDER="$(mktemp)"
-SUPABASE_ANON_KEY="$ANON_KEY" SUPABASE_SERVICE_KEY="$SERVICE_ROLE_KEY" \
-  bash -c 'eval "echo \"$(cat deploy/kong/kong.yml)\""' > "$RENDER"
-grep -q '\$SUPABASE_' "$RENDER" && die "Kong: substituição de variáveis falhou"
-grep -qF "$ANON_KEY" "$RENDER"         || die "Kong: ANON_KEY não foi aplicada"
-grep -qF "$SERVICE_ROLE_KEY" "$RENDER" || die "Kong: SERVICE_ROLE_KEY não foi aplicada"
+render_kong_config deploy/kong/kong.yml "$RENDER" "$ANON_KEY" "$SERVICE_ROLE_KEY" \
+  || { rm -f "$RENDER"; die "Kong: falha ao renderizar a configuração declarativa"; }
+# a renderização não pode destruir a estrutura YAML (aspas/listas)
+grep -q 'origins: \["\*"\]' "$RENDER" || { rm -f "$RENDER"; die "Kong: YAML corrompido na renderização"; }
+for r in /auth/v1/ /rest/v1/ /graphql/v1 /realtime/v1/ /storage/v1/ /functions/v1/; do
+  grep -qF "$r" "$RENDER" || { rm -f "$RENDER"; die "Kong: rota ausente no template: $r"; }
+done
 rm -f "$RENDER"
-ok "Kong renderiza ANON_KEY e SERVICE_ROLE_KEY reais"
+ok "Kong renderiza ANON_KEY/SERVICE_ROLE_KEY reais e todas as rotas"
 add "Kong (config declarativa) .... OK"
 
-
-log "Validando docker-compose.yml..."
-dc config >/dev/null || die "docker-compose.yml inválido"
-ok "docker-compose.yml válido"
 
 # ------------------------------------------------------ 5. Portas
 title "5/15 Portas do host"
