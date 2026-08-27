@@ -207,8 +207,15 @@ fi
 
 # ------------------------------------------------------ 7. Rede
 title "7/15 Rede Docker exclusiva"
+if [ "$CHECK_ONLY" = "1" ]; then
+  title "MODO --check"
+  printf '%s\n' "${REPORT[@]}"
+  ok "Validação concluída. Nenhum container, volume ou rede foi criado/alterado."
+  exit 0
+fi
 ensure_network
 add "Rede funecob_network ......... OK"
+
 
 # ------------------------------------------------------ 8. Volumes
 title "8/15 Volumes exclusivos"
