@@ -352,8 +352,21 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Mark as processing
-        await supabase.from("whatsapp_queue").update({ status: "sending" }).eq("id", item.id);
+        // Claim atômico: só assume o item quem conseguir mudar 'pending' -> 'sending'.
+        // Execuções concorrentes do cron não conseguem reivindicar o mesmo item,
+        // eliminando envios duplicados para o cliente.
+        const { data: claimed } = await supabase
+          .from("whatsapp_queue")
+          .update({ status: "sending" })
+          .eq("id", item.id)
+          .eq("status", item.status)
+          .select("id");
+
+        if (!claimed || claimed.length === 0) {
+          console.log(`[whatsapp-sender] item ${item.id} já reivindicado por outra execução — ignorado`);
+          continue;
+        }
+
 
         // Get WhatsApp instance
         const { data: instance } = await supabase
