@@ -172,3 +172,33 @@ evolution_reachable() {
   url="${url//host.docker.internal/127.0.0.1}"
   curl -fsS -o /dev/null --max-time 8 -H "apikey: ${EVOLUTION_API_KEY:-}" "${url%/}/" 2>/dev/null
 }
+
+# ---------------------------------------------------------------------
+# GERAÇÃO DE SEGREDOS (mesma lógica de deploy/genkeys.sh)
+# ---------------------------------------------------------------------
+gen_hex() { openssl rand -hex "${1:-32}"; }
+
+_b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+
+# sign_jwt <role> <jwt_secret>
+sign_jwt() {
+  local role="$1" secret="$2" iat exp header payload data sig
+  iat="$(date +%s)"; exp="$(( iat + 60*60*24*365*10 ))"
+  header="$(printf '{"alg":"HS256","typ":"JWT"}' | _b64url)"
+  payload="$(printf '{"iss":"funecob","role":"%s","iat":%s,"exp":%s}' "$role" "$iat" "$exp" | _b64url)"
+  data="${header}.${payload}"
+  sig="$(printf '%s' "$data" | openssl dgst -binary -sha256 -hmac "$secret" | _b64url)"
+  printf '%s.%s' "$data" "$sig"
+}
+
+# Tenta descobrir a AUTHENTICATION_API_KEY da Evolution API JÁ EXISTENTE
+# (somente leitura: docker inspect no container "evolution"). Nunca altera nada.
+detect_evolution_key() {
+  local c v
+  c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -iE '^evolution' | head -1 || true)"
+  [ -n "$c" ] || return 1
+  v="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$c" 2>/dev/null \
+        | grep -E '^(AUTHENTICATION_API_KEY|AUTHENTICATION_APIKEY|API_KEY)=' | head -1 | cut -d= -f2-)"
+  [ -n "$v" ] || return 1
+  printf '%s' "$v"
+}
