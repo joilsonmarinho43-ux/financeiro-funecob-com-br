@@ -206,7 +206,9 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./supabase/functions:/home/deno/functions:ro
-    command: ["start", "--main-service", "/home/deno/functions/main/index.ts"]
+    # Edge Runtime expects the main-service to be the main service directory,
+    # not the index.ts file itself. The directory contains index.ts.
+    command: ["start", "--main-service", "/home/deno/functions/main"]
 
   funecob-cron:
     <<: *common
