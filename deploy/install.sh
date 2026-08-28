@@ -91,9 +91,11 @@ for pair in "POSTGRES_PASSWORD:24" "REALTIME_SECRET_KEY_BASE:32" \
   k="${pair%%:*}"; n="${pair##*:}"
   [ -n "$(env_get "$k")" ] || { env_set "$k" "$(gen_hex "$n")"; ok "$k gerado"; }
 done
-# REALTIME_ENC_KEY precisa ter exatamente 32 caracteres
+# Supabase Realtime v2.34.x usa AES-128 para os campos sensíveis e exige
+# exatamente 16 caracteres. 32 caracteres hexadecimais são 32 bytes ASCII
+# quando passados pela variável de ambiente e causam "Bad key size".
 RK="$(env_get REALTIME_ENC_KEY)"
-[ ${#RK} -eq 32 ] || { env_set REALTIME_ENC_KEY "$(gen_hex 16)"; ok "REALTIME_ENC_KEY gerado"; }
+[ ${#RK} -eq 16 ] || { env_set REALTIME_ENC_KEY "$(gen_hex 8)"; ok "REALTIME_ENC_KEY gerado/corrigido (16 caracteres)"; }
 # frontend usa sempre a ANON_KEY vigente
 env_set VITE_SUPABASE_PUBLISHABLE_KEY "$(env_get ANON_KEY)"
 env_set VITE_SUPABASE_URL   "$(env_get SUPABASE_PUBLIC_URL)"
@@ -128,6 +130,7 @@ for v in APP_DOMAIN API_DOMAIN SUPABASE_PUBLIC_URL ANON_KEY SERVICE_ROLE_KEY \
 done
 [ ${#missing[@]} -gt 0 ] && die "Variáveis obrigatórias vazias no .env: ${missing[*]}"
 [ ${#JWT_SECRET} -ge 32 ] || die "JWT_SECRET precisa ter no mínimo 32 caracteres"
+[ ${#REALTIME_ENC_KEY} -eq 16 ] || die "REALTIME_ENC_KEY precisa ter exatamente 16 caracteres"
 
 # Placeholders nunca podem chegar à produção
 case "${ACME_EMAIL:-}" in
