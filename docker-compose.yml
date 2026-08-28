@@ -34,7 +34,6 @@ x-common: &common
       max-file: "5"
 
 services:
-  # -------------------------------------------------------------- DB
   funecob-db:
     <<: *common
     image: supabase/postgres:15.8.1.060
@@ -67,7 +66,6 @@ services:
       retries: 12
       start_period: 30s
 
-  # ------------------------------------------------------------ AUTH
   funecob-auth:
     <<: *common
     image: supabase/gotrue:v2.170.0
@@ -107,7 +105,6 @@ services:
       retries: 10
       start_period: 30s
 
-  # ------------------------------------------------------------ REST
   funecob-rest:
     <<: *common
     image: postgrest/postgrest:v12.2.3
@@ -125,7 +122,6 @@ services:
       PGRST_APP_SETTINGS_JWT_EXP: ${JWT_EXPIRY:-3600}
     command: ["postgrest"]
 
-  # -------------------------------------------------------- REALTIME
   funecob-realtime:
     <<: *common
     image: supabase/realtime:v2.34.31
@@ -151,7 +147,6 @@ services:
       SEED_SELF_HOST: "true"
       RUN_JANITOR: "true"
 
-  # --------------------------------------------------------- STORAGE
   funecob-storage:
     <<: *common
     image: supabase/storage-api:v1.19.3
@@ -183,7 +178,6 @@ services:
       retries: 10
       start_period: 30s
 
-  # -------------------------------------------------- EDGE FUNCTIONS
   funecob-edge-functions:
     <<: *common
     image: supabase/edge-runtime:v1.67.4
@@ -208,16 +202,12 @@ services:
       LOVABLE_API_KEY: ${LOVABLE_API_KEY:-}
       BIP_API_KEY: ${BIP_API_KEY:-}
       TZ: ${TZ:-America/Sao_Paulo}
-    # Permite alcançar a Evolution API JÁ EXISTENTE na VPS (container "evolution",
-    # publicado em 8080 no host). EVOLUTION_API_URL deve usar host.docker.internal.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./supabase/functions:/home/deno/functions:ro
-    command: ["start", "--main-service", "/home/deno/functions"]
-  # ------------------------------------------------------------ CRON
-  # Agendador próprio do FUNecob (billing-cron, whatsapp-sender,
-  # pix-ocr-retry). Substitui o pg_cron do Supabase Cloud.
+    command: ["start", "--main-service", "/home/deno/functions/main/index.ts"]
+
   funecob-cron:
     <<: *common
     image: alpine:3.20
@@ -237,8 +227,6 @@ services:
       - ./deploy/cron/funecob-cron.sh:/opt/funecob-cron.sh:ro
     entrypoint: ["/bin/sh", "-c", "apk add --no-cache curl tzdata >/dev/null && exec /bin/sh /opt/funecob-cron.sh"]
 
-
-  # ------------------------------------------------------------ KONG
   funecob-kong:
     <<: *common
     image: kong:2.8.1
@@ -260,7 +248,6 @@ services:
       SUPABASE_ANON_KEY: ${ANON_KEY:?ANON_KEY ausente no .env}
       SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY:?SERVICE_ROLE_KEY ausente no .env}
     volumes:
-      # Template declarativo: as variáveis são substituídas ANTES do Kong subir.
       - ./deploy/kong/kong.yml:/home/kong/kong.template.yml:ro
     entrypoint:
       - bash
@@ -269,20 +256,14 @@ services:
         set -e
         : "$${SUPABASE_ANON_KEY:?ANON_KEY ausente}"
         : "$${SUPABASE_SERVICE_KEY:?SERVICE_ROLE_KEY ausente}"
-        # Substituição literal (sem eval): preserva aspas, colchetes e listas YAML.
-        awk '{ gsub(/\$$SUPABASE_ANON_KEY/, ENVIRON["SUPABASE_ANON_KEY"]);
-               gsub(/\$$SUPABASE_SERVICE_KEY/, ENVIRON["SUPABASE_SERVICE_KEY"]);
-               print }' /home/kong/kong.template.yml > /home/kong/kong.generated.yml
+        awk '{ gsub(/\$$SUPABASE_ANON_KEY/, ENVIRON["SUPABASE_ANON_KEY"]); gsub(/\$$SUPABASE_SERVICE_KEY/, ENVIRON["SUPABASE_SERVICE_KEY"]); print }' /home/kong/kong.template.yml > /home/kong/kong.generated.yml
         if grep -q 'SUPABASE_ANON_KEY\|SUPABASE_SERVICE_KEY' /home/kong/kong.generated.yml; then
           echo "ERRO: variáveis do Kong não foram substituídas" >&2; exit 1
         fi
-        grep -qF "$$SUPABASE_ANON_KEY" /home/kong/kong.generated.yml || { echo "ERRO: ANON_KEY não aplicada" >&2; exit 1; }
         exec /docker-entrypoint.sh kong docker-start
     ports:
       - "127.0.0.1:${KONG_HTTP_PORT:-54321}:8000"
 
-
-  # ------------------------------------------------------------- WEB
   funecob-web:
     <<: *common
     build:
@@ -299,8 +280,6 @@ services:
       TZ: ${TZ:-America/Sao_Paulo}
     security_opt:
       - no-new-privileges:true
-    # Porta só no loopback: permite que um proxy já existente na VPS
-    # (Caddy/Nginx/Traefik de outro projeto) faça proxy sem expor nada.
     ports:
       - "127.0.0.1:${WEB_HTTP_PORT:-54320}:8080"
     healthcheck:
@@ -310,20 +289,6 @@ services:
       retries: 3
       start_period: 10s
 
-  # ---------------------------------------------------------------
-  # EVOLUTION API / MONGODB — NÃO SÃO DEFINIDOS AQUI DE PROPÓSITO.
-  # A VPS já possui em produção:
-  #   container "evolution"    (atendai/evolution-api:v1.6.0, porta 8080)
-  #   container "mongodb-lab"  (mongo:7, rede "evolution-lab")
-  # O FUNecob REUTILIZA esses serviços via EVOLUTION_API_URL/EVOLUTION_API_KEY.
-  # NUNCA recriar, substituir ou remover esses containers.
-  # ---------------------------------------------------------------
-
-  # ----------------------------------------------------------- CADDY
-  # Proxy DEDICADO do FUNecob — OPCIONAL.
-  # Só sobe com: COMPOSE_PROFILES=proxy  (ou USE_OWN_PROXY=true no .env).
-  # Se a VPS já usa 80/443 em outro proxy, NÃO habilite este serviço:
-  # aponte o proxy existente para 127.0.0.1:${WEB_HTTP_PORT} e :${KONG_HTTP_PORT}.
   funecob-caddy:
     <<: *common
     profiles: ["proxy"]
