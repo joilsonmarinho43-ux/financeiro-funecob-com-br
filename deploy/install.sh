@@ -297,7 +297,7 @@ title "12/15 Validação de schemas, roles, funções e extensões"
 add "Infraestrutura do banco ...... OK"
 
 # ------------------------------------------------------ 13. Migrations
-title "13/15 Migrations"
+title "13/15 Auth (GoTrue) + Migrations"
 ./deploy/migrate.sh || die "Migrations interrompidas — veja a migration indicada acima"
 add "Migrations ................... OK"
 

@@ -228,6 +228,28 @@ wait_healthy() {
   return 1
 }
 
+# ---------------------------------------------------------------------
+# GOTRUE — as migrations do FUNecob referenciam auth.users (FKs e RLS).
+# Essa tabela é criada pelas migrations internas do supabase/gotrue, e não
+# pelo bootstrap. Por isso o funecob-auth precisa subir ANTES das migrations.
+# Idempotente e não destrutivo: apenas garante o serviço no ar e aguarda.
+# ---------------------------------------------------------------------
+ensure_auth_schema() {
+  local tries="${1:-60}" res
+  res="$(psql_root -tAc "SELECT to_regclass('auth.users') IS NOT NULL" 2>/dev/null | tr -d '[:space:]' || true)"
+  if [ "$res" = "t" ]; then ok "auth.users presente (GoTrue já migrado)"; return 0; fi
+
+  log "Subindo funecob-auth para aplicar as migrations internas do GoTrue..."
+  dc up -d funecob-auth >/dev/null 2>&1 || die "Não foi possível iniciar funecob-auth"
+  for ((i=1; i<=tries; i++)); do
+    res="$(psql_root -tAc "SELECT to_regclass('auth.users') IS NOT NULL" 2>/dev/null | tr -d '[:space:]' || true)"
+    [ "$res" = "t" ] && { ok "auth.users criada pelo GoTrue"; return 0; }
+    sleep 3
+  done
+  err "auth.users não foi criada. Logs: docker compose -p funecob logs funecob-auth"
+  return 1
+}
+
 psql_root() {
   dc exec -T funecob-db psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" "$@"
 }
