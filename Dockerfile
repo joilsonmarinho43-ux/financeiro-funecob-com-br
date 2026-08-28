@@ -5,7 +5,9 @@
 # =====================================================================
 
 # ---------- Stage 1: build ----------
-FROM node:20-alpine AS build
+# O repositório versiona bun.lock (e não package-lock.json), portanto o
+# builder deve usar Bun. npm ci sem package-lock quebraria o build limpo.
+FROM oven/bun:1-alpine AS build
 
 WORKDIR /app
 
@@ -19,11 +21,12 @@ ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
     VITE_SUPABASE_PROJECT_ID=$VITE_SUPABASE_PROJECT_ID \
     VITE_PORTAL_BASE_URL=$VITE_PORTAL_BASE_URL
 
-COPY package.json package-lock.json* ./
-RUN npm ci --no-audit --no-fund
+# Lockfile do projeto: instalação reprodutível.
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
 COPY . .
-RUN npm run build
+RUN bun run build
 
 # ---------- Stage 2: runtime (nginx sem root) ----------
 # nginx-unprivileged roda como UID 101 (nginx), sem necessidade de root.
