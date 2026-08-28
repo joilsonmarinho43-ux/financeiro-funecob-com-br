@@ -129,3 +129,40 @@ docker compose up -d --build
 supabase db push                 # se houver novas migrations
 supabase functions deploy        # se houver mudanças nas Edge Functions
 ```
+
+## Bootstrap do PostgreSQL (causa-raiz e solução)
+
+**Sintoma:** em uma VPS que já possuía o volume `funecob_db_data`, a instalação
+falhava na primeira migration com `ERROR: schema "auth" does not exist`.
+
+**Causa-raiz:** os scripts de `/docker-entrypoint-initdb.d` só são executados
+quando o volume é criado. Com o volume preexistente, o `00-funecob-init.sh`
+nunca rodava e o banco ficava apenas com `public` e `extensions`.
+
+**Solução (idempotente, não destrutiva):**
+
+* `deploy/db/bootstrap.sql` — fonte única da infraestrutura interna: schemas
+  `auth`, `storage`, `_realtime`, roles de serviço (com senhas alinhadas ao
+  `.env`), owners/grants, extensões, `search_path` (`public, extensions`),
+  publicação `supabase_realtime`, funções `auth.uid/role/jwt/email` e a tabela
+  de controle `public.schema_migrations`. Termina validando a si mesmo.
+* `deploy/db/init/00-funecob-init.sh` — apenas invoca esse SQL na criação do volume.
+* `deploy/bootstrap-db.sh` — aplica **e valida** o mesmo SQL em todo
+  `install.sh`/`update.sh`/`migrate.sh`, inclusive em volumes já existentes.
+  `--verify` valida sem alterar nada. Nenhum `DROP`, `volume rm` ou `down -v`.
+* `deploy/migrate.sh` — antes das migrations, garante o bootstrap e sobe
+  `funecob-auth`/`funecob-storage`, aguardando `auth.users` e `storage.objects`
+  (criadas pelas migrations internas desses serviços, das quais as migrations
+  do FUNecob dependem via FK/policies). Uma migration que falha **não** é
+  marcada como aplicada e o processo sai com código 3.
+
+**Ordem do `install.sh`:** 1 Docker · 2 diretórios · 3 `.env` · 4 compose/Kong ·
+5 portas · 6 Evolution existente (somente detecção) · 7 rede · 8 volumes ·
+9 build · 10 PostgreSQL · 11 bootstrap · 12 validação do banco · 13 Auth/Storage
++ migrations · 14 demais serviços · 15 healthcheck e relatório.
+
+**Rede:** quem cria e gerencia `funecob_network` é exclusivamente o Compose. O
+instalador apenas diagnostica e, quando a rede é uma órfã do próprio FUNecob
+(sem labels e sem containers de terceiros), a remove para o Compose recriá-la
+com `com.docker.compose.project=funecob`. Rede de outro projeto ⇒ aborta sem
+alterar nada. Evolution API, MongoDB, Caddy e Nexus 33 nunca são tocados.
