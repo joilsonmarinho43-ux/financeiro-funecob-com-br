@@ -1,5 +1,6 @@
 -- =====================================================================
 -- FUNecob — BOOTSTRAP IDEMPOTENTE DO POSTGRESQL
+--
 -- Executável em volume novo ou existente. Nunca remove dados.
 -- =====================================================================
 \set ON_ERROR_STOP on
@@ -18,8 +19,6 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN RAISE WARNING 'pg_net indisponível: %', SQLERRM; END;
 END $$;
 
--- Roles internas. O PostgreSQL/Supabase pode trazer algumas delas; as que
--- faltarem são criadas explicitamente e validadas antes de qualquer GRANT.
 DO $$
 DECLARE r text;
 BEGIN
@@ -46,6 +45,11 @@ END $$;
 GRANT anon, authenticated, service_role TO authenticator;
 GRANT anon, authenticated, service_role TO supabase_admin;
 
+-- Os serviços Supabase executam migrations conectando-se ao banco postgres.
+-- Em volumes existentes essas permissões podem não existir, então são
+-- garantidas explicitamente e de forma idempotente.
+GRANT CONNECT ON DATABASE postgres TO authenticator, supabase_admin, supabase_auth_admin, supabase_storage_admin;
+
 CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin;
 CREATE SCHEMA IF NOT EXISTS storage AUTHORIZATION supabase_storage_admin;
 CREATE SCHEMA IF NOT EXISTS _realtime AUTHORIZATION supabase_admin;
@@ -53,8 +57,8 @@ CREATE SCHEMA IF NOT EXISTS _realtime AUTHORIZATION supabase_admin;
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_namespace n JOIN pg_roles o ON o.oid=n.nspowner WHERE n.nspname='auth' AND o.rolname<>'supabase_auth_admin') THEN ALTER SCHEMA auth OWNER TO supabase_auth_admin; END IF;
-  IF EXISTS (SELECT 1 FROM pg_namespace n JOIN pg_roles o ON o.oid=n.nspowner WHERE n.nspname='storage' AND o.rolname<>'supabase_storage_admin') THEN ALTER SCHEMA storage OWNER TO supabase_storage_admin; END IF;
-  IF EXISTS (SELECT 1 FROM pg_namespace n JOIN pg_roles o ON o.oid=n.nspowner WHERE n.nspname='_realtime' AND o.rolname<>'supabase_admin') THEN ALTER SCHEMA _realtime OWNER TO supabase_admin; END IF;
+  IF EXISTS (SELECT 1 FROM pg_namespace n JOIN pg_roles o ON o.oid=nspowner WHERE n.nspname='storage' AND o.rolname<>'supabase_storage_admin') THEN ALTER SCHEMA storage OWNER TO supabase_storage_admin; END IF;
+  IF EXISTS (SELECT 1 FROM pg_namespace n JOIN pg_roles o ON o.oid=nspowner WHERE n.nspname='_realtime' AND o.rolname<>'supabase_admin') THEN ALTER SCHEMA _realtime OWNER TO supabase_admin; END IF;
 END $$;
 
 GRANT USAGE ON SCHEMA public, extensions, auth, storage TO anon, authenticated, service_role;
