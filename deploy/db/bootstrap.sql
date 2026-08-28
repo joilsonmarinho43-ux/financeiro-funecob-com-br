@@ -57,8 +57,8 @@ CREATE SCHEMA IF NOT EXISTS _realtime AUTHORIZATION supabase_admin;
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_namespace n JOIN pg_roles o ON o.oid=n.nspowner WHERE n.nspname='auth' AND o.rolname<>'supabase_auth_admin') THEN ALTER SCHEMA auth OWNER TO supabase_auth_admin; END IF;
-  IF EXISTS (SELECT 1 FROM pg_namespace n JOIN pg_roles o ON o.oid=nspowner WHERE n.nspname='storage' AND o.rolname<>'supabase_storage_admin') THEN ALTER SCHEMA storage OWNER TO supabase_storage_admin; END IF;
-  IF EXISTS (SELECT 1 FROM pg_namespace n JOIN pg_roles o ON o.oid=nspowner WHERE n.nspname='_realtime' AND o.rolname<>'supabase_admin') THEN ALTER SCHEMA _realtime OWNER TO supabase_admin; END IF;
+  IF EXISTS (SELECT 1 FROM pg_namespace n JOIN pg_roles o ON o.oid=n.oid WHERE n.nspname='storage' AND o.rolname<>'supabase_storage_admin') THEN ALTER SCHEMA storage OWNER TO supabase_storage_admin; END IF;
+  IF EXISTS (SELECT 1 FROM pg_namespace n JOIN pg_roles o ON o.oid=n.oid WHERE n.nspname='_realtime' AND o.rolname<>'supabase_admin') THEN ALTER SCHEMA _realtime OWNER TO supabase_admin; END IF;
 END $$;
 
 GRANT USAGE ON SCHEMA public, extensions, auth, storage TO anon, authenticated, service_role;
