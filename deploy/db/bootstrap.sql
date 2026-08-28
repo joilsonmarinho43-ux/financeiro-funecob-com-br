@@ -124,6 +124,33 @@ ALTER DEFAULT PRIVILEGES FOR ROLE supabase_auth_admin IN SCHEMA auth
 ALTER DEFAULT PRIVILEGES FOR ROLE supabase_storage_admin IN SCHEMA storage
   GRANT ALL ON TABLES TO postgres, service_role;
 
+-- ------------------------------------------------------------ search_path
+-- pgcrypto/uuid-ossp vivem em "extensions": sem isso, migrations que usam
+-- gen_random_bytes()/uuid_generate_v4() falham.
+DO $$
+DECLARE r text;
+BEGIN
+  FOREACH r IN ARRAY ARRAY['postgres','supabase_admin','authenticator','anon','authenticated','service_role']
+  LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+      EXECUTE format('ALTER ROLE %I SET search_path TO public, extensions', r);
+    END IF;
+  END LOOP;
+END
+$$;
+SET search_path TO public, extensions;
+
+-- ------------------------------------------------------------ realtime
+-- Publicação usada pelo funecob-realtime e por migrations que fazem
+-- ALTER PUBLICATION supabase_realtime ADD TABLE ...
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    CREATE PUBLICATION supabase_realtime;
+  END IF;
+END
+$$;
+
 -- ------------------------------------------------------------ funções auth.*
 -- Usadas por TODAS as policies de RLS do FUNecob.
 CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $fn$
@@ -182,6 +209,7 @@ BEGIN
   IF to_regprocedure('auth.role()')  IS NULL THEN missing := missing || ' fn:auth.role';  END IF;
   IF to_regprocedure('auth.jwt()')   IS NULL THEN missing := missing || ' fn:auth.jwt';   END IF;
   IF to_regprocedure('auth.email()') IS NULL THEN missing := missing || ' fn:auth.email'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN missing := missing || ' publication:supabase_realtime'; END IF;
   IF missing <> '' THEN
     RAISE EXCEPTION 'bootstrap incompleto:%', missing;
   END IF;

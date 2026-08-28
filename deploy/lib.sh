@@ -228,6 +228,45 @@ wait_healthy() {
   return 1
 }
 
+# ---------------------------------------------------------------------
+# GOTRUE — as migrations do FUNecob referenciam auth.users (FKs e RLS).
+# Essa tabela é criada pelas migrations internas do supabase/gotrue, e não
+# pelo bootstrap. Por isso o funecob-auth precisa subir ANTES das migrations.
+# Idempotente e não destrutivo: apenas garante o serviço no ar e aguarda.
+# ---------------------------------------------------------------------
+_relation_exists() {
+  [ "$(psql_root -tAc "SELECT to_regclass('$1') IS NOT NULL" 2>/dev/null | tr -d '[:space:]' || true)" = "t" ]
+}
+
+# Sobe funecob-auth/funecob-storage e aguarda auth.users e storage.objects,
+# criadas pelas migrations INTERNAS desses serviços (não pelo bootstrap).
+ensure_auth_schema() {
+  local tries="${1:-60}" pend
+
+  if _relation_exists auth.users && _relation_exists storage.objects; then
+    ok "auth.users e storage.objects presentes (GoTrue/Storage já migrados)"
+    return 0
+  fi
+
+  log "Subindo funecob-auth e funecob-storage (migrations internas dos serviços)..."
+  dc up -d funecob-auth funecob-storage >/dev/null 2>&1 \
+    || die "Não foi possível iniciar funecob-auth/funecob-storage"
+
+  for ((i=1; i<=tries; i++)); do
+    if _relation_exists auth.users && _relation_exists storage.objects; then
+      ok "auth.users e storage.objects disponíveis"
+      return 0
+    fi
+    sleep 3
+  done
+
+  pend=""
+  _relation_exists auth.users       || pend="${pend} auth.users"
+  _relation_exists storage.objects  || pend="${pend} storage.objects"
+  err "Ausente(s):${pend}. Logs: docker compose -p funecob logs funecob-auth funecob-storage"
+  return 1
+}
+
 psql_root() {
   dc exec -T funecob-db psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" "$@"
 }

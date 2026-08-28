@@ -9,6 +9,14 @@ DECLARE
   v_org_id uuid := 'eaf58dbe-f43a-479e-97d8-e0078f3a7af9';
   v_client_id uuid := '751a1e79-aafc-41e3-8983-da5a44436ec5';
 BEGIN
+  -- Correção pontual de dados: em um banco novo (instalação self-hosted) nada
+  -- disso existe, então a migration precisa ser um no-op seguro.
+  IF NOT EXISTS (SELECT 1 FROM public.organizations WHERE id = v_org_id)
+     OR NOT EXISTS (SELECT 1 FROM public.invoices WHERE id = v_invoice_id) THEN
+    RAISE NOTICE 'Registros não encontrados — migration de correção ignorada.';
+    RETURN;
+  END IF;
+
   -- Reabre a fatura
   PERFORM set_config('app.allow_paid_edit', 'on', true);
   UPDATE public.invoices

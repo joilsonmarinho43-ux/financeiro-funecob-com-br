@@ -37,6 +37,22 @@ check "Kong (API GW)"     curl -fsS -o /dev/null "${KONG}/auth/v1/health"
 check "FUNecob Web"       dc exec -T funecob-web curl -fsS "http://localhost:8080/healthz"
 check "Frontend (host)"   curl -fsS -o /dev/null "http://127.0.0.1:${WEB_HTTP_PORT:-54320}/healthz"
 
+echo "-------------- PostgreSQL: infraestrutura interna -------------"
+pg_has() { # <SQL booleano>
+  test "$(dc exec -T funecob-db psql -tAqc "$1" -U "${POSTGRES_USER:-postgres}" \
+      -d "${POSTGRES_DB:-postgres}" 2>/dev/null | tr -d '[:space:]')" = "t"
+}
+for s in auth storage _realtime extensions; do
+  check "schema ${s}" pg_has "SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname='${s}')"
+done
+for f in "auth.uid()" "auth.role()" "auth.jwt()" "auth.email()"; do
+  check "função ${f}" pg_has "SELECT to_regprocedure('${f}') IS NOT NULL"
+done
+for r in anon authenticated service_role authenticator supabase_auth_admin supabase_storage_admin; do
+  check "role ${r}" pg_has "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='${r}')"
+done
+check "Migrations aplicadas" pg_has "SELECT count(*) > 0 FROM public.schema_migrations"
+
 echo "-------------- Kong: autenticação por apikey (real) ----------"
 # O Kong não é considerado saudável só por estar "running": as credenciais
 # precisam ter sido realmente carregadas a partir do template declarativo.
