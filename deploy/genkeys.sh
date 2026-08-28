@@ -31,7 +31,10 @@ JWT_SECRET=${JWT_SECRET}
 ANON_KEY=$(sign anon)
 SERVICE_ROLE_KEY=$(sign service_role)
 POSTGRES_PASSWORD=$(openssl rand -hex 24)
-REALTIME_ENC_KEY=$(openssl rand -hex 16)
+# Realtime usa AES-128 para os campos sensíveis e exige EXATAMENTE 16
+# caracteres ASCII. Não use 32 caracteres hexadecimais aqui: isso resulta
+# em "Bad key size" no seed do Realtime.
+REALTIME_ENC_KEY=$(openssl rand -hex 8)
 REALTIME_SECRET_KEY_BASE=$(openssl rand -hex 32)
 EVOLUTION_WEBHOOK_SECRET=$(openssl rand -hex 32)
 BIP_API_KEY=$(openssl rand -hex 32)
