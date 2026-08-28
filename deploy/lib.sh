@@ -234,19 +234,36 @@ wait_healthy() {
 # pelo bootstrap. Por isso o funecob-auth precisa subir ANTES das migrations.
 # Idempotente e não destrutivo: apenas garante o serviço no ar e aguarda.
 # ---------------------------------------------------------------------
-ensure_auth_schema() {
-  local tries="${1:-60}" res
-  res="$(psql_root -tAc "SELECT to_regclass('auth.users') IS NOT NULL" 2>/dev/null | tr -d '[:space:]' || true)"
-  if [ "$res" = "t" ]; then ok "auth.users presente (GoTrue já migrado)"; return 0; fi
+_relation_exists() {
+  [ "$(psql_root -tAc "SELECT to_regclass('$1') IS NOT NULL" 2>/dev/null | tr -d '[:space:]' || true)" = "t" ]
+}
 
-  log "Subindo funecob-auth para aplicar as migrations internas do GoTrue..."
-  dc up -d funecob-auth >/dev/null 2>&1 || die "Não foi possível iniciar funecob-auth"
+# Sobe funecob-auth/funecob-storage e aguarda auth.users e storage.objects,
+# criadas pelas migrations INTERNAS desses serviços (não pelo bootstrap).
+ensure_auth_schema() {
+  local tries="${1:-60}" pend
+
+  if _relation_exists auth.users && _relation_exists storage.objects; then
+    ok "auth.users e storage.objects presentes (GoTrue/Storage já migrados)"
+    return 0
+  fi
+
+  log "Subindo funecob-auth e funecob-storage (migrations internas dos serviços)..."
+  dc up -d funecob-auth funecob-storage >/dev/null 2>&1 \
+    || die "Não foi possível iniciar funecob-auth/funecob-storage"
+
   for ((i=1; i<=tries; i++)); do
-    res="$(psql_root -tAc "SELECT to_regclass('auth.users') IS NOT NULL" 2>/dev/null | tr -d '[:space:]' || true)"
-    [ "$res" = "t" ] && { ok "auth.users criada pelo GoTrue"; return 0; }
+    if _relation_exists auth.users && _relation_exists storage.objects; then
+      ok "auth.users e storage.objects disponíveis"
+      return 0
+    fi
     sleep 3
   done
-  err "auth.users não foi criada. Logs: docker compose -p funecob logs funecob-auth"
+
+  pend=""
+  _relation_exists auth.users       || pend="${pend} auth.users"
+  _relation_exists storage.objects  || pend="${pend} storage.objects"
+  err "Ausente(s):${pend}. Logs: docker compose -p funecob logs funecob-auth funecob-storage"
   return 1
 }
 

@@ -18,10 +18,10 @@ wait_healthy funecob-db 60 || die "funecob-db indisponível"
 "${FUNECOB_ROOT}/deploy/bootstrap-db.sh" \
   || die "Bootstrap do banco falhou — nenhuma migration foi executada"
 
-# As migrations criam FKs/policies sobre auth.users: o GoTrue precisa ter
-# rodado as próprias migrations antes.
+# As migrations criam FKs/policies sobre auth.users e storage.objects: GoTrue
+# e Storage precisam ter rodado as próprias migrations internas antes.
 ensure_auth_schema 60 \
-  || die "auth.users indisponível — nenhuma migration foi executada"
+  || die "auth.users/storage.objects indisponíveis — nenhuma migration foi executada"
 
 applied=0; skipped=0
 for f in $(ls -1 "$MIG_DIR"/*.sql | sort); do
