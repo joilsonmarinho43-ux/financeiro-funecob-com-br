@@ -108,6 +108,10 @@
   barcodeInput.addEventListener("input", () => {
     const val = barcodeInput.value.replace(/\D/g, "");
     barcodeInput.value = val;
+    // Clear the status class if the input becomes empty
+    if (val.length === 0) {
+      barcodeInput.className = "";
+    }
     const btn = $("bipBtn");
     btn.disabled = val.length < getMinLen();
     updateBtnText();
@@ -157,7 +161,7 @@
     btn.disabled = true;
     $("bipBtnText").textContent = "Enviando...";
     $("bipBtnIcon").textContent = "⏳";
-    barcodeInput.className = "";
+    barcodeInput.className = ""; // Clear previous status visually
 
     const body = { barcode, action };
     if (action === "remarcacao") {
@@ -184,7 +188,7 @@
         showResult("error", "Erro " + resp.status, data.error || "Falha no processamento.");
       } else if (data.ignored) {
         // Silent: barcode not recognized — show subtle hint, no alarming UI
-        barcodeInput.className = "";
+        barcodeInput.className = ""; // No visual change for ignored
         showResult("duplicate", "Código ignorado", "Não pertence a nenhum cliente cadastrado.");
       } else if (data.duplicate) {
         barcodeInput.className = "success";
@@ -204,6 +208,7 @@
 
     btn.disabled = false;
     barcodeInput.value = "";
+    // No need to explicitly clear barcodeInput.className here, as the 'input' listener handles it when value is empty.
     updateBtnText();
     setTimeout(() => barcodeInput.focus(), 100);
   }
