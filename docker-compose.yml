@@ -68,7 +68,7 @@ services:
 
   funecob-auth:
     <<: *common
-    image: supabase/gotrue:v2.170.0
+    image: supabase/gotrue:v2.196.0
     container_name: funecob-auth
     depends_on:
       funecob-db:
@@ -102,12 +102,12 @@ services:
       test: ["CMD", "wget", "-qO-", "http://localhost:9999/health"]
       interval: 15s
       timeout: 5s
-      retries: 10
+      retries: 12
       start_period: 30s
 
   funecob-rest:
     <<: *common
-    image: postgrest/postgrest:v12.2.3
+    image: postgrest/postgrest:v16.2
     container_name: funecob-rest
     depends_on:
       funecob-db:
@@ -124,7 +124,7 @@ services:
 
   funecob-realtime:
     <<: *common
-    image: supabase/realtime:v2.34.31
+    image: supabase/realtime:v2.130.0
     container_name: funecob-realtime
     depends_on:
       funecob-db:
@@ -140,6 +140,7 @@ services:
       DB_ENC_KEY: ${REALTIME_ENC_KEY:?defina REALTIME_ENC_KEY no .env}
       API_JWT_SECRET: ${JWT_SECRET}
       SECRET_KEY_BASE: ${REALTIME_SECRET_KEY_BASE:?defina REALTIME_SECRET_KEY_BASE no .env}
+      ANON_KEY: ${ANON_KEY}
       ERL_AFLAGS: -proto_dist inet_tcp
       DNS_NODES: "''"
       RLIMIT_NOFILE: "10000"
@@ -147,15 +148,15 @@ services:
       SEED_SELF_HOST: "true"
       RUN_JANITOR: "true"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -o /dev/null -H 'Authorization: Bearer ${ANON_KEY}' http://localhost:4000/api/tenants/funecob/health"]
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null -H \"Authorization: Bearer $ANON_KEY\" http://localhost:4000/api/tenants/funecob/health || wget -q -O /dev/null --header=\"Authorization: Bearer $ANON_KEY\" http://localhost:4000/api/tenants/funecob/health"]
       interval: 20s
       timeout: 8s
-      retries: 12
-      start_period: 60s
+      retries: 15
+      start_period: 90s
 
   funecob-storage:
     <<: *common
-    image: supabase/storage-api:v1.19.3
+    image: supabase/storage-api:v1.71.0
     container_name: funecob-storage
     depends_on:
       funecob-db:
@@ -181,8 +182,8 @@ services:
       test: ["CMD", "wget", "-qO-", "http://localhost:5000/status"]
       interval: 15s
       timeout: 5s
-      retries: 15
-      start_period: 60s
+      retries: 20
+      start_period: 90s
 
   funecob-edge-functions:
     <<: *common
@@ -218,8 +219,8 @@ services:
       test: ["CMD-SHELL", "curl -sf -o /dev/null http://localhost:9000/_internal/health || wget -q -O /dev/null http://localhost:9000/_internal/health"]
       interval: 20s
       timeout: 5s
-      retries: 12
-      start_period: 60s
+      retries: 15
+      start_period: 90s
     command: ["start", "--main-service", "/home/deno/functions/main"]
 
   funecob-cron:
@@ -300,8 +301,8 @@ services:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 5s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 15s
 
   funecob-caddy:
     <<: *common
