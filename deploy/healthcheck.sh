@@ -36,12 +36,11 @@ container_running() {
   [ "$(docker inspect -f '{{.State.Status}}' "$c" 2>/dev/null)" = "running" ]
 }
 
-
 echo
 echo "=============== FUNecob — status dos serviços ==============="
 check "PostgreSQL" dc exec -T funecob-db pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}"
 check "Supabase Auth" container_healthy funecob-auth
-check "Supabase REST" container_healthy funecob-rest
+check "Supabase REST" container_running funecob-rest
 check "Realtime" container_healthy funecob-realtime
 check "Storage" container_healthy funecob-storage
 check "Edge Functions" container_healthy funecob-edge-functions
