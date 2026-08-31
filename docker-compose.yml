@@ -168,7 +168,13 @@ services:
       SERVICE_KEY: ${SERVICE_ROLE_KEY}
       POSTGREST_URL: http://funecob-rest:3000
       PGRST_JWT_SECRET: ${JWT_SECRET}
+      AUTH_JWT_SECRET: ${JWT_SECRET}
       DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD}@funecob-db:5432/${POSTGRES_DB:-postgres}
+      DATABASE_SEARCH_PATH: storage
+      DB_INSTALL_ROLES: "false"
+      SERVER_PORT: 5000
+      SERVER_REGION: local
+      NODE_ENV: production
       FILE_SIZE_LIMIT: ${STORAGE_FILE_SIZE_LIMIT:-52428800}
       STORAGE_BACKEND: file
       FILE_STORAGE_BACKEND_PATH: /var/lib/storage
@@ -187,7 +193,7 @@ services:
 
   funecob-edge-functions:
     <<: *common
-    image: supabase/edge-runtime:v1.74.3
+    image: supabase/edge-runtime:v1.67.4
     container_name: funecob-edge-functions
     depends_on:
       funecob-db:
@@ -216,11 +222,11 @@ services:
     volumes:
       - ./supabase/functions:/home/deno/functions:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf -o /dev/null http://localhost:9000/_internal/health || wget -q -O /dev/null http://localhost:9000/_internal/health"]
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/9000' || timeout 2 sh -c 'wget -q -O /dev/null http://127.0.0.1:9000/_internal/health'"]
       interval: 20s
       timeout: 5s
-      retries: 15
-      start_period: 90s
+      retries: 12
+      start_period: 60s
     command: ["start", "--main-service", "/home/deno/functions/main"]
 
   funecob-cron:
