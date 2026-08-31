@@ -31,7 +31,9 @@ for f in $(ls -1 "$MIG_DIR"/*.sql | sort); do
     skipped=$((skipped+1)); continue
   fi
   log "Aplicando ${version}..."
-  if dc exec -T funecob-db psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" \
+  # -1: cada migration roda em transação única — falha não deixa estado parcial,
+  # garantindo que a reexecução do script seja realmente segura.
+  if dc exec -T funecob-db psql -1 -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" \
        -d "${POSTGRES_DB:-postgres}" -q < "$f"; then
     psql_root -q -c "INSERT INTO public.schema_migrations(version) VALUES ('${version}') ON CONFLICT DO NOTHING"
     applied=$((applied+1))
@@ -41,5 +43,15 @@ for f in $(ls -1 "$MIG_DIR"/*.sql | sort); do
     exit 3
   fi
 done
+
+# GRANTs do schema public: precisam rodar SEMPRE, depois das migrations.
+GRANTS_SQL="${FUNECOB_ROOT}/deploy/db/grants.sql"
+if [ -f "$GRANTS_SQL" ]; then
+  log "Aplicando GRANTs do schema public (anon/authenticated/service_role)..."
+  dc exec -T funecob-db psql -1 -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" \
+    -d "${POSTGRES_DB:-postgres}" -q < "$GRANTS_SQL" \
+    || die "Falha ao aplicar GRANTs — o PostgREST retornaria 'permission denied' no app"
+  ok "GRANTs aplicados"
+fi
 
 ok "Migrations: ${applied} aplicada(s), ${skipped} já existente(s)"
