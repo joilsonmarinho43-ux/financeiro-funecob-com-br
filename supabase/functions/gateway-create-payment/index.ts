@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireOrgAuth } from "../_shared/requireOrgAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -123,6 +124,9 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const auth = await requireOrgAuth(req, organization_id, corsHeaders);
+    if (!auth.ok) return auth.response;
 
     // 1. Get invoice + client
     const { data: invoice, error: invErr } = await supabase

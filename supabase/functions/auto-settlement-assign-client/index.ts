@@ -2,6 +2,7 @@
 // e dispara o processamento (quitação de faturas + WhatsApp).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { deliverPaymentConfirmation } from "../_shared/paymentReceipt.ts";
+import { requireOrgAuth } from "../_shared/requireOrgAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
