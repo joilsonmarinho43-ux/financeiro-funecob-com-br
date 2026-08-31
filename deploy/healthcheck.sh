@@ -28,7 +28,7 @@ echo "=============== FUNecob — status dos serviços ==============="
 check "PostgreSQL" dc exec -T funecob-db pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}"
 check "Supabase Auth" dc exec -T funecob-auth wget -qO- "http://localhost:9999/health"
 check "Supabase REST" curl -fsS -H "apikey: ${ANON_KEY}" "${KONG}/rest/v1/"
-check "Realtime" dc exec -T funecob-realtime wget -qO- "http://localhost:4000/api/tenants/funecob/health"
+check "Realtime" dc exec -T funecob-realtime sh -c 'curl -fsS -o /dev/null -H "Authorization: Bearer $ANON_KEY" http://localhost:4000/api/tenants/funecob/health || wget -q -O /dev/null --header="Authorization: Bearer $ANON_KEY" http://localhost:4000/api/tenants/funecob/health'
 check "Storage" dc exec -T funecob-storage wget -qO- "http://localhost:5000/status"
 check "Edge Functions" dc exec -T funecob-edge-functions sh -c 'curl -sf -o /dev/null http://localhost:9000/_internal/health || wget -q -O /dev/null http://localhost:9000/_internal/health'
 check "Cron (agendador)" dc exec -T funecob-cron sh -c "test -f /opt/funecob-cron.sh"
