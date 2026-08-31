@@ -139,6 +139,7 @@ services:
       DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
       DB_ENC_KEY: ${REALTIME_ENC_KEY:?defina REALTIME_ENC_KEY no .env}
       API_JWT_SECRET: ${JWT_SECRET}
+      METRICS_JWT_SECRET: ${JWT_SECRET}
       SECRET_KEY_BASE: ${REALTIME_SECRET_KEY_BASE:?defina REALTIME_SECRET_KEY_BASE no .env}
       ANON_KEY: ${ANON_KEY}
       ERL_AFLAGS: -proto_dist inet_tcp
@@ -185,7 +186,7 @@ services:
     volumes:
       - funecob_storage_data:/var/lib/storage
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:5000/status"]
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:5000/status',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 20
