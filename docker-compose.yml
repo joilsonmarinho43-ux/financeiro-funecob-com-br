@@ -202,9 +202,9 @@ services:
       LOVABLE_API_KEY: ${LOVABLE_API_KEY:-}
       BIP_API_KEY: ${BIP_API_KEY:-}
       TZ: ${TZ:-America/Sao_Paulo}
+      WEBHOOK_ALLOW_INSECURE: ${WEBHOOK_ALLOW_INSECURE:-false}
     extra_hosts:
       - "host.docker.internal:host-gateway"
-      WEBHOOK_ALLOW_INSECURE: ${WEBHOOK_ALLOW_INSECURE:-false}
     volumes:
       - ./supabase/functions:/home/deno/functions:ro
     healthcheck:
