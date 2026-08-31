@@ -208,7 +208,7 @@ services:
     volumes:
       - ./supabase/functions:/home/deno/functions:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf -o /dev/null -w '%{http_code}' http://localhost:9000/ | grep -qE '^(200|400|401|404)$'"]
+      test: ["CMD-SHELL", "curl -sf -o /dev/null http://localhost:9000/_internal/health || wget -q -O /dev/null http://localhost:9000/_internal/health"]
       interval: 20s
       timeout: 5s
       retries: 6
