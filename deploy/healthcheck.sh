@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # =====================================================================
-# FUNecob — HEALTHCHECK
-# Verifica SOMENTE os serviços do FUNecob + a conectividade com a
-# Evolution API já existente (que não é gerenciada por este projeto).
+# FUNecob — HEALTHCHECK REAL
+# Valida o estado real dos containers e, separadamente, a publicação HTTPS.
+# Não confunde ausência de curl/wget dentro de uma imagem com serviço caído.
 # =====================================================================
 set -uo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -21,20 +21,34 @@ check() {
 }
 
 KONG="http://127.0.0.1:${KONG_HTTP_PORT:-54321}"
+if [ -n "${KONG_BIND_IP:-}" ] && [ "${KONG_BIND_IP}" != "127.0.0.1" ]; then
+  KONG="http://${KONG_BIND_IP}:${KONG_HTTP_PORT:-54321}"
+fi
 EV_HOST_URL="${EVOLUTION_API_URL//host.docker.internal/127.0.0.1}"
+
+container_healthy() {
+  local c="$1" h
+  h="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$c" 2>/dev/null)"
+  [ "$h" = "healthy" ]
+}
+container_running() {
+  local c="$1"
+  [ "$(docker inspect -f '{{.State.Status}}' "$c" 2>/dev/null)" = "running" ]
+}
+
 
 echo
 echo "=============== FUNecob — status dos serviços ==============="
 check "PostgreSQL" dc exec -T funecob-db pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}"
-check "Supabase Auth" dc exec -T funecob-auth wget -qO- "http://localhost:9999/health"
-check "Supabase REST" curl -fsS -H "apikey: ${ANON_KEY}" "${KONG}/rest/v1/"
-check "Realtime" dc exec -T funecob-realtime sh -c 'curl -fsS -o /dev/null -H "Authorization: Bearer $ANON_KEY" http://localhost:4000/api/tenants/funecob/health || wget -q -O /dev/null --header="Authorization: Bearer $ANON_KEY" http://localhost:4000/api/tenants/funecob/health'
-check "Storage" dc exec -T funecob-storage wget -qO- "http://localhost:5000/status"
-check "Edge Functions" dc exec -T funecob-edge-functions sh -c 'curl -sf -o /dev/null http://localhost:9000/_internal/health || wget -q -O /dev/null http://localhost:9000/_internal/health'
-check "Cron (agendador)" dc exec -T funecob-cron sh -c "test -f /opt/funecob-cron.sh"
-check "Kong (API GW)" curl -fsS -o /dev/null "${KONG}/auth/v1/health"
-check "FUNecob Web" dc exec -T funecob-web curl -fsS "http://localhost:8080/healthz"
-check "Frontend (host)" curl -fsS -o /dev/null "http://127.0.0.1:${WEB_HTTP_PORT:-54320}/healthz"
+check "Supabase Auth" container_healthy funecob-auth
+check "Supabase REST" container_healthy funecob-rest
+check "Realtime" container_healthy funecob-realtime
+check "Storage" container_healthy funecob-storage
+check "Edge Functions" container_healthy funecob-edge-functions
+check "Cron (agendador)" container_running funecob-cron
+check "Kong (API GW)" container_healthy funecob-kong
+check "FUNecob Web" container_healthy funecob-web
+check "Frontend (host)" curl -fsS -o /dev/null --max-time 10 "http://127.0.0.1:${WEB_HTTP_PORT:-54320}/healthz"
 
 echo "-------------- PostgreSQL: infraestrutura interna -------------"
 pg_has() {
@@ -105,11 +119,12 @@ if [ "$FAILED" -eq 0 ]; then
   printf "${C_GREEN}OK — todos os serviços do FUNecob estão saudáveis.${C_RESET}\n\n"
   exit 0
 fi
-printf "${C_YEL}ERRO — %s verificação(ões) falharam.${C_RESET}\n" "$FAILED"
+printf "${C_RED}ERRO — %s verificação(ões) falharam.${C_RESET}\n" "$FAILED"
 cat <<'EOF'
 Causas mais comuns:
-  * HTTPS falhando .......... o proxy externo precisa encaminhar APP para 127.0.0.1:WEB_HTTP_PORT e API para 127.0.0.1:KONG_HTTP_PORT.
-  * Evolution inacessível ... dentro do Docker use http://host.docker.internal:8080, nunca localhost.
-  * Serviços internos ....... veja: docker compose -p funecob logs -f <serviço>
+  * Serviço unhealthy ......... veja docker compose -p funecob ps e logs do serviço.
+  * HTTPS API 502 ............. proxy externo em Docker deve alcançar o gateway do host,
+                                não 127.0.0.1 dentro do container.
+  * Evolution inacessível ..... dentro do Docker use host.docker.internal:8080.
 EOF
 exit 1
