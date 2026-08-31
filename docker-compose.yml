@@ -204,8 +204,15 @@ services:
       TZ: ${TZ:-America/Sao_Paulo}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      WEBHOOK_ALLOW_INSECURE: ${WEBHOOK_ALLOW_INSECURE:-false}
     volumes:
       - ./supabase/functions:/home/deno/functions:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -o /dev/null -w '%{http_code}' http://localhost:9000/ | grep -qE '^(200|400|401|404)$'"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
     # Edge Runtime expects the main-service to be the main service directory,
     # not the index.ts file itself. The directory contains index.ts.
     command: ["start", "--main-service", "/home/deno/functions/main"]
