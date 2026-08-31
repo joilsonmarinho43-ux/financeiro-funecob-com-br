@@ -108,8 +108,8 @@
     // ─── Forward to background ───
     try {
       chrome.runtime.sendMessage({ type: "BIP_CAPTURED", barcode: candidate });
-    } catch {
-      // Service worker asleep — silent
+    } catch (e) {
+      // Service worker asleep or other error — silent
     }
   }
 
