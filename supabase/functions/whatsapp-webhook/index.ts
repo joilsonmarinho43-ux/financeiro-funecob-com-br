@@ -352,10 +352,18 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Shared-secret authentication. If EVOLUTION_WEBHOOK_SECRET is set,
-  // the webhook MUST include a matching header. Backward compatible: if the
-  // env var is absent, the check is skipped, so existing Evolution installs
-  // keep working until the secret is configured on both sides.
+  // Shared-secret authentication OBRIGATÓRIA: sem segredo configurado
+  // qualquer requisição externa poderia injetar eventos falsos de PIX e
+  // disparar conciliação automática (risco financeiro direto).
+  // Escape hatch explícito apenas para migrações: WEBHOOK_ALLOW_INSECURE=true.
+  if (!expectedSecret && Deno.env.get("WEBHOOK_ALLOW_INSECURE") !== "true") {
+    console.error(JSON.stringify({ tag: "wa-webhook", event: "webhook_secret_missing" }));
+    return new Response(
+      JSON.stringify({ error: "webhook não configurado: defina EVOLUTION_WEBHOOK_SECRET" }),
+      { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
   if (expectedSecret) {
     const provided = getProvided();
     if (provided !== expectedSecret) {

@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://esm.sh/zod@3.23.8";
 import { sendEvolutionText } from "../_shared/evolutionSend.ts";
+import { requireOrgAuth } from "../_shared/requireOrgAuth.ts";
 
 // --- Evolution API: fallback por variáveis de ambiente (VPS própria) ---
 // Precedência: whatsapp_instances > global_settings > ENV.
@@ -63,6 +64,9 @@ Deno.serve(async (req) => {
       );
     }
     const { phone, message, organization_id } = parsed.data;
+
+    const auth = await requireOrgAuth(req, organization_id, corsHeaders);
+    if (!auth.ok) return auth.response;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

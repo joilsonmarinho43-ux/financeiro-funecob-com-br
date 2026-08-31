@@ -166,3 +166,27 @@ instalador apenas diagnostica e, quando a rede é uma órfã do próprio FUNecob
 (sem labels e sem containers de terceiros), a remove para o Compose recriá-la
 com `com.docker.compose.project=funecob`. Rede de outro projeto ⇒ aborta sem
 alterar nada. Evolution API, MongoDB, Caddy e Nexus 33 nunca são tocados.
+
+## Correções críticas para VPS (auditoria)
+
+1. **GRANTs do schema `public`** — no Supabase Cloud a plataforma aplica
+   `ALTER DEFAULT PRIVILEGES` internos que não aparecem nas migrations
+   exportadas. No self-hosted isso se perde e o PostgREST responde
+   `permission denied for table ...` mesmo com RLS correta (o GRANT é
+   checado ANTES da RLS). `deploy/db/grants.sql` roda automaticamente ao
+   final de `./deploy/migrate.sh` e é idempotente.
+2. **`PGRST_DB_SCHEMAS`** — `graphql_public` foi removido do padrão
+   (`public,storage`), pois `pg_graphql` não é instalado nesta stack e o
+   PostgREST falha ao subir referenciando um schema inexistente.
+3. **Migrations em transação única** — `psql -1` em `migrate.sh`: uma falha
+   não deixa mais estado parcial, então a reexecução é realmente segura.
+   A migration do bucket `logos` virou idempotente (`ON CONFLICT` +
+   `DROP POLICY IF EXISTS`).
+4. **`EVOLUTION_WEBHOOK_SECRET` obrigatório** — sem ele o `whatsapp-webhook`
+   recusa eventos com HTTP 503 (evita comprovantes PIX forjados). Gere com
+   `openssl rand -hex 32`. Somente para migração: `WEBHOOK_ALLOW_INSECURE=true`.
+5. **Edge Functions autenticadas** — `send-now`, `gateway-create-payment`,
+   `auto-settlement-assign-client` e `pix-ocr-sandbox` agora exigem JWT
+   válido e vínculo com a organização (`_shared/requireOrgAuth.ts`).
+6. **Healthcheck do Edge Runtime** e CORS do Kong com `credentials: false`
+   (obrigatório quando `origins: "*"`).

@@ -6,6 +6,7 @@
 // NUNCA toca em: auto_settlement_events, auto_settlement_allocations, invoices,
 // transactions, billing_reminders, whatsapp_queue. É 100% read-only.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { requireOrgAuth } from "../_shared/requireOrgAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -101,6 +102,10 @@ Deno.serve(async (req) => {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
+  // Sandbox consome créditos de IA: exige admin autenticado.
+  const auth = await requireOrgAuth(req, organization_id, corsHeaders, { adminOnly: true });
+  if (!auth.ok) return auth.response;
 
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
   const report: any = {
