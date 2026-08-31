@@ -190,6 +190,7 @@ services:
       SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       SUPABASE_DB_URL: postgres://postgres:${POSTGRES_PASSWORD}@funecob-db:5432/${POSTGRES_DB:-postgres}
+      JWT_SECRET: ${JWT_SECRET}
       SUPABASE_JWT_SECRET: ${JWT_SECRET}
       VERIFY_JWT: "false"
       PORTAL_BASE_URL: ${PORTAL_BASE_URL}
@@ -213,8 +214,6 @@ services:
       timeout: 5s
       retries: 6
       start_period: 40s
-    # Edge Runtime expects the main-service to be the main service directory,
-    # not the index.ts file itself. The directory contains index.ts.
     command: ["start", "--main-service", "/home/deno/functions/main"]
 
   funecob-cron:
