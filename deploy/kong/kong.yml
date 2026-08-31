@@ -35,7 +35,10 @@ plugins:
         - x-signature
         - prefer
         - range
-      credentials: true
+      # 'credentials: true' com origins '*' é proibido pela spec de CORS
+      # (o navegador ignora as credenciais). A autenticação é feita por
+      # apikey/Bearer em header, então credentials fica desativado.
+      credentials: false
       max_age: 3600
 
 services:
