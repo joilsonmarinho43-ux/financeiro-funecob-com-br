@@ -46,7 +46,7 @@ check "Realtime" container_healthy funecob-realtime
 check "Storage" container_healthy funecob-storage
 check "Edge Functions" container_healthy funecob-edge-functions
 check "Cron (agendador)" container_running funecob-cron
-check "Kong (API GW)" container_healthy funecob-kong
+check "Kong (API GW)" curl -fsS --max-time 10 "${KONG}/auth/v1/health"
 check "FUNecob Web" container_healthy funecob-web
 check "Frontend (host)" curl -fsS -o /dev/null --max-time 10 "http://127.0.0.1:${WEB_HTTP_PORT:-54320}/healthz"
 
