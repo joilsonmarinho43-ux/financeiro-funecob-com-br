@@ -146,6 +146,12 @@ services:
       APP_NAME: funecob-realtime
       SEED_SELF_HOST: "true"
       RUN_JANITOR: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null -H 'Authorization: Bearer ${ANON_KEY}' http://localhost:4000/api/tenants/funecob/health"]
+      interval: 20s
+      timeout: 8s
+      retries: 12
+      start_period: 60s
 
   funecob-storage:
     <<: *common
@@ -175,12 +181,12 @@ services:
       test: ["CMD", "wget", "-qO-", "http://localhost:5000/status"]
       interval: 15s
       timeout: 5s
-      retries: 10
-      start_period: 30s
+      retries: 15
+      start_period: 60s
 
   funecob-edge-functions:
     <<: *common
-    image: supabase/edge-runtime:v1.67.4
+    image: supabase/edge-runtime:v1.74.3
     container_name: funecob-edge-functions
     depends_on:
       funecob-db:
@@ -212,8 +218,8 @@ services:
       test: ["CMD-SHELL", "curl -sf -o /dev/null http://localhost:9000/_internal/health || wget -q -O /dev/null http://localhost:9000/_internal/health"]
       interval: 20s
       timeout: 5s
-      retries: 6
-      start_period: 40s
+      retries: 12
+      start_period: 60s
     command: ["start", "--main-service", "/home/deno/functions/main"]
 
   funecob-cron:
