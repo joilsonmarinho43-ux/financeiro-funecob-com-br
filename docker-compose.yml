@@ -2,11 +2,7 @@
 # FUNecob — Stack COMPLETA e INDEPENDENTE (VPS)
 # Nada aqui é compartilhado com o projeto Nexus 33:
 # rede, volumes, containers e portas são exclusivos do FUNecob.
-#
-# Subir:      ./deploy/install.sh
-# Atualizar:  ./deploy/update.sh
 # =====================================================================
-
 name: funecob
 
 networks:
@@ -120,14 +116,7 @@ services:
       PGRST_DB_USE_LEGACY_GUCS: "false"
       PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
       PGRST_APP_SETTINGS_JWT_EXP: ${JWT_EXPIRY:-3600}
-      PGRST_ADMIN_SERVER_PORT: 3001
     command: ["postgrest"]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3001/ready >/dev/null"]
-      interval: 15s
-      timeout: 5s
-      retries: 15
-      start_period: 30s
 
   funecob-realtime:
     <<: *common
@@ -171,7 +160,7 @@ services:
       funecob-db:
         condition: service_healthy
       funecob-rest:
-        condition: service_healthy
+        condition: service_started
     environment:
       ANON_KEY: ${ANON_KEY}
       SERVICE_KEY: ${SERVICE_ROLE_KEY}
@@ -265,7 +254,7 @@ services:
       funecob-auth:
         condition: service_started
       funecob-rest:
-        condition: service_healthy
+        condition: service_started
       funecob-storage:
         condition: service_started
     environment:
