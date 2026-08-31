@@ -35,6 +35,11 @@ Deno.serve(async (req) => {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Exige JWT válido e vínculo do chamador com a organização do evento
+    const auth = await requireOrgAuth(req, ev.organization_id, corsHeaders);
+    if (!auth.ok) return auth.response;
+
     const { data: cli } = await supabase.from("clients")
       .select("id, organization_id, name").eq("id", client_id).maybeSingle();
     if (!cli || cli.organization_id !== ev.organization_id) {
