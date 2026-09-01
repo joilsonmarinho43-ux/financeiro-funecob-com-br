@@ -3,7 +3,6 @@ import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -66,8 +65,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .maybeSingle();
 
       if (!sub) {
-        // No subscription = expired (unless it's a fresh account with no sub yet)
-        setLicenseExpired(true);
+        // A fresh organization may not have billing configured yet.
+        // Authentication must not be blocked solely because no subscription exists.
+        setLicenseExpired(false);
         return;
       }
 
@@ -121,7 +121,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-
       // Perda de sessão sem logout explícito (falha de refresh em rede móvel/aba em background):
       // tenta recuperar antes de expulsar o usuário para a tela de login.
       if (!session && (event === "SIGNED_OUT" || event === "TOKEN_REFRESHED")) {
@@ -170,13 +169,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-
   const signIn = async (email: string, password: string) => {
     localStorage.removeItem("funecob_signed_out");
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error as Error | null };
   };
-
 
   const signUp = async (email: string, password: string, fullName: string) => {
     const { error } = await supabase.auth.signUp({
@@ -209,7 +206,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("funecob_signed_out", "1");
     await supabase.auth.signOut({ scope: "local" });
   };
-
 
   return (
     <AuthContext.Provider value={{ user, session, loading, licenseExpired, signIn, signUp, resetPassword, updatePassword, signOut }}>
