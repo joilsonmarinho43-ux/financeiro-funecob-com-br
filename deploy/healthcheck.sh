@@ -39,12 +39,19 @@ container_running() {
 
 echo
 echo "=============== FUNecob — status dos serviços ==============="
+http_code() { curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$@"; }
+is_2xx() { case "$1" in 2*) return 0;; *) return 1;; esac; }
+
 check "PostgreSQL" dc exec -T funecob-db pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}"
 check "Supabase Auth" container_healthy funecob-auth
 check "Supabase REST" container_healthy funecob-rest
 check "Realtime" container_healthy funecob-realtime
 check "Storage" container_healthy funecob-storage
-check "Edge Functions" container_healthy funecob-edge-functions
+# A imagem do edge-runtime não possui curl/wget/bash: validamos o processo em
+# execução + a rota real publicada pelo Kong (resposta != 000/404 = worker vivo).
+check "Edge Functions (container)" container_running funecob-edge-functions
+CODE_FN="$(http_code -H "apikey: ${ANON_KEY}" "http://127.0.0.1:${KONG_HTTP_PORT:-54321}/functions/v1/client-portal")"
+check "Edge Functions (resposta)" sh -c "test '${CODE_FN}' != '000' && test '${CODE_FN}' != '404'"
 check "Cron (agendador)" container_running funecob-cron
 check "Kong (API GW)" container_healthy funecob-kong
 check "FUNecob Web" container_healthy funecob-web
@@ -66,28 +73,36 @@ done
 check "Migrations aplicadas" pg_has "SELECT count(*) > 0 FROM public.schema_migrations"
 
 echo "-------------- Kong: autenticação por apikey (real) ----------"
-http_code() { curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$@"; }
 CODE_VALID="$(http_code -H "apikey: ${ANON_KEY}" "${KONG}/rest/v1/")"
 CODE_NONE="$(http_code "${KONG}/rest/v1/")"
 CODE_BAD="$(http_code -H "apikey: chave-invalida-funecob" "${KONG}/rest/v1/")"
-check "REST aceita ANON_KEY válida (2xx)" sh -c "case '${CODE_VALID}' in 2*) exit 0;; *) exit 1;; esac"
+check "REST aceita ANON_KEY válida (2xx)" is_2xx "$CODE_VALID"
 check "REST rejeita sem apikey (401)" test "$CODE_NONE" = "401"
 check "REST rejeita apikey inválida (401)" test "$CODE_BAD" = "401"
-check "SERVICE_ROLE_KEY registrada no Kong" sh -c "test \"\$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'apikey: ${SERVICE_ROLE_KEY}' '${KONG}/rest/v1/')\" != '401'"
+CODE_SR="$(http_code -H "apikey: ${SERVICE_ROLE_KEY}" "${KONG}/rest/v1/")"
+check "SERVICE_ROLE_KEY registrada no Kong" test "$CODE_SR" != "401"
 check "Nenhum placeholder \$SUPABASE_* carregado no Kong" sh -c "! docker exec funecob-kong grep -q 'SUPABASE_ANON_KEY\|SUPABASE_SERVICE_KEY' /home/kong/kong.generated.yml"
 check "YAML do Kong íntegro (aspas preservadas)" sh -c "docker exec funecob-kong grep -q 'origins: \[\"\*\"\]' /home/kong/kong.generated.yml"
 
 echo "-------------- Kong: rotas publicadas ------------------------"
-check "/auth/v1/health" sh -c "case \"\$(http_code '${KONG}/auth/v1/health')\" in 2*) exit 0;; *) exit 1;; esac"
-check "/rest/v1/ (apikey)" sh -c "case \"\$(http_code -H 'apikey: ${ANON_KEY}' '${KONG}/rest/v1/')\" in 2*) exit 0;; *) exit 1;; esac"
-check "/graphql/v1 (roteada)" sh -c "test \"\$(http_code -X POST -H 'apikey: ${ANON_KEY}' -H 'Content-Type: application/json' -d '{\"query\":\"{__typename}\"}' '${KONG}/graphql/v1')\" != '404'"
-check "/storage/v1/ (roteada)" sh -c "test \"\$(http_code -H 'apikey: ${ANON_KEY}' '${KONG}/storage/v1/bucket')\" != '404'"
-check "/functions/v1/ (roteada)" sh -c "test \"\$(http_code -H 'apikey: ${ANON_KEY}' '${KONG}/functions/v1/client-portal')\" != '404'"
-check "/realtime/v1/ (roteada)" sh -c "test \"\$(http_code -H 'apikey: ${ANON_KEY}' '${KONG}/realtime/v1/websocket')\" != '404'"
+CODE_AUTH="$(http_code "${KONG}/auth/v1/health")"
+CODE_REST="$(http_code -H "apikey: ${ANON_KEY}" "${KONG}/rest/v1/")"
+CODE_GQL="$(http_code -X POST -H "apikey: ${ANON_KEY}" -H 'Content-Type: application/json' -d '{"query":"{__typename}"}' "${KONG}/graphql/v1")"
+CODE_STG="$(http_code -H "apikey: ${ANON_KEY}" "${KONG}/storage/v1/bucket")"
+CODE_FNR="$(http_code -H "apikey: ${ANON_KEY}" "${KONG}/functions/v1/client-portal")"
+CODE_RT="$(http_code -H "apikey: ${ANON_KEY}" "${KONG}/realtime/v1/websocket")"
+check "/auth/v1/health" is_2xx "$CODE_AUTH"
+check "/rest/v1/ (apikey)" is_2xx "$CODE_REST"
+check "/graphql/v1 (roteada)" test "$CODE_GQL" != "404"
+check "/storage/v1/ (roteada)" test "$CODE_STG" != "404"
+check "/functions/v1/ (roteada)" test "$CODE_FNR" != "404"
+check "/realtime/v1/ (roteada)" test "$CODE_RT" != "404"
 
 echo "---------------- infraestrutura reutilizada ------------------"
 check "Evolution API (existente)" curl -fsS -o /dev/null --max-time 8 -H "apikey: ${EVOLUTION_API_KEY}" "${EV_HOST_URL%/}/"
-check "Evolution a partir do container" dc exec -T funecob-edge-functions sh -c 'curl -fsS -o /dev/null --max-time 8 -H "apikey: $EVOLUTION_API_KEY" "${EVOLUTION_API_URL%/}/" || wget -q -O /dev/null --timeout=8 --header="apikey: $EVOLUTION_API_KEY" "${EVOLUTION_API_URL%/}/"'
+# O container do cron é o único com curl instalado; edge-runtime não possui.
+check "Evolution a partir do container" dc exec -T funecob-cron sh -c "curl -fsS -o /dev/null --max-time 8 -H 'apikey: ${EVOLUTION_API_KEY}' '${EVOLUTION_API_URL%/}/'"
+
 
 echo "------------------- isolamento de rede ----------------------"
 for c in funecob-db funecob-auth funecob-rest funecob-realtime funecob-storage funecob-edge-functions funecob-kong funecob-web funecob-cron; do
