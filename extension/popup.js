@@ -15,7 +15,9 @@
   // Load config + history
   chrome.storage.local.get(["bipConfig", "bipHistory"], (data) => {
     if (data.bipConfig) {
-      config = { globalCapture: true, strictMode: true, expectedLen: 13, ...data.bipConfig };
+      // Fix: Merge bipConfig into the existing config to preserve apiUrl/apiKey defaults
+      // if data.bipConfig only contains other fields like globalCapture.
+      config = { ...config, ...data.bipConfig };
       $("apiUrl").value = config.apiUrl || "";
       $("apiKey").value = config.apiKey || "";
       const gc = $("globalCapture");
