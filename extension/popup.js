@@ -33,6 +33,11 @@
       renderHistory();
     }
     chrome.runtime.sendMessage({ type: "BIP_CONFIG_UPDATED", config }).catch(() => {});
+    // Improve UX: automatically focus the barcode input when the popup opens
+    const barcodeInput = $("barcodeInput");
+    if (barcodeInput) {
+      barcodeInput.focus();
+    }
   });
 
   function updateStatus() {
