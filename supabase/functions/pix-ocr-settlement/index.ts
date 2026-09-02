@@ -1,5 +1,5 @@
 // PIX OCR Settlement — decoupled module
-// Receives WhatsApp PIX receipt image, runs OCR via Lovable AI Gateway,
+// Receives WhatsApp PIX receipt image, runs OCR directly via Google Gemini,
 // processes settlement via auto_settlement_process_payment RPC.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -10,7 +10,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY") || "";
 
 function normalizePhone(p: string): string {
@@ -147,25 +146,9 @@ async function matchesOpenInvoicesByAmount(
 // Monta o bloco multimodal correto: imagem usa image_url, PDF usa file.
 // Sem isso, comprovantes em PDF chegam ao Gemini como "imagem JPEG"
 // e o OCR falha silenciosamente (1º passe vazio, baixa não acontece).
-function buildMediaBlock(dataUrl: string, mimeType: string) {
-  const isPdf = /^application\/pdf/i.test(mimeType) || /^data:application\/pdf/i.test(dataUrl);
-  if (isPdf) {
-    return {
-      type: "file",
-      file: { filename: "comprovante.pdf", file_data: dataUrl },
-    };
-  }
-  return { type: "image_url", image_url: { url: dataUrl } };
-}
-
 function dataUrlToBase64(dataUrl: string): string {
   const idx = dataUrl.indexOf(",");
   return idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl;
-}
-
-function isAiCreditError(err: any): boolean {
-  const s = String(err?.message || err || "").toLowerCase();
-  return s.includes("402") || s.includes("payment_required") || s.includes("not enough credits") || s.includes("insufficient credits");
 }
 
 function parseJsonObject(text: string): any {
@@ -185,7 +168,7 @@ function parseJsonObject(text: string): any {
 }
 
 async function runGeminiDirectOcr(mediaUrl: string, mimeType: string, amountOnly = false): Promise<any> {
-  if (!GEMINI_API_KEY) throw new Error("credito_ocr_esgotado: AI Gateway sem crédito e GEMINI_API_KEY/GOOGLE_API_KEY não configurada para fallback direto");
+  if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY/GOOGLE_API_KEY não configurada para OCR direto");
 
   const prompt = amountOnly
     ? "Leia este comprovante PIX brasileiro e retorne APENAS JSON válido: {\"amount\": <number|null>, \"raw_text\": <todo o texto visível>}. Encontre o valor transferido em reais. Não invente valor."
@@ -245,106 +228,23 @@ async function runGeminiDirectOcr(mediaUrl: string, mimeType: string, amountOnly
 }
 
 async function runOcr(mediaUrl: string, mimeType: string): Promise<any> {
-  try {
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Você extrai dados de comprovantes PIX brasileiros (imagem OU PDF). Retorne APENAS JSON válido com as chaves: amount (number, valor em reais), txid (string|null), end_to_end_id (string|null), paid_at (string ISO|null), sender_name (string|null), raw_text (string com TODO o texto bruto visível no comprovante, incluindo cabeçalhos, valores, datas, nomes). Se não for um comprovante PIX válido, retorne {\"amount\":null}.",
-          },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Extraia os dados deste comprovante PIX." },
-              buildMediaBlock(mediaUrl, mimeType),
-            ],
-          },
-        ],
-        response_format: { type: "json_object" },
-      }),
-    });
-    if (!res.ok) throw new Error(`OCR failed [${res.status}]: ${await res.text()}`);
-    const data = await res.json();
-    const txt = data.choices?.[0]?.message?.content || "{}";
-    try { return JSON.parse(txt); } catch { return { raw_text: txt }; }
-  } catch (e) {
-    if (isAiCreditError(e) || GEMINI_API_KEY) {
-      console.warn("[pix-ocr] primary OCR unavailable; trying Gemini direct fallback", String((e as any)?.message || e).slice(0, 180));
-      try {
-        const fallback = await runGeminiDirectOcr(mediaUrl, mimeType, false);
-        return { ...fallback, _ocr_provider: "gemini_direct_fallback" };
-      } catch (fallbackErr) {
-        throw new Error(`OCR primário indisponível (${String((e as any)?.message || e)}); fallback Gemini falhou (${String((fallbackErr as any)?.message || fallbackErr)})`);
-      }
-    }
-    throw e;
-  }
+  const direct = await runGeminiDirectOcr(mediaUrl, mimeType, false);
+  return { ...direct, _ocr_provider: "gemini_direct" };
 }
 
 // 2º passe: foco exclusivo em VALOR, usado quando o 1º passe não detectou.
 async function runOcrAmountOnly(mediaUrl: string, mimeType: string): Promise<{ amount: number | null; raw_text: string | null }> {
   try {
-    if (!LOVABLE_API_KEY) {
-      const direct = await runGeminiDirectOcr(mediaUrl, mimeType, true);
-      return { amount: coerceAmount(direct.amount), raw_text: direct.raw_text || null };
-    }
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Você lê comprovantes PIX (imagem OU PDF). Sua ÚNICA tarefa: encontrar o VALOR em reais transferido (geralmente após 'R$', 'Valor', 'Total', 'Você transferiu'). Retorne JSON: {\"amount\": <number>, \"raw_text\": <todo o texto visível>}. Se realmente não houver valor visível, retorne {\"amount\": null, \"raw_text\": <texto>}. NUNCA invente valor.",
-          },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Qual é o valor (R$) deste comprovante? Retorne também todo o texto visível." },
-              buildMediaBlock(mediaUrl, mimeType),
-            ],
-          },
-        ],
-        response_format: { type: "json_object" },
-      }),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      if (isAiCreditError(`${res.status} ${text}`) || GEMINI_API_KEY) {
-        const direct = await runGeminiDirectOcr(mediaUrl, mimeType, true);
-        return { amount: coerceAmount(direct.amount), raw_text: direct.raw_text || null };
-      }
-      return { amount: null, raw_text: null };
-    }
-    const data = await res.json();
-    const txt = data.choices?.[0]?.message?.content || "{}";
-    const parsed = JSON.parse(txt);
-    return { amount: coerceAmount(parsed.amount), raw_text: parsed.raw_text || null };
+    const direct = await runGeminiDirectOcr(mediaUrl, mimeType, true);
+    return {
+      amount: coerceAmount(direct.amount),
+      raw_text: direct.raw_text || null,
+    };
   } catch (e) {
     console.warn("[pix-ocr] 2nd-pass amount-only failed (non-blocking)", e);
     return { amount: null, raw_text: null };
   }
 }
-
-import { deliverPaymentConfirmation } from "../_shared/paymentReceipt.ts";
-import { computeScore, decisionAllowsAuto } from "../_shared/pix/score.ts";
-import { detectDuplicate } from "../_shared/pix/duplicate.ts";
-import { findTrustedPayer, recordTrustedPayer, normalizeName as normalizePayerName } from "../_shared/pix/trustedPayers.ts";
-import { isProviderDisabled, recordProviderSuccess, recordProviderFailure } from "../_shared/pix/ocrStats.ts";
 
 async function processEvent(supabase: any, eventId: string, organizationId: string) {
   try {
@@ -357,7 +257,7 @@ async function processEvent(supabase: any, eventId: string, organizationId: stri
     if (error) throw error;
     console.log("settlement result", eventId, result);
 
-    if (result?.success && ev.client_id && ev.amount_detected) {
+    if (result?.success && result?.skipped !== "duplicate_recent_paid" && ev.client_id && ev.amount_detected) {
       // Register trusted payer (helps future third-party PIX)
       try {
         const payerName = ev?.ocr_payload?.sender_name || ev?.ocr_payload?.push_name || null;
@@ -536,13 +436,13 @@ Deno.serve(async (req) => {
       const t0 = Date.now();
       try {
         ocrResult = await runOcr(ocrUrl, resolvedMime);
-        ocrProviderUsed = ocrResult?._ocr_provider || "lovable_gateway";
+        ocrProviderUsed = ocrResult?._ocr_provider || "gemini_direct";
         ocrElapsedMs = Date.now() - t0;
         await recordProviderSuccess(supabase, ocrProviderUsed, ocrElapsedMs);
       } catch (e: any) {
         console.error("[pix-ocr] 1st-pass failed", e);
         ocrResult = { error: String(e?.message || e) };
-        await recordProviderFailure(supabase, "lovable_gateway", e);
+        await recordProviderFailure(supabase, "gemini_direct", e);
       }
       // merge — nunca perde o raw_text do webhook nem erro prévio do webhook
       ocr = { ...(ocr_error ? { webhook_error: String(ocr_error) } : {}), ...ocrResult };
@@ -555,7 +455,7 @@ Deno.serve(async (req) => {
         if (second.amount) {
           ocr.amount = second.amount;
           ocr._second_pass_used = true;
-          ocrProviderUsed = ocrProviderUsed || "lovable_gateway_2nd";
+          ocrProviderUsed = ocrProviderUsed || "gemini_direct_2nd";
           ocrElapsedMs = (ocrElapsedMs || 0) + (Date.now() - t1);
           console.log("[pix-ocr] 2nd-pass recuperou valor", { amount: second.amount });
         }
