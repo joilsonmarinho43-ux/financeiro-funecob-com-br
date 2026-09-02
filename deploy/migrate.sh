@@ -54,4 +54,14 @@ if [ -f "$GRANTS_SQL" ]; then
   ok "GRANTs aplicados"
 fi
 
+# Funções/índices auxiliares (painel Super Admin e verificação de migração).
+POST_SQL="${FUNECOB_ROOT}/deploy/db/post-migrations.sql"
+if [ -f "$POST_SQL" ]; then
+  log "Aplicando SQL pós-migrations (admin_org_stats, tenant_integrity_check)..."
+  dc exec -T funecob-db psql -1 -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" \
+    -d "${POSTGRES_DB:-postgres}" -q < "$POST_SQL" \
+    || die "Falha ao aplicar deploy/db/post-migrations.sql"
+  ok "SQL pós-migrations aplicado"
+fi
+
 ok "Migrations: ${applied} aplicada(s), ${skipped} já existente(s)"

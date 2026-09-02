@@ -65,6 +65,41 @@ export default function AdminPanel() {
     enabled: !!isAdmin,
   });
 
+  // Números REAIS por empresa (clientes, mensalidades em aberto etc.).
+  // Fonte primária: RPC admin_org_stats. Fallback: contagens por empresa.
+  const orgIds = (orgs as any[]).map((o) => o.id).join(",");
+  const { data: stats = {} } = useQuery({
+    queryKey: ["admin-org-stats", orgIds],
+    enabled: !!isAdmin && (orgs as any[]).length > 0,
+    queryFn: async () => {
+      const map: Record<string, any> = {};
+      const { data, error } = await (supabase as any).rpc("admin_org_stats");
+      if (!error && Array.isArray(data)) {
+        for (const row of data) map[row.organization_id] = row;
+        return map;
+      }
+      // Fallback (banco ainda sem a função): contagens diretas por empresa.
+      await Promise.all(
+        (orgs as any[]).map(async (o) => {
+          const [clients, open, overdue] = await Promise.all([
+            supabase.from("clients").select("id", { count: "exact", head: true }).eq("organization_id", o.id),
+            supabase.from("invoices").select("id", { count: "exact", head: true }).eq("organization_id", o.id).neq("status", "pago"),
+            supabase.from("invoices").select("id", { count: "exact", head: true })
+              .eq("organization_id", o.id).neq("status", "pago")
+              .lt("due_date", new Date().toISOString().slice(0, 10)),
+          ]);
+          map[o.id] = {
+            organization_id: o.id,
+            clients_total: clients.count ?? 0,
+            invoices_open: open.count ?? 0,
+            invoices_overdue: overdue.count ?? 0,
+          };
+        })
+      );
+      return map;
+    },
+  });
+
   const updateSubMutation = useMutation({
     mutationFn: async ({ orgId, planType }: { orgId: string; planType: string }) => {
       const days = PLAN_DURATIONS[planType] || 30;
