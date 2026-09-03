@@ -93,6 +93,13 @@ Deno.serve(async (req: Request) => {
   const envVarsObj = Deno.env.toObject()
   const envVars = Object.keys(envVarsObj).map((key) => [key, envVarsObj[key]])
 
+  console.log('Edge Function request:', {
+    method: req.method,
+    pathname: new URL(req.url).pathname,
+    serviceName,
+    servicePath,
+  })
+
   try {
     const worker = await EdgeRuntime.userWorkers.create({
       servicePath,
