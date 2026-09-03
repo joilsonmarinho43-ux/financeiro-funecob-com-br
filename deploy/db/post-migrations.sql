@@ -70,10 +70,10 @@ AS $$
                AND NOT EXISTS (SELECT 1 FROM public.clients c WHERE c.id = i.client_id)),
            'deve ser zero'
     UNION ALL
-    SELECT 'clientes com plano inexistente',
-           (SELECT count(*) FROM public.clients c
-             WHERE c.organization_id = _org_id AND c.plan_id IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM public.plans p WHERE p.id = c.plan_id)),
+    SELECT 'faturas com plano inexistente',
+           (SELECT count(*) FROM public.invoices i
+             WHERE i.organization_id = _org_id AND i.plan_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM public.plans p WHERE p.id = i.plan_id)),
            'deve ser zero'
     UNION ALL
     SELECT 'membros sem usuario em auth.users',
