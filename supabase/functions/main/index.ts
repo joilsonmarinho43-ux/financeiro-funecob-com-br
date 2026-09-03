@@ -51,6 +51,19 @@ async function isValidHybridJWT(jwt: string): Promise<boolean> {
   return false
 }
 
+function getServiceName(req: Request): string | null {
+  const url = new URL(req.url)
+  const parts = url.pathname.split('/').filter(Boolean)
+
+  // Kong/Supabase normalmente encaminha como /functions/v1/<function>.
+  // Também aceita diretamente /<function> para manter compatibilidade.
+  if (parts[0] === 'functions' && parts[1] === 'v1') {
+    return parts[2] || null
+  }
+
+  return parts[0] || null
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== 'OPTIONS' && VERIFY_JWT) {
     try {
@@ -68,8 +81,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  const url = new URL(req.url)
-  const serviceName = url.pathname.split('/')[1]
+  const serviceName = getServiceName(req)
   if (!serviceName) {
     return new Response(JSON.stringify({ msg: 'missing function name in request' }), {
       status: 400,
