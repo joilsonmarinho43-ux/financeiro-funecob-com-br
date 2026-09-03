@@ -1,0 +1,57 @@
+name: Apply PIX phone priority fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply surgical identity rule change
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("supabase/functions/pix-ocr-settlement/index.ts")
+          s = p.read_text()
+
+          old_switch = '''    let forcedExistingEventId: string | null = null;\n    let switchedFromPhone = false; // true quando o cliente foi trocado via sender_name a partir de match phone/lid_map\n\n    // ===== Troca de cliente: telefone-central → pagador real via sender_name =====\n    // Caso típico: um único WhatsApp (atendente/central da funerária) encaminha\n    // comprovantes de vários clientes. O telefone bate com o "dono" desse número,\n    // mas o nome do pagador no comprovante é claramente outro cliente da base.\n    // Se o sender_name tem match fuzzy forte e único em outro cliente com\n    // fatura aberta no valor EXATO, troca o cliente antes da checagem de baixa.\n    if ((matchSource === "phone" || matchSource === "lid_map") && client && amount && ocr?.sender_name) {\n      const sourceName = String(ocr.sender_name || "");\n      const sourceTokens = strongNameTokens(sourceName);\n      const currentScore = strongNameScore(sourceName, client.name || "");\n      if (sourceTokens.length >= 2) {\n        const scoredOthers = (clients || [])\n          .filter((c: any) => c.id !== client!.id)\n          .map((c: any) => ({ c, score: strongNameScore(sourceName, c.name || "") }))\n          .filter((x: any) => x.score >= 2 && x.score > currentScore)\n          .sort((a: any, b: any) => b.score - a.score);\n        const uniqueTop =\n          scoredOthers.length === 1 ||\n          (scoredOthers.length > 1 && scoredOthers[0].score > scoredOthers[1].score);\n        if (scoredOthers.length >= 1 && uniqueTop) {\n          const top = scoredOthers[0];\n          const topStrongTokens = strongNameTokens(top.c.name || "");\n          const coverage = topStrongTokens.length > 0 ? top.score / topStrongTokens.length : 0;\n          const nameSafe = topStrongTokens.length >= 2 && top.score >= 2 && coverage >= 0.6;\n          if (nameSafe) {\n            const otherHasInvoice = await matchesOpenInvoicesByAmount(\n              supabase, organization_id, top.c.id, amount,\n            );\n            if (otherHasInvoice) {\n              console.log("[pix-ocr] SWITCH client via sender_name (telefone-central detectado)", {\n                from: { id: client.id, name: client.name, source: matchSource },\n                to: { id: top.c.id, name: top.c.name, score: top.score, coverage },\n                amount, sender_name: sourceName,\n              });\n              client = top.c;\n              matchSource = "fuzzy_name";\n              fuzzyNameSource = "sender_name";\n              switchedFromPhone = true;\n            }\n          }\n        }\n      }\n    }\n'''
+          new_switch = '''    let forcedExistingEventId: string | null = null;\n    // Telefone/LID cadastrado é identidade autoritativa do cliente.\n    // O nome do pagador no comprovante pode ser de terceiro e nunca deve\n    // substituir um cliente identificado pelo WhatsApp cadastrado.\n    const whatsappIdentityMatch = matchSource === "phone" || matchSource === "lid_map";\n'''
+          if old_switch not in s:
+              raise SystemExit("ERRO: bloco de troca de cliente não encontrado; abortando sem alteração")
+          s = s.replace(old_switch, new_switch, 1)
+
+          old_guard = '''      // PROTEÇÃO ADICIONAL (bug Iara 15/07/2026):\n      // Quando o cliente foi trocado via sender_name (telefone-central detectado),\n      // o telefone de origem do WhatsApp pertence a OUTRO cliente. Isso é\n      // ambíguo — pode ser: (a) intermediário legítimo encaminhando comprovante\n      // do próprio cliente pagador, ou (b) homônimo em outro cadastro.\n      // Como não temos como distinguir sem confirmação humana, NUNCA baixa\n      // automaticamente nesse caso: sempre pendente_revisao.\n      if (switchedFromPhone) {\n        console.log("[safeFuzzy-guard] switched via sender_name → sempre revisão manual", {\n          client_id: client?.id, origin_phone: phone, cadastro_phone: client?.phone,\n        });\n        safeFuzzy = false;\n      }\n'''
+          if old_guard not in s:
+              raise SystemExit("ERRO: guard de switchedFromPhone não encontrado; abortando sem alteração")
+          s = s.replace(old_guard, '''      // Telefone/LID já identificou o cliente; esta proteção só se aplica a fuzzy_name.\n''', 1)
+
+          old_conflict = '''    else if (phoneNameConflict) {\n      eventStatus = "pendente_revisao";\n      errorMessage = `conflito: telefone bate com este cliente, mas pagador do PIX parece ser ${phoneNameConflict.name}; revise antes de baixar`;\n    }\n'''
+          if old_conflict not in s:
+              raise SystemExit("ERRO: bloqueio phoneNameConflict não encontrado; abortando sem alteração")
+          s = s.replace(old_conflict, '''    // phoneNameConflict permanece apenas como informação de auditoria.\n    // Um pagador PIX diferente é permitido quando o WhatsApp já identificou\n    // o cliente, pois o pagamento pode ter sido feito por terceiro.\n''', 1)
+
+          old_score = '    const scoreAllowsAuto = decisionAllowsAuto(scoreResult.decision) && amountMatchesInvoice && !switchedFromPhone;\n'
+          if old_score not in s:
+              raise SystemExit("ERRO: scoreAllowsAuto esperado não encontrado; abortando sem alteração")
+          s = s.replace(old_score, '    const scoreAllowsAuto = decisionAllowsAuto(scoreResult.decision) && amountMatchesInvoice;\n', 1)
+
+          s = s.replace('''        switched_from_phone: switchedFromPhone,\n''', '''        whatsapp_identity_match: whatsappIdentityMatch,\n''', 1)
+          s = s.replace('''        _phone_name_conflict: phoneNameConflict,\n''', '''        _phone_name_conflict: phoneNameConflict,\n        _whatsapp_identity_authoritative: whatsappIdentityMatch,\n''', 1)
+
+          p.write_text(s)
+          PY
+
+          git diff --check
+          grep -n -E 'whatsappIdentityMatch|SWITCH client|switchedFromPhone|phoneNameConflict|scoreAllowsAuto' supabase/functions/pix-ocr-settlement/index.ts
+
+          rm .github/workflows/apply-pix-phone-priority-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add supabase/functions/pix-ocr-settlement/index.ts .github/workflows/apply-pix-phone-priority-fix.yml
+          git commit -m "fix: priorizar whatsapp cadastrado na baixa pix"
+          git push origin main
