@@ -771,7 +771,7 @@ Deno.serve(async (req) => {
     }
     const requiresReview = matchSource === "fuzzy_name" && !safeFuzzy;
     if (requiresReview) {
-      console.log("[conflict-detected]", { reason: "fuzzy_name_revisao", client_id: client?.id, amount, fuzzyNameSource, switched_from_phone: switchedFromPhone });
+      console.log("[conflict-detected]", { reason: "fuzzy_name_revisao", client_id: client?.id, amount, fuzzyNameSource, whatsapp_identity_match: whatsappIdentityMatch });
     }
 
     // Proteção contra comprovante encaminhado / WhatsApp compartilhado:
