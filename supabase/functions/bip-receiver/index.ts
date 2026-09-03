@@ -322,20 +322,28 @@ Deno.serve(async (req) => {
       const client = invoice.clients;
       if (client?.phone) {
         const tpl = billingSettings.template_baixa ||
-          "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏";
-        await getOrCreatePortalLink(supabase, client.id, orgParam);
+          "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\nVencimento da mensalidade: {data_vencimento}\nAcesse seu portal: {link_portal}\n\nObrigado pela pontualidade! 🙏";
+        const portalLink = await getOrCreatePortalLink(supabase, client.id, orgParam);
+        const portalSection = portalLink ? `🔗 *Acesse seu portal:* ${portalLink}` : "";
         const valorFmt = Number(invoice.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const vencBR = invoice.due_date ? String(invoice.due_date).split("-").reverse().join("/") : "";
         const compBR = invoice.due_date ? new Date(invoice.due_date + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" }) : "";
         const reciboNo = "REC-" + String(invoice.id).replace(/-/g, "").slice(0, 10).toUpperCase();
-        const message = removePaymentConfirmationLinks(tpl
+        let message = removePaymentConfirmationLinks(tpl
           .replace(/\*?\{nome\}\*?/g, `*${(client.name || "Cliente").trim()}*`)
           .replace(/{valor}/g, valorFmt)
           .replace(/{data_pagamento}/g, paidDate.split("-").reverse().join("/"))
-          .replace(/{data_vencimento}/g, vencBR || paidDate.split("-").reverse().join("/"))
+          .replace(/{data_vencimento}/g, vencBR || "Não informado")
           .replace(/{competencia}/g, compBR)
           .replace(/{recibo}/g, reciboNo)
-          .replace(/{link_portal}/g, ""));
+          .replace(/{link_portal}/g, portalSection));
+
+        if (portalLink && !message.includes(portalLink)) {
+          message = `${message}\n\n🔗 *Acesse seu portal:* ${portalLink}`.trim();
+        }
+        if (vencBR && !message.includes(vencBR)) {
+          message = `${message}\n📅 *Vencimento da mensalidade:* ${vencBR}`.trim();
+        }
 
         let directSent = false;
         if (client.collector_id) {
@@ -559,7 +567,9 @@ Deno.serve(async (req) => {
       const paidDate = new Date().toISOString().split("T")[0];
       const portalLink = await getOrCreatePortalLink(supabase, client.id, organizationId);
       if (action === "baixa") {
-        const tpl = billingSettings?.template_baixa || "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\n\nObrigado pela pontualidade! 🙏";
+        const tpl = billingSettings?.template_baixa ||
+          "Pagamento confirmado! ✅\n\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\nVencimento da mensalidade: {data_vencimento}\nAcesse seu portal: {link_portal}\n\nObrigado pela pontualidade! 🙏";
+        const portalSection = portalLink ? `🔗 *Acesse seu portal:* ${portalLink}` : "";
         const valorFmt = Number(invoice?.amount || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const vencBR = invoice?.due_date ? String(invoice.due_date).split("-").reverse().join("/") : "";
         const compBR = invoice?.due_date ? new Date(invoice.due_date + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" }) : "";
@@ -568,10 +578,17 @@ Deno.serve(async (req) => {
           .replace(/\*?\{nome\}\*?/g, `*${(client.name || "").trim()}*`)
           .replace(/{valor}/g, valorFmt)
           .replace(/{data_pagamento}/g, paidDate.split("-").reverse().join("/"))
-          .replace(/{data_vencimento}/g, vencBR || paidDate.split("-").reverse().join("/"))
+          .replace(/{data_vencimento}/g, vencBR || "Não informado")
           .replace(/{competencia}/g, compBR)
           .replace(/{recibo}/g, reciboNo)
-          .replace(/{link_portal}/g, ""));
+          .replace(/{link_portal}/g, portalSection));
+
+        if (portalLink && !message.includes(portalLink)) {
+          message = `${message}\n\n🔗 *Acesse seu portal:* ${portalLink}`.trim();
+        }
+        if (vencBR && !message.includes(vencBR)) {
+          message = `${message}\n📅 *Vencimento da mensalidade:* ${vencBR}`.trim();
+        }
       } else if (action === "remarcacao") {
         const tpl = billingSettings?.template_remarcar || "Olá {nome}! 📅\n\nSua fatura no valor de R$ {valor} foi remarcada.\nNova data de vencimento: {nova_data}\n\nQualquer dúvida, estamos à disposição!";
         const valorFmt = Number(invoice?.amount || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
