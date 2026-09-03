@@ -158,18 +158,31 @@ Deno.serve(async (req) => {
 
         const template =
           settings?.template_baixa ||
-          "Pagamento confirmado! ✅\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}";
-        await getOrCreatePortalLink(supabase, clientId, organization_id);
+          "Pagamento confirmado! ✅\nCliente: {nome}\nValor: R$ {valor}\nData: {data_pagamento}\nVencimento da mensalidade: {data_vencimento}\nAcesse seu portal: {link_portal}";
+
+        // Gerar/recuperar o portal e preservar o resultado para a mensagem.
+        const portalLink = await getOrCreatePortalLink(supabase, clientId, organization_id);
+        const portalSection = portalLink ? `🔗 *Acesse seu portal:* ${portalLink}` : "";
+
         let message = template
           .replace(/\*?\{nome\}\*?/g, `*${(client.name || "Cliente").trim()}*`)
           .replace(/{valor}/g, amount)
           .replace(/{data_pagamento}/g, paid_date.split("-").reverse().join("/"))
-          .replace(/{data_vencimento}/g, vencimentoBR || paid_date.split("-").reverse().join("/"))
+          .replace(/{data_vencimento}/g, vencimentoBR || "Não informado")
           .replace(/{competencia}/g, competenciaBR)
           .replace(/{recibo}/g, reciboNo)
           .replace(/{titular_pix}/g, (settings as any)?.pix_holder_name || "")
-          .replace(/{link_portal}/g, "");
+          .replace(/{link_portal}/g, portalSection);
+
+        // removePaymentConfirmationLinks remove URLs das confirmações. Portanto,
+        // primeiro sanitizamos e depois recolocamos somente o link oficial do portal.
         message = removePaymentConfirmationLinks(message);
+        if (portalLink && !message.includes(portalLink)) {
+          message = `${message}\n\n🔗 *Acesse seu portal:* ${portalLink}`.trim();
+        }
+        if (vencimentoBR && !message.includes(vencimentoBR)) {
+          message = `${message}\n📅 *Vencimento da mensalidade:* ${vencimentoBR}`.trim();
+        }
 
         // Get WhatsApp instance
         const { data: instance } = await supabase
