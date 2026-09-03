@@ -591,51 +591,10 @@ Deno.serve(async (req) => {
       ?? extractFromText(raw_text);
     const txid = ocr?.txid || manual_txid || (message_id ? `WA-MSG-${message_id}` : null);
     let forcedExistingEventId: string | null = null;
-    let switchedFromPhone = false; // true quando o cliente foi trocado via sender_name a partir de match phone/lid_map
-
-    // ===== Troca de cliente: telefone-central → pagador real via sender_name =====
-    // Caso típico: um único WhatsApp (atendente/central da funerária) encaminha
-    // comprovantes de vários clientes. O telefone bate com o "dono" desse número,
-    // mas o nome do pagador no comprovante é claramente outro cliente da base.
-    // Se o sender_name tem match fuzzy forte e único em outro cliente com
-    // fatura aberta no valor EXATO, troca o cliente antes da checagem de baixa.
-    if ((matchSource === "phone" || matchSource === "lid_map") && client && amount && ocr?.sender_name) {
-      const sourceName = String(ocr.sender_name || "");
-      const sourceTokens = strongNameTokens(sourceName);
-      const currentScore = strongNameScore(sourceName, client.name || "");
-      if (sourceTokens.length >= 2) {
-        const scoredOthers = (clients || [])
-          .filter((c: any) => c.id !== client!.id)
-          .map((c: any) => ({ c, score: strongNameScore(sourceName, c.name || "") }))
-          .filter((x: any) => x.score >= 2 && x.score > currentScore)
-          .sort((a: any, b: any) => b.score - a.score);
-        const uniqueTop =
-          scoredOthers.length === 1 ||
-          (scoredOthers.length > 1 && scoredOthers[0].score > scoredOthers[1].score);
-        if (scoredOthers.length >= 1 && uniqueTop) {
-          const top = scoredOthers[0];
-          const topStrongTokens = strongNameTokens(top.c.name || "");
-          const coverage = topStrongTokens.length > 0 ? top.score / topStrongTokens.length : 0;
-          const nameSafe = topStrongTokens.length >= 2 && top.score >= 2 && coverage >= 0.6;
-          if (nameSafe) {
-            const otherHasInvoice = await matchesOpenInvoicesByAmount(
-              supabase, organization_id, top.c.id, amount,
-            );
-            if (otherHasInvoice) {
-              console.log("[pix-ocr] SWITCH client via sender_name (telefone-central detectado)", {
-                from: { id: client.id, name: client.name, source: matchSource },
-                to: { id: top.c.id, name: top.c.name, score: top.score, coverage },
-                amount, sender_name: sourceName,
-              });
-              client = top.c;
-              matchSource = "fuzzy_name";
-              fuzzyNameSource = "sender_name";
-              switchedFromPhone = true;
-            }
-          }
-        }
-      }
-    }
+    // Telefone/LID cadastrado é identidade autoritativa do cliente.
+    // O nome do pagador no comprovante pode ser de terceiro e nunca deve
+    // substituir um cliente identificado pelo WhatsApp cadastrado.
+    const whatsappIdentityMatch = matchSource === "phone" || matchSource === "lid_map";
 
 
     if (force_reprocess) {
@@ -799,19 +758,7 @@ Deno.serve(async (req) => {
         safeFuzzy = false;
       }
 
-      // PROTEÇÃO ADICIONAL (bug Iara 15/07/2026):
-      // Quando o cliente foi trocado via sender_name (telefone-central detectado),
-      // o telefone de origem do WhatsApp pertence a OUTRO cliente. Isso é
-      // ambíguo — pode ser: (a) intermediário legítimo encaminhando comprovante
-      // do próprio cliente pagador, ou (b) homônimo em outro cadastro.
-      // Como não temos como distinguir sem confirmação humana, NUNCA baixa
-      // automaticamente nesse caso: sempre pendente_revisao.
-      if (switchedFromPhone) {
-        console.log("[safeFuzzy-guard] switched via sender_name → sempre revisão manual", {
-          client_id: client?.id, origin_phone: phone, cadastro_phone: client?.phone,
-        });
-        safeFuzzy = false;
-      }
+      // Telefone/LID já identificou o cliente; esta proteção só se aplica a fuzzy_name.
       console.log("[fuzzy-auto-settle-check]", {
         client_id: client.id, amount,
         source: fuzzyNameSource, name_unique: nameUnique, amount_unique: amountUnique,
@@ -819,7 +766,7 @@ Deno.serve(async (req) => {
         client_strong_tokens: clientStrongTokens.length, coverage_ratio: coverageRatio,
         full_name_match: fullNameMatch, tokenized_name_match: tokenizedNameMatch,
         distinct_amount_clients: distinctAmt.length, safe: safeFuzzy,
-        switched_from_phone: switchedFromPhone,
+        whatsapp_identity_match: whatsappIdentityMatch,
       });
     }
     const requiresReview = matchSource === "fuzzy_name" && !safeFuzzy;
@@ -878,10 +825,9 @@ Deno.serve(async (req) => {
       eventStatus = "pendente_revisao";
       errorMessage = "candidato sugerido por nome — confirme manualmente (PIX pode ser de terceiro)";
     }
-    else if (phoneNameConflict) {
-      eventStatus = "pendente_revisao";
-      errorMessage = `conflito: telefone bate com este cliente, mas pagador do PIX parece ser ${phoneNameConflict.name}; revise antes de baixar`;
-    }
+    // phoneNameConflict permanece apenas como informação de auditoria.
+    // Um pagador PIX diferente é permitido quando o WhatsApp já identificou
+    // o cliente, pois o pagamento pode ter sido feito por terceiro.
     else if (!amountMatchesInvoice) {
       // Mesmo com telefone/CPF confiável, valor que não casa com nenhuma fatura
       // (nem combinação) vai pra revisão — evita gerar crédito indevido.
@@ -951,6 +897,7 @@ Deno.serve(async (req) => {
         _safe_fuzzy: safeFuzzy,
         _amount_matches_invoice: amountMatchesInvoice,
         _phone_name_conflict: phoneNameConflict,
+        _whatsapp_identity_authoritative: whatsappIdentityMatch,
         _combination_picks: combinationPicks,
         _force_reprocessed_at: force_reprocess ? new Date().toISOString() : null,
         remote_jid: remote_jid || null,
@@ -1007,7 +954,7 @@ Deno.serve(async (req) => {
     });
 
     // Auto-settle: match confiável OR score >= 80 (auto_ok/auto_high) com valor casado.
-    const scoreAllowsAuto = decisionAllowsAuto(scoreResult.decision) && amountMatchesInvoice && !switchedFromPhone;
+    const scoreAllowsAuto = decisionAllowsAuto(scoreResult.decision) && amountMatchesInvoice;
     if (client && amount && eventStatus === "recebido" && (!requiresReview || scoreAllowsAuto)) {
       // Auto-learn LID → client em sinais confiáveis (CPF) e em fuzzy seguro
       // (push_name + valor único). Próximas mensagens do mesmo LID viram match
