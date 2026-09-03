@@ -52,6 +52,10 @@ export function NichePreview({ niche }: NichePreviewProps) {
         <p className="text-sm font-medium text-foreground">Pré-visualização dos termos</p>
         <Badge variant="outline" className="text-xs capitalize">{niche}</Badge>
       </div>
+      <p className="text-[11px] text-muted-foreground">
+        Exemplo ilustrativo apenas para mostrar a nomenclatura do nicho — os números abaixo
+        não representam dados reais da empresa.
+      </p>
 
       {/* Mock Dashboard */}
       <Card className="border-dashed">

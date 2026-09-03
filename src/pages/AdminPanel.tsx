@@ -224,6 +224,8 @@ export default function AdminPanel() {
                   <TableRow>
                     <TableHead>Empresa</TableHead>
                     <TableHead>Nicho</TableHead>
+                    <TableHead className="text-right">Clientes</TableHead>
+                    <TableHead className="text-right">Em aberto</TableHead>
                     <TableHead>Plano</TableHead>
                     <TableHead>Validade</TableHead>
                     <TableHead>Status</TableHead>
@@ -234,6 +236,7 @@ export default function AdminPanel() {
                   {filtered.map((org: any) => {
                     const sub = Array.isArray(org.subscriptions) ? org.subscriptions[0] : org.subscriptions;
                     const status = getSubStatus(sub);
+                    const st = (stats as any)[org.id];
                     return (
                       <TableRow key={org.id} className={!org.active ? "opacity-50" : ""}>
                         <TableCell>
@@ -242,6 +245,19 @@ export default function AdminPanel() {
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs capitalize">{org.niche}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-sm font-medium">
+                          {st ? Number(st.clients_total) : "…"}
+                        </TableCell>
+                        <TableCell className="text-right text-sm">
+                          {st ? (
+                            <span>
+                              {Number(st.invoices_open)}
+                              {Number(st.invoices_overdue) > 0 && (
+                                <span className="text-destructive"> ({Number(st.invoices_overdue)} vencidas)</span>
+                              )}
+                            </span>
+                          ) : "…"}
                         </TableCell>
                         <TableCell className="text-sm">{sub?.plan_type || "-"}</TableCell>
                         <TableCell className="text-sm">
