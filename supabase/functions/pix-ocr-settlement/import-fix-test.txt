@@ -1,0 +1,1 @@
+Safe-path checkpoint: no production code change. The required fix is to import recordProviderFailure and recordProviderSuccess from ../_shared/pix/ocrStats.ts.
