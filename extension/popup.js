@@ -157,18 +157,34 @@
   $("bipBtn").addEventListener("click", () => sendBip(barcodeInput.value.trim(), currentAction));
 
   async function sendBip(barcode, action) {
-    if (!barcode || barcode.length < getMinLen()) return;
-    if (!action || !["baixa", "remarcacao", "retorno"].includes(action)) return; // require explicit action
-    if (!config.apiUrl || !config.apiKey) {
-      showResult("error", "Configuração necessária", "Clique na engrenagem ⚙️ para configurar a API.");
-      return;
-    }
+    const btn = $("bipBtn"); // Get button reference early
 
-    const btn = $("bipBtn");
+    // First, set the UI to a "sending" state.
     btn.disabled = true;
     $("bipBtnText").textContent = "Enviando...";
     $("bipBtnIcon").textContent = "⏳";
     barcodeInput.className = ""; // Clear previous status visually
+
+    // --- Early exit checks ---
+    if (!barcode || barcode.length < getMinLen()) {
+      showResult("error", "Código inválido", `O código deve ter pelo menos ${getMinLen()} dígitos.`);
+      // Re-evaluate if button should be disabled based on current input value (which might be empty/invalid)
+      btn.disabled = (barcodeInput.value.length < getMinLen());
+      updateBtnText(); // Revert text/icon
+      return;
+    }
+    if (!action || !["baixa", "remarcacao", "retorno"].includes(action)) {
+      showResult("error", "Ação inválida", "Ação de bip desconhecida. Recarregue a extensão se o problema persistir.");
+      btn.disabled = false; // Re-enable
+      updateBtnText(); // Revert text/icon
+      return;
+    }
+    if (!config.apiUrl || !config.apiKey) {
+      showResult("error", "Configuração necessária", "Clique na engrenagem ⚙️ para configurar a API.");
+      btn.disabled = false; // Re-enable
+      updateBtnText();     // Revert text/icon
+      return;
+    }
 
     const body = { barcode, action };
     if (action === "remarcacao") {

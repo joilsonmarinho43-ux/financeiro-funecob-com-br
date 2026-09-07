@@ -28,7 +28,25 @@
     globalCapture: true,
   };
 
-  let cfg = { ...DEFAULTS };
+  // Add a function to sanitize configuration values for robustness
+  function sanitizeConfig(config) {
+    const sanitized = { ...config };
+    // Ensure numeric values are numbers and within valid ranges
+    sanitized.expectedLen = Math.max(0, Number(sanitized.expectedLen) || DEFAULTS.expectedLen);
+    sanitized.fastKeyMs = Math.max(1, Number(sanitized.fastKeyMs) || DEFAULTS.fastKeyMs); // Must be > 0
+    sanitized.idleMs = Math.max(1, Number(sanitized.idleMs) || DEFAULTS.idleMs);   // Must be > 0
+    sanitized.dedupMs = Math.max(0, Number(sanitized.dedupMs) || DEFAULTS.dedupMs); // >= 0, 0 means no dedup
+    sanitized.clientIdLength = Math.max(0, Number(sanitized.clientIdLength) || DEFAULTS.clientIdLength);
+    sanitized.yearLength = Math.max(0, Number(sanitized.yearLength) || DEFAULTS.yearLength);
+    sanitized.monthLength = Math.max(0, Number(sanitized.monthLength) || DEFAULTS.monthLength);
+    // Ensure boolean values are actually booleans
+    sanitized.strictMode = typeof sanitized.strictMode === 'boolean' ? sanitized.strictMode : DEFAULTS.strictMode;
+    sanitized.patternEnabled = typeof sanitized.patternEnabled === 'boolean' ? sanitized.patternEnabled : DEFAULTS.patternEnabled;
+    sanitized.globalCapture = typeof sanitized.globalCapture === 'boolean' ? sanitized.globalCapture : DEFAULTS.globalCapture;
+    return sanitized;
+  }
+
+  let cfg = sanitizeConfig(DEFAULTS); // Initialize with sanitized defaults
   let buffer = "";
   let lastKeyTime = 0;
   let idleTimer = null;
@@ -37,11 +55,16 @@
   // ===== Load + watch config =====
   try {
     chrome.storage.local.get(["bipConfig"], (data) => {
-      if (data?.bipConfig) cfg = { ...DEFAULTS, ...data.bipConfig };
+      if (data?.bipConfig) {
+        cfg = sanitizeConfig({ ...DEFAULTS, ...data.bipConfig });
+      } else {
+        // If no config saved, ensure defaults are sanitized
+        cfg = sanitizeConfig(DEFAULTS);
+      }
     });
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === "local" && changes.bipConfig) {
-        cfg = { ...DEFAULTS, ...(changes.bipConfig.newValue || {}) };
+        cfg = sanitizeConfig({ ...DEFAULTS, ...(changes.bipConfig.newValue || {}) });
       }
     });
   } catch {}
@@ -82,12 +105,12 @@
       silentLog("ignored_no_expected_len", candidate);
       return;
     }
-    if (cfg.strictMode && candidate.length !== expected) {
-      silentLog("ignored_wrong_length", candidate);
-      return;
-    }
-    if (!cfg.strictMode && candidate.length < expected) {
-      silentLog("ignored_below_expected", candidate);
+    // As per the primary rule: "Buffer must reach exactly EXPECTED_LEN digits",
+    // the final barcode sent must always be exactly the expected length.
+    // The `strictMode` flag impacts how tolerant `onKeyDown` is to buffer length
+    // before a flush, but the final output validation here is always exact.
+    if (candidate.length !== expected) {
+      silentLog("ignored_non_exact_length", candidate);
       return;
     }
 
@@ -122,10 +145,21 @@
 
     const expected = Number(cfg.expectedLen) || 0;
 
-    // Enter ends the scan — only flush if buffer reached expected length
+    // Enter ends the scan — flush if buffer reached expected length according to strictMode
     if (e.key === "Enter") {
-      if (expected > 0 && buffer.length >= expected) flush();
-      else resetBuffer();
+      if (expected <= 0) { // If expectedLen is 0, no valid barcode can be formed, so always reset.
+        resetBuffer();
+        return;
+      }
+      if (cfg.strictMode) {
+          // In strict mode, an Enter key only flushes if buffer is exactly expectedLen.
+          if (buffer.length === expected) flush();
+          else resetBuffer();
+      } else { // non-strict mode
+          // In non-strict mode, an Enter key flushes if buffer is at least expectedLen.
+          if (buffer.length >= expected) flush();
+          else resetBuffer();
+      }
       return;
     }
 
@@ -143,12 +177,30 @@
       return;
     }
 
-    // Any other key: if buffer reached expected length, flush; else drop silently
-    if (expected > 0 && buffer.length >= expected) {
-      flush();
-    } else if (buffer.length > 0) {
-      silentLog("buffer_reset_non_digit", buffer);
+    // Any other key (non-digit, non-Enter):
+    // Flush if buffer length meets criteria; otherwise, reset buffer silently.
+    if (expected <= 0) { // If expectedLen is 0, no valid barcode can be formed, so always reset.
+      if (buffer.length > 0) silentLog("buffer_reset_non_digit_no_expected_len", buffer);
       resetBuffer();
+      return;
+    }
+
+    if (cfg.strictMode) {
+        // In strict mode, a non-digit key flushes if buffer is exactly expectedLen.
+        if (buffer.length === expected) {
+            flush();
+        } else if (buffer.length > 0) { // If not exact and buffer has content, reset.
+            silentLog("buffer_reset_non_digit_strict", buffer);
+            resetBuffer();
+        }
+    } else { // non-strict mode
+        // In non-strict mode, a non-digit key flushes if buffer is at least expectedLen.
+        if (buffer.length >= expected) {
+            flush();
+        } else if (buffer.length > 0) {
+            silentLog("buffer_reset_non_digit_non_strict", buffer);
+            resetBuffer();
+        }
     }
   }
 
