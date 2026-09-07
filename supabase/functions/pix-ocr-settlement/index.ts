@@ -2,6 +2,10 @@
 // Receives WhatsApp PIX receipt image, runs OCR directly via Google Gemini,
 // processes settlement via auto_settlement_process_payment RPC.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { recordTrustedPayer } from "../_shared/pix/trustedPayers.ts";
+import { deliverPaymentConfirmation } from "../_shared/paymentReceipt.ts";
+import { computeScore, decisionAllowsAuto } from "../_shared/pix/score.ts";
+import { recordProviderFailure, recordProviderSuccess } from "../_shared/pix/ocrStats.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -249,45 +253,137 @@ async function runOcrAmountOnly(mediaUrl: string, mimeType: string): Promise<{ a
 async function processEvent(supabase: any, eventId: string, organizationId: string) {
   try {
     const { data: ev } = await supabase
-      .from("auto_settlement_events").select("*").eq("id", eventId).maybeSingle();
+      .from("auto_settlement_events")
+      .select("*")
+      .eq("id", eventId)
+      .maybeSingle();
+
     if (!ev) return;
     if (["duplicado", "conciliado"].includes(ev.status)) return;
 
-    const { data: result, error } = await supabase.rpc("auto_settlement_process_payment", { p_event_id: eventId });
+    const { data: result, error } = await supabase.rpc(
+      "auto_settlement_process_payment",
+      { p_event_id: eventId }
+    );
+
     if (error) throw error;
+
     console.log("settlement result", eventId, result);
 
-    if (result?.success && result?.skipped !== "duplicate_recent_paid" && ev.client_id && ev.amount_detected) {
+    /*
+     * A BAIXA E A CONFIRMAÇÃO SÃO ETAPAS SEPARADAS.
+     *
+     * O RPC é responsável pela baixa financeira.
+     * Se a confirmação via WhatsApp/PDF falhar depois da baixa,
+     * isso NÃO pode transformar o pagamento em erro nem provocar
+     * uma nova baixa no retry.
+     */
+    if (
+      result?.success &&
+      result?.skipped !== "duplicate_recent_paid" &&
+      ev.client_id &&
+      ev.amount_detected
+    ) {
       // Register trusted payer (helps future third-party PIX)
       try {
-        const payerName = ev?.ocr_payload?.sender_name || ev?.ocr_payload?.push_name || null;
-        await recordTrustedPayer(supabase, organizationId, ev.client_id, payerName, ev.payer_document, Number(ev.amount_detected));
-      } catch (e) { console.warn("[trusted-payer] record failed", e); }
+        const payerName =
+          ev?.ocr_payload?.sender_name ||
+          ev?.ocr_payload?.push_name ||
+          null;
 
-      await deliverPaymentConfirmation(supabase, {
-        organizationId,
-        eventId: ev.id,
-        clientId: ev.client_id,
-        originPhone: ev.phone || "",
-        totalAmount: Number(ev.amount_detected),
-        txid: ev.txid,
-      });
+        await recordTrustedPayer(
+          supabase,
+          organizationId,
+          ev.client_id,
+          payerName,
+          ev.payer_document,
+          Number(ev.amount_detected)
+        );
+      } catch (e) {
+        console.warn("[trusted-payer] record failed", e);
+      }
+
+      /*
+       * Não reenviar confirmação se ela já foi registrada.
+       */
+      const { data: confirmationLog } = await supabase
+        .from("auto_settlement_logs")
+        .select("id")
+        .eq("event_id", ev.id)
+        .eq("action", "confirmation_sent")
+        .limit(1)
+        .maybeSingle();
+
+      if (!confirmationLog?.id) {
+        try {
+          await deliverPaymentConfirmation(supabase, {
+            organizationId,
+            eventId: ev.id,
+            clientId: ev.client_id,
+            originPhone: ev.phone || "",
+            totalAmount: Number(ev.amount_detected),
+            txid: ev.txid,
+          });
+        } catch (confirmationError: any) {
+          /*
+           * IMPORTANTE:
+           * A baixa já foi concluída pelo RPC.
+           *
+           * Uma falha aqui é somente uma falha de comunicação/
+           * confirmação. Não lançar o erro para o catch principal,
+           * pois isso poderia marcar o evento como "erro" e permitir
+           * um retry do fluxo financeiro.
+           */
+          console.error(
+            "[confirmation] delivery failed after successful settlement",
+            confirmationError
+          );
+
+          await supabase.from("auto_settlement_logs").insert({
+            organization_id: organizationId,
+            event_id: ev.id,
+            client_id: ev.client_id,
+            action: "confirmation_error",
+            details: {
+              error: String(
+                confirmationError?.message || confirmationError
+              ),
+              settlement_already_confirmed: true,
+              retry_safe: true,
+            },
+          });
+        }
+      } else {
+        console.log(
+          "[confirmation] already sent, skipping duplicate confirmation",
+          ev.id
+        );
+      }
     }
   } catch (e: any) {
     console.error("process error", e);
+
     const nextAt = new Date(Date.now() + 60_000).toISOString();
-    await supabase.from("auto_settlement_events")
-      .update({ status: "erro", error_message: String(e?.message || e), next_retry_at: nextAt })
+
+    await supabase
+      .from("auto_settlement_events")
+      .update({
+        status: "erro",
+        error_message: String(e?.message || e),
+        next_retry_at: nextAt,
+      })
       .eq("id", eventId);
+
     await supabase.from("auto_settlement_logs").insert({
       organization_id: organizationId,
       event_id: eventId,
       action: "error",
-      details: { error: String(e?.message || e) },
+      details: {
+        error: String(e?.message || e),
+      },
     });
   }
 }
-
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
