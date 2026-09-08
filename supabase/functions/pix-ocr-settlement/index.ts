@@ -473,9 +473,8 @@ Deno.serve(async (req) => {
         status: eventStatus,
         error_message: errorMessage,
         payer_document: payerDocument,
-        message_id: message_id || null,
-        remote_jid: remote_jid || null,
-        ocr_payload: { ...ocr, push_name, receipt_hint, score: scoreResult },
+        whatsapp_message_id: message_id || null,
+        ocr_payload: { ...ocr, push_name, receipt_hint, remote_jid, score: scoreResult },
       })
       .select("id")
       .single();
