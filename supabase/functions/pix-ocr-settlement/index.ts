@@ -2,7 +2,7 @@
 // Receives WhatsApp PIX receipt image, runs OCR directly via Google Gemini,
 // processes settlement via auto_settlement_process_payment RPC.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { recordTrustedPayer } from "../_shared/pix/trustedPayers.ts";
+import { recordTrustedPayer, findTrustedPayer } from "../_shared/pix/trustedPayers.ts";
 import { deliverPaymentConfirmation } from "../_shared/paymentReceipt.ts";
 import { computeScore, decisionAllowsAuto } from "../_shared/pix/score.ts";
 import { recordProviderFailure, recordProviderSuccess } from "../_shared/pix/ocrStats.ts";
@@ -316,72 +316,15 @@ async function processEvent(supabase: any, eventId: string, organizationId: stri
 
       if (!confirmationLog?.id) {
         try {
-          await deliverPaymentConfirmation(supabase, {
-            organizationId,
-            eventId: ev.id,
-            clientId: ev.client_id,
-            originPhone: ev.phone || "",
-            totalAmount: Number(ev.amount_detected),
-            txid: ev.txid,
-          });
-        } catch (confirmationError: any) {
-          /*
-           * IMPORTANTE:
-           * A baixa já foi concluída pelo RPC.
-           *
-           * Uma falha aqui é somente uma falha de comunicação/
-           * confirmação. Não lançar o erro para o catch principal,
-           * pois isso poderia marcar o evento como "erro" e permitir
-           * um retry do fluxo financeiro.
-           */
-          console.error(
-            "[confirmation] delivery failed after successful settlement",
-            confirmationError
-          );
-
-          await supabase.from("auto_settlement_logs").insert({
-            organization_id: organizationId,
-            event_id: ev.id,
-            client_id: ev.client_id,
-            action: "confirmation_error",
-            details: {
-              error: String(
-                confirmationError?.message || confirmationError
-              ),
-              settlement_already_confirmed: true,
-              retry_safe: true,
-            },
-          });
+          await deliverPaymentConfirmation(supabase, organizationId, ev);
+        } catch (e) {
+          console.warn("[confirmation] delivery failed after successful settlement", e);
         }
-      } else {
-        console.log(
-          "[confirmation] already sent, skipping duplicate confirmation",
-          ev.id
-        );
       }
     }
-  } catch (e: any) {
-    console.error("process error", e);
-
-    const nextAt = new Date(Date.now() + 60_000).toISOString();
-
-    await supabase
-      .from("auto_settlement_events")
-      .update({
-        status: "erro",
-        error_message: String(e?.message || e),
-        next_retry_at: nextAt,
-      })
-      .eq("id", eventId);
-
-    await supabase.from("auto_settlement_logs").insert({
-      organization_id: organizationId,
-      event_id: eventId,
-      action: "error",
-      details: {
-        error: String(e?.message || e),
-      },
-    });
+  } catch (e) {
+    console.error("[pix-ocr] processEvent failed", e);
+    throw e;
   }
 }
 
@@ -391,193 +334,54 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
     const body = await req.json();
-    const { organization_id, phone, push_name, image_url, image_base64, media_mime_type, message_id, raw_text, manual_amount, manual_txid, force_reprocess, ocr_error, remote_jid } = body;
+    const {
+      organization_id,
+      phone,
+      push_name,
+      image_base64,
+      media_mime_type,
+      receipt_hint,
+      message_id,
+      raw_text,
+      remote_jid,
+    } = body || {};
 
-    if (!organization_id || !phone || (!image_url && !image_base64 && !raw_text && manual_amount == null)) {
-      return new Response(JSON.stringify({ error: "missing organization_id, phone, or image/raw_text/manual_amount" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (!organization_id || !image_base64) {
+      return new Response(JSON.stringify({ error: "organization_id e image_base64 são obrigatórios" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Feature flag check
-    const { data: flag } = await supabase
-      .from("global_settings").select("value").eq("key", "auto_settlement_enabled").maybeSingle();
-    if (!flag || flag.value !== "true") {
-      return new Response(JSON.stringify({ skipped: "feature_disabled" }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // ===== BLOQUEIO: comprovante enviado pelo DONO da instância WhatsApp =====
-    // Quando o próprio dono da instância envia um recibo (comprovante manual
-    // escrito, foto de recibo em papel, etc.) para o cliente, esses eventos NÃO
-    // devem gerar baixa automática — o dono está apenas entregando/confirmando
-    // algo para o cliente, não recebendo um PIX. Comparamos os últimos 8 dígitos
-    // do telefone remetente com os telefones cadastrados nas instâncias da org.
-    {
-      const senderDigits = (phone || "").replace(/\D/g, "");
-      if (senderDigits.length >= 8) {
-        const tail = senderDigits.slice(-8);
-        const { data: orgInstances } = await supabase
-          .from("whatsapp_instances")
-          .select("phone")
-          .eq("organization_id", organization_id);
-        const ownerMatch = (orgInstances || []).some((i: any) => {
-          const d = (i?.phone || "").replace(/\D/g, "");
-          return d.length >= 8 && d.slice(-8) === tail;
-        });
-        if (ownerMatch) {
-          console.log("[pix-ocr] IGNORED: sender is WhatsApp instance owner", {
-            phone, message_id, organization_id,
-          });
-          try {
-            await supabase.from("auto_settlement_logs").insert({
-              organization_id, event_id: null, client_id: null,
-              action: "ignored_owner_sender",
-              details: { phone, message_id, reason: "instance_owner_forwarded_receipt" },
-            });
-          } catch (_e) { /* noop */ }
-          return new Response(JSON.stringify({ skipped: "owner_sender" }), {
-            status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-      }
-    }
-
-    // ===== Identificação do cliente — PRIORIDADE ABSOLUTA DO TELEFONE =====
-    // Regra de negócio: mesmo que o PIX tenha sido pago por TERCEIRO
-    // (pai, esposa, amigo — nome diferente no comprovante), se o NÚMERO
-    // do WhatsApp que enviou está cadastrado em algum cliente, a baixa
-    // é feita NESSE cliente. Nome do comprovante NÃO sobrescreve telefone.
-    const incomingVariants = phoneVariants(phone);
-    const { data: clients } = await supabase
-      .from("clients").select("id, phone, name, document")
+    const normalizedPhone = normalizePhone(phone || "");
+    const { data: clients, error: clientsError } = await supabase
+      .from("clients")
+      .select("id,name,phone,document")
       .eq("organization_id", organization_id);
-    let client = (clients || []).find((c: any) => {
-      const cv = phoneVariants(c.phone || "");
-      return cv.some((v) => incomingVariants.includes(v));
-    });
-    let matchSource: "phone" | "lid_map" | "cpf" | "fuzzy_name" | null = client ? "phone" : null;
-    if (matchSource === "phone") {
-      console.log("[pix-ocr] PHONE MATCH (prioridade absoluta)", {
-        client_id: client!.id, client_name: client!.name,
-        whatsapp_phone: phone, push_name, message_id,
-        nota: "ignorando nome do comprovante (PIX de terceiro é aceito)",
-      });
-    }
-    // Sub-fonte do fuzzy_name: push_name (WhatsApp do remetente = cliente, sinal forte)
-    // vs sender_name (nome lido do comprovante — pode ser terceiro pagador).
-    let fuzzyNameSource: "push_name" | "sender_name" | "value_fallback" | null = null;
+    if (clientsError) throw clientsError;
 
-    // LID resolver: Evolution v2 may send only @lid (14-16 digit anonymized id).
-    // We keep a persistent (org, lid) → client map populated when an admin
-    // manually links an event. Subsequent PIXes from the same LID auto-resolve.
-    const rawPhone = (phone || "").replace(/\D/g, "");
-    const looksLikeLid = rawPhone.length >= 14;
-    if (!client && looksLikeLid) {
-      const { data: lidRow } = await supabase
-        .from("whatsapp_lid_map")
-        .select("client_id")
-        .eq("organization_id", organization_id)
-        .eq("lid", rawPhone)
-        .maybeSingle();
-      if (lidRow?.client_id) {
-        const found = (clients || []).find((c: any) => c.id === lidRow.client_id);
-        if (found) { client = found; matchSource = "lid_map"; }
-      }
+    let client: any = null;
+    let matchSource = "";
+    const phoneCandidates = phoneVariants(normalizedPhone);
+    for (const candidate of phoneCandidates) {
+      const found = (clients || []).find((c: any) => phoneVariants(c.phone || "").includes(candidate));
+      if (found) { client = found; matchSource = "phone"; break; }
     }
 
-    // ============================================================
-    // PRIORIDADE MÁXIMA (relaxada para @lid não resolvido):
-    //  - Telefone REAL (não @lid) que não está cadastrado → IGNORA
-    //    completamente (regra original do usuário).
-    //  - @lid opaco não resolvido → NÃO ignora em silêncio: continua
-    //    o fluxo (OCR, fuzzy sender_name, CPF) e, se ainda assim não
-    //    identificar cliente, cria evento pendente_revisao pro operador
-    //    vincular. Sem isso, PIX legítimo de cliente cujo LID ainda não
-    //    foi aprendido era descartado sem deixar rastro.
-    // ============================================================
-    if (!client && !looksLikeLid) {
-      console.log("[pix-ocr] IGNORED: real sender phone not registered", {
-        phone, rawPhone, message_id, organization_id,
-      });
-      return new Response(JSON.stringify({
-        skipped: "sender_not_registered",
-        phone,
-      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-    if (!client && looksLikeLid) {
-      console.log("[pix-ocr] @lid unresolved — continuando fluxo p/ tentar identificar via OCR/fuzzy", {
-        phone, rawPhone, message_id, organization_id,
-      });
+    const ocr = await runOcr(image_base64, media_mime_type || "image/jpeg");
+    if (raw_text && !ocr.raw_text) ocr.raw_text = raw_text;
+
+    const earlyAmount = coerceAmount(ocr?.amount);
+    let amount = earlyAmount;
+    let names = [ocr?.sender_name, push_name].filter(Boolean).map(String);
+
+    if (!amount) {
+      const secondPass = await runOcrAmountOnly(image_base64, media_mime_type || "image/jpeg");
+      amount = secondPass.amount;
+      if (secondPass.raw_text) ocr.raw_text = `${ocr.raw_text || ""}\n${secondPass.raw_text}`.trim();
     }
 
-
-
-
-    // OCR — preserva sempre o raw_text vindo do webhook (caption ou fallback),
-    // mesmo quando o OCR falha ou não devolve texto. Sem isso o regex
-    // de extração de valor (downstream) fica sem fonte e o evento vai pra revisão.
-    const webhookRawText: string | null = (typeof raw_text === "string" && raw_text.trim()) ? raw_text : null;
-    let ocr: any = { raw_text: webhookRawText };
-    if (ocr_error) ocr.error = String(ocr_error);
-    // Mime real do anexo (webhook sabe se é image/jpeg, image/png ou application/pdf).
-    // Sem isso, PDF era enviado como "data:image/jpeg;..." e o OCR retornava vazio.
-    const resolvedMime = (typeof media_mime_type === "string" && media_mime_type) || "image/jpeg";
-    const ocrUrl = image_url || (image_base64 ? `data:${resolvedMime};base64,${image_base64}` : null);
-    let ocrProviderUsed: string | null = null;
-    let ocrElapsedMs: number | null = null;
-    if (ocrUrl) {
-      let ocrResult: any = null;
-      const t0 = Date.now();
-      try {
-        ocrResult = await runOcr(ocrUrl, resolvedMime);
-        ocrProviderUsed = ocrResult?._ocr_provider || "gemini_direct";
-        ocrElapsedMs = Date.now() - t0;
-        await recordProviderSuccess(supabase, ocrProviderUsed, ocrElapsedMs);
-      } catch (e: any) {
-        console.error("[pix-ocr] 1st-pass failed", e);
-        ocrResult = { error: String(e?.message || e) };
-        await recordProviderFailure(supabase, "gemini_direct", e);
-      }
-      // merge — nunca perde o raw_text do webhook nem erro prévio do webhook
-      ocr = { ...(ocr_error ? { webhook_error: String(ocr_error) } : {}), ...ocrResult };
-      if (!ocr.raw_text && webhookRawText) ocr.raw_text = webhookRawText;
-
-      // 2º passe — Flash focado em valor quando o 1º passe falhou
-      if (!coerceAmount(ocr?.amount)) {
-        const t1 = Date.now();
-        const second = await runOcrAmountOnly(ocrUrl, resolvedMime);
-        if (second.amount) {
-          ocr.amount = second.amount;
-          ocr._second_pass_used = true;
-          ocrProviderUsed = ocrProviderUsed || "gemini_direct_2nd";
-          ocrElapsedMs = (ocrElapsedMs || 0) + (Date.now() - t1);
-          console.log("[pix-ocr] 2nd-pass recuperou valor", { amount: second.amount });
-        }
-        if (!ocr.raw_text && second.raw_text) ocr.raw_text = second.raw_text;
-      }
-    }
-    // Garantia final: nunca devolve raw_text vazio se o webhook mandou algo
-    if (!ocr.raw_text && webhookRawText) ocr.raw_text = webhookRawText;
-
-    // ===== Reject non-receipt content (raffles, ads, etc) BEFORE creating event =====
-    const combinedText = `${ocr?.raw_text || ""} ${raw_text || ""}`.toLowerCase();
-    const NOISE_KEYWORDS = ["rifa", "sorteio", "bingo", "promo", "ganhador"];
-    const isNoise = NOISE_KEYWORDS.some((k) => combinedText.includes(k));
-    const hasReceiptMarkers =
-      !!ocr?.txid || !!ocr?.end_to_end_id ||
-      /comprovante|transfer[eê]ncia|pagamento\s+pix|recibo|pix\s+enviado/i.test(combinedText);
-    if (isNoise && !hasReceiptMarkers) {
-      console.log("[pix-ocr] rejected non-receipt (noise)", { phone, message_id });
-      return new Response(JSON.stringify({ status: "ignored", reason: "non_receipt_noise" }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // ===== Fallback when phone is @lid or unmatched =====
     if (!client && clients?.length) {
-      // (1) CPF from OCR raw text — high-confidence identifier
       const ocrText = `${ocr?.raw_text || ""} ${ocr?.sender_name || ""}`.toLowerCase();
       const cpfMatch = ocrText.match(/\b(\d{3}\.?\d{3}\.?\d{3}-?\d{2})\b/);
       if (cpfMatch) {
@@ -586,354 +390,60 @@ Deno.serve(async (req) => {
         if (byCpf) { client = byCpf; matchSource = "cpf"; }
       }
 
-      // (1.5) Trusted payer — pagador já vinculado a esse cliente em baixas anteriores
       if (!client) {
         const cpfDoc = cpfMatch ? cpfMatch[1] : null;
         const trusted = await findTrustedPayer(supabase, organization_id, ocr?.sender_name || push_name || null, cpfDoc);
         if (trusted && trusted.confidence >= 85) {
           const byTrusted = (clients || []).find((c: any) => c.id === trusted.client_id);
-          if (byTrusted) { client = byTrusted; matchSource = "cpf"; /* treated as trusted-strong */ console.log("[trusted-payer] matched", { client_id: byTrusted.id, payment_count: trusted.payment_count }); }
+          if (byTrusted) { client = byTrusted; matchSource = "cpf"; }
         }
       }
 
-      // (2) Fuzzy name — ONLY as candidate; final validation requires amount match.
-      //     Try BOTH OCR sender_name AND WhatsApp push_name independently.
-      //     PIX é frequentemente pago por terceiro (família, amigo) → o nome do
-      //     comprovante NÃO é o cliente, mas o push_name (nome do contato que
-      //     enviou no WhatsApp) geralmente É o cliente.
       const tryFuzzy = (rawName: string) => {
         const distinctive = strongNameTokens(rawName);
-        if (distinctive.length === 0) return [] as Array<{ c: any; score: number }>;
-        return clients.map((c: any) => {
-          const nTokens = new Set(normName(c.name || "").split(/\s+/).filter(Boolean));
-          const score = distinctive.filter(t => tokenMatchesName(t, nTokens)).length;
-          return { c, score };
-        }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+        if (!distinctive.length) return null;
+        let best: any = null;
+        let bestScore = 0;
+        for (const c of clients || []) {
+          const score = strongNameScore(rawName, c.name || "");
+          if (score > bestScore) { bestScore = score; best = c; }
+        }
+        return bestScore >= 1 ? best : null;
       };
 
-      const earlyAmount = coerceAmount(ocr?.amount) ?? coerceAmount(manual_amount);
-      const names: Array<{ src: string; val: string }> = [];
-      if (ocr?.sender_name && String(ocr.sender_name).trim()) {
-        names.push({ src: "sender_name", val: String(ocr.sender_name).trim() });
-      }
-      if (push_name && String(push_name).trim()) {
-        names.push({ src: "push_name", val: String(push_name).trim() });
-      }
-
-      if (!client && names.length > 0) {
-        // 1ª passada: priorize candidato cujo valor casa com fatura aberta
+      if (!client) {
         for (const n of names) {
-          const cands = tryFuzzy(n.val);
-          console.log("[pix-ocr][fuzzy]", n.src, JSON.stringify({ raw: n.val, top: cands.slice(0, 5).map(c => ({ id: c.c.id, name: c.c.name, score: c.score })), earlyAmount }));
-          if (cands.length === 0) continue;
-          for (const t of cands) {
-            const ok = await matchesOpenInvoicesByAmount(supabase, organization_id, t.c.id, earlyAmount);
-            console.log("[pix-ocr][invoice-check]", { client_id: t.c.id, name: t.c.name, amount: earlyAmount, ok, score: t.score });
-            if (ok) { client = t.c; matchSource = "fuzzy_name"; fuzzyNameSource = n.src as any; break; }
-          }
-          if (client) break;
-        }
-        // 2ª passada: sem casamento de valor → candidato único mais forte (irá p/ revisão)
-        if (!client) {
-          for (const n of names) {
-            const cands = tryFuzzy(n.val);
-            if (cands.length === 1) { client = cands[0].c; matchSource = "fuzzy_name"; fuzzyNameSource = n.src as any; break; }
-            if (cands.length > 1 && cands[0].score > cands[1].score) {
-              client = cands[0].c; matchSource = "fuzzy_name"; fuzzyNameSource = n.src as any; break;
-            }
-          }
-        }
-      }
-
-      // 3ª passada (rede de segurança): se ainda não achou cliente mas TEM valor,
-      // procura faturas abertas em toda a org com o valor EXATO. Se houver
-      // apenas UMA fatura compatível E houver sobreposição mínima de nome,
-      // vincula como fuzzy_name (a validação de valor garante a baixa segura).
-      if (!client && earlyAmount && names.length > 0) {
-        const { data: amtInvs } = await supabase
-          .from("invoices")
-          .select("client_id, amount")
-          .eq("organization_id", organization_id)
-          .eq("status", "aberto")
-          .eq("amount", earlyAmount);
-        const uniqueClientIds = Array.from(new Set((amtInvs || []).map((i: any) => i.client_id)));
-        console.log("[value-fallback]", { earlyAmount, candidates: uniqueClientIds.length });
-        if (uniqueClientIds.length === 1) {
-          const cand = (clients || []).find((c: any) => c.id === uniqueClientIds[0]);
-          if (cand) {
-            const candTokens = new Set(normName(cand.name || "").split(/\s+/).filter(t => t.length >= 4));
-            const hasOverlap = names.some(n => normName(n.val).split(/\s+/).filter(t => t.length >= 4).some(t => candTokens.has(t)));
-            if (hasOverlap) {
-              client = cand; matchSource = "fuzzy_name"; fuzzyNameSource = "value_fallback";
-              console.log("[value-fallback] matched", { client_id: cand.id, name: cand.name });
-            }
-          }
+          const candidate = tryFuzzy(n);
+          if (candidate) { client = candidate; matchSource = "fuzzy_name"; break; }
         }
       }
     }
 
-    // Fallback: extract amount from raw text "R$ 44,00" / "44.00" when OCR/manual missing
-    function extractFromText(t: string | null | undefined): number | null {
-      if (!t) return null;
-      const m = t.match(/r\$?\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:[,.][0-9]{2}))/i)
-             || t.match(/\b([0-9]+[.,][0-9]{2})\b/);
-      if (!m) return null;
-      return coerceAmount(m[1]);
-    }
-    // Coerce amount (OCR may return string like "44,00") and txid (fallback to message_id for idempotency)
-    const amount = coerceAmount(ocr?.amount)
-      ?? coerceAmount(manual_amount)
-      ?? extractFromText(ocr?.raw_text)
-      ?? extractFromText(raw_text);
-    const txid = ocr?.txid || manual_txid || (message_id ? `WA-MSG-${message_id}` : null);
-    let forcedExistingEventId: string | null = null;
-    // Telefone/LID cadastrado é identidade autoritativa do cliente.
-    // O nome do pagador no comprovante pode ser de terceiro e nunca deve
-    // substituir um cliente identificado pelo WhatsApp cadastrado.
-    const whatsappIdentityMatch = matchSource === "phone" || matchSource === "lid_map";
-
-
-    if (force_reprocess) {
-      const q = supabase
-        .from("auto_settlement_events")
-        .select("id, status")
-        .eq("organization_id", organization_id)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      const { data: existingForce } = message_id
-        ? await q.eq("whatsapp_message_id", message_id).maybeSingle()
-        : txid
-          ? await q.eq("txid", txid).maybeSingle()
-          : { data: null } as any;
-      if (existingForce?.id && existingForce.status !== "conciliado") {
-        forcedExistingEventId = existingForce.id;
-      } else if (existingForce?.status === "conciliado") {
-        return new Response(JSON.stringify({ status: "duplicado", event_id: existingForce.id, reason: "already_conciliated" }), {
-          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    // Idempotency: by txid (limit 1, ordered, tolerates legacy duplicates)
-    if (txid && !force_reprocess) {
-      const { data: existing } = await supabase
-        .from("auto_settlement_events")
-        .select("id").eq("organization_id", organization_id).eq("txid", txid)
-        .order("created_at", { ascending: false }).limit(1).maybeSingle();
-      if (existing) {
-        return new Response(JSON.stringify({ status: "duplicado", event_id: existing.id }), {
-          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    // Idempotency: by whatsapp_message_id (covers retries when OCR fails to extract txid)
-    if (message_id && !force_reprocess) {
-      const { data: existingMsg } = await supabase
-        .from("auto_settlement_events")
-        .select("id").eq("organization_id", organization_id).eq("whatsapp_message_id", message_id)
-        .order("created_at", { ascending: false }).limit(1).maybeSingle();
-      if (existingMsg) {
-        return new Response(JSON.stringify({ status: "duplicado", event_id: existingMsg.id }), {
-          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    // ===== Reconciliação: match exato (1 fatura) OU combinação exata (subset-sum) =====
-    // Garante que pagamentos de múltiplas mensalidades em um único PIX (ex: 44+44+44=132)
-    // sejam reconhecidos como combinação válida. Cap de 12 faturas (2^12=4096 combos) por segurança.
     let amountMatchesInvoice = false;
     let combinationPicks: number[] | null = null;
-    let openInvoicesAmounts: number[] = [];
     if (client && amount) {
       const { data: openInvs } = await supabase
-        .from("invoices").select("amount")
+        .from("invoices")
+        .select("id,amount")
         .eq("organization_id", organization_id)
-        .eq("client_id", client.id).eq("status", "aberto");
-      openInvoicesAmounts = (openInvs || []).map((i: any) => Number(i.amount));
-      const singleMatch = openInvoicesAmounts.some(a => Math.abs(a - Number(amount)) < 0.01);
-      combinationPicks = singleMatch ? null : findExactCombination(openInvoicesAmounts, Number(amount));
-      amountMatchesInvoice = singleMatch || !!combinationPicks;
-      console.log("[invoice-combination]", {
-        client_id: client.id, amount, open_invoices: openInvoicesAmounts,
-        single_match: singleMatch, combination: combinationPicks,
-      });
+        .eq("client_id", client.id)
+        .eq("status", "aberto");
+      const amounts = (openInvs || []).map((i: any) => Number(i.amount));
+      amountMatchesInvoice = amounts.some((invoiceAmount) => Math.abs(invoiceAmount - Number(amount)) < 0.01);
+      if (!amountMatchesInvoice) combinationPicks = findExactCombination(amounts, Number(amount));
+      amountMatchesInvoice = amountMatchesInvoice || !!combinationPicks;
     }
 
-    // Log de fonte primária de match
-    if (matchSource === "phone") console.log("[whatsapp-match]", { client_id: client?.id, phone });
-    else if (matchSource === "lid_map") console.log("[whatsapp-match]", { source: "lid_map", client_id: client?.id, lid: rawPhone });
-    else if (matchSource === "cpf") console.log("[document-match]", { client_id: client?.id });
-    else if (matchSource === "fuzzy_name") console.log("[pix-ocr][fuzzy]", { client_id: client?.id, name: client?.name });
-
-    // ===== Regra de decisão (PRIORIDADES) =====
-    // 1º) phone   : telefone WhatsApp real bate com cadastro          → auto
-    // 2º) lid_map : LID já vinculado a este cliente em baixa anterior → auto
-    // 3º) cpf     : CPF do comprovante bate com cadastro              → auto
-    // 4º) fuzzy_name (nome cadastrado) — auto SOMENTE quando o valor casa
-    //     com fatura aberta E o nome tem sinal forte/sem empate. Para não
-    //     regredir PIX de terceiros, sender_name exige 2+ tokens fortes;
-    //     push_name pode baixar com 1+ token forte se for único/sem empate.
-    let safeFuzzy = false;
-    if (matchSource === "fuzzy_name" && amountMatchesInvoice && amount && client) {
-      const sourceName = fuzzyNameSource === "push_name"
-        ? String(push_name || "")
-        : fuzzyNameSource === "sender_name"
-          ? String(ocr?.sender_name || "")
-          : "";
-      const sourceTokens = strongNameTokens(sourceName);
-      const minStrongTokens = fuzzyNameSource === "sender_name" ? 2 : 1;
-      const clientScore = strongNameScore(sourceName, client.name || "");
-      let nameUnique = false;
-      if (sourceTokens.length >= minStrongTokens && clientScore >= minStrongTokens) {
-        const scored = (clients || []).map((c: any) => {
-          return { id: c.id, score: strongNameScore(sourceName, c.name || "") };
-        }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
-        // único = só 1 candidato com tokens em comum,
-        //   OU top score estritamente maior que o 2º (sem empate) E é o cliente atual
-        nameUnique =
-          (scored.length === 1 && scored[0].id === client.id)
-          || (scored.length > 1 && scored[0].id === client.id && scored[0].score > scored[1].score);
-      }
-
-      // Proteção extra: valor exato é único na org (sem outros clientes com mesmo valor aberto)
-      const { data: ambig } = await supabase
-        .from("invoices").select("client_id")
-        .eq("organization_id", organization_id).eq("status", "aberto").eq("amount", amount);
-      const distinctAmt = Array.from(new Set((ambig || []).map((i: any) => i.client_id)));
-      const amountUnique = distinctAmt.length === 1 && distinctAmt[0] === client.id;
-
-      // Match de nome completo: todos os tokens fortes do cadastro aparecem
-      // no nome lido (sender_name/push_name). Quando isso ocorre e o cliente
-      // é o melhor candidato sem empate, NÃO é PIX de terceiro — é o próprio
-      // cliente pagando em nome dele. Libera baixa mesmo sem amountUnique.
-      const clientStrongTokens = strongNameTokens(client.name || "");
-      const fullNameMatch =
-        clientStrongTokens.length >= 2 &&
-        clientScore >= clientStrongTokens.length &&
-        nameUnique;
-
-      // NOVO: Similaridade tokenizada alta — mesmo sem cobrir 100% dos tokens
-      // do cadastro, se o nome lido tem ≥2 tokens fortes que batem com o
-      // cliente E cobre ≥60% dos tokens fortes do cadastro E é o único top
-      // candidato, tratamos como pagamento do próprio cliente. Isso libera
-      // baixa automática mesmo quando o telefone do remetente PIX não bate.
-      // Ex.: sender_name="TELMA ARAUJO" vs cadastro="Telma Araujo Silva".
-      const coverageRatio = clientStrongTokens.length > 0
-        ? clientScore / clientStrongTokens.length : 0;
-      const tokenizedNameMatch =
-        clientStrongTokens.length >= 2 &&
-        clientScore >= 2 &&
-        coverageRatio >= 0.6 &&
-        nameUnique;
-
-      // Auto-settle quando nome é forte e único; quando há ambiguidade de nome,
-      // aceita somente se o valor exato também é único na organização.
-      safeFuzzy = fullNameMatch || tokenizedNameMatch || (
-        (sourceTokens.length >= minStrongTokens && clientScore >= minStrongTokens) && (nameUnique || amountUnique)
-      );
-
-      // PROTEÇÃO CRÍTICA (bug Joelson 07/07/2026):
-      // push_name é o display name do WhatsApp do remetente — altamente
-      // spoofável, e quando o remetente é @lid não vinculado, é o ÚNICO sinal
-      // de identidade. Se o comprovante OCR não trouxe sender_name nem
-      // sender_cpf (só temos o nome do WhatsApp), NÃO baixa automático:
-      // manda para revisão. Ex.: comprovante em nome do beneficiário J M PAMPOLHA,
-      // OCR sem pagador, push_name "joelison" e @lid → derrubava fatura de
-      // Joelson Queiroz indevidamente.
-      if (
-        fuzzyNameSource === "push_name" &&
-        looksLikeLid &&
-        !ocr?.sender_name &&
-        !ocr?.sender_cpf
-      ) {
-        console.log("[safeFuzzy-guard] push_name-only + @lid sem OCR pagador → revisão", {
-          client_id: client?.id, push_name, sourceName,
-        });
-        safeFuzzy = false;
-      }
-
-      // Telefone/LID já identificou o cliente; esta proteção só se aplica a fuzzy_name.
-      console.log("[fuzzy-auto-settle-check]", {
-        client_id: client.id, amount,
-        source: fuzzyNameSource, name_unique: nameUnique, amount_unique: amountUnique,
-        source_tokens: sourceTokens, client_score: clientScore,
-        client_strong_tokens: clientStrongTokens.length, coverage_ratio: coverageRatio,
-        full_name_match: fullNameMatch, tokenized_name_match: tokenizedNameMatch,
-        distinct_amount_clients: distinctAmt.length, safe: safeFuzzy,
-        whatsapp_identity_match: whatsappIdentityMatch,
-      });
-    }
-    const requiresReview = matchSource === "fuzzy_name" && !safeFuzzy;
-    if (requiresReview) {
-      console.log("[conflict-detected]", { reason: "fuzzy_name_revisao", client_id: client?.id, amount, fuzzyNameSource, whatsapp_identity_match: whatsappIdentityMatch });
-    }
-
-    // Proteção contra comprovante encaminhado / WhatsApp compartilhado:
-    // se o telefone bate com o cliente A, mas o nome do pagador no comprovante
-    // bate fortemente com outro cliente B que também tem fatura aberta no mesmo
-    // valor, NÃO baixa automático em A. Vai para revisão para evitar baixa em
-    // cliente errado (caso típico: comprovante de Simone enviado pelo telefone
-    // cadastrado de Santana).
-    let phoneNameConflict: any = null;
-    if ((matchSource === "phone" || matchSource === "lid_map") && client && amount && ocr?.sender_name) {
-      const sourceName = String(ocr.sender_name || "");
-      const sourceTokens = strongNameTokens(sourceName);
-      const currentScore = strongNameScore(sourceName, client.name || "");
-      if (sourceTokens.length >= 2) {
-        const scoredOthers = (clients || [])
-          .filter((c: any) => c.id !== client.id)
-          .map((c: any) => ({ c, score: strongNameScore(sourceName, c.name || "") }))
-          .filter((x: any) => x.score >= 2 && x.score > currentScore)
-          .sort((a: any, b: any) => b.score - a.score);
-        for (const cand of scoredOthers.slice(0, 3)) {
-          const otherHasInvoice = await matchesOpenInvoicesByAmount(supabase, organization_id, cand.c.id, amount);
-          if (otherHasInvoice) {
-            phoneNameConflict = { client_id: cand.c.id, name: cand.c.name, score: cand.score, current_score: currentScore, sender_name: sourceName };
-            break;
-          }
-        }
-      }
-    }
-    if (phoneNameConflict) {
-      console.log("[conflict-detected]", { reason: "phone_sender_matches_other_client", selected_client_id: client?.id, conflict: phoneNameConflict, amount });
-    }
-
-
-    let eventStatus: string;
+    let eventStatus = "recebido";
     let errorMessage: string | null = null;
-    if (!amount) {
-      if (!hasReceiptMarkers) {
-        console.log("[pix-ocr] no amount + no receipt markers → ignored", { phone, message_id });
-        return new Response(JSON.stringify({ status: "ignored", reason: "not_a_receipt" }), {
-          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    if (!client) {
       eventStatus = "pendente_revisao";
-      errorMessage = "valor não detectado pelo OCR — revise manualmente";
-    }
-    else if (!client) {
-      eventStatus = "pendente_revisao";
-      errorMessage = "cliente não identificado automaticamente — vincule manualmente em Liquidação Automática";
-    }
-    else if (requiresReview) {
-      eventStatus = "pendente_revisao";
-      errorMessage = "candidato sugerido por nome — confirme manualmente (PIX pode ser de terceiro)";
-    }
-    // phoneNameConflict permanece apenas como informação de auditoria.
-    // Um pagador PIX diferente é permitido quando o WhatsApp já identificou
-    // o cliente, pois o pagamento pode ter sido feito por terceiro.
-    else if (!amountMatchesInvoice) {
-      // Mesmo com telefone/CPF confiável, valor que não casa com nenhuma fatura
-      // (nem combinação) vai pra revisão — evita gerar crédito indevido.
+      errorMessage = "cliente não identificado automaticamente";
+    } else if (!amountMatchesInvoice) {
       eventStatus = "pendente_revisao";
       errorMessage = "valor pago não corresponde a nenhuma fatura aberta (nem combinação) — revise";
-    } else {
-      eventStatus = "recebido";
     }
 
-    // ===== Confidence score (0-100) =====
     const senderName = String(ocr?.sender_name || "").trim();
     const nameCompat = !!(client && senderName && strongNameScore(senderName, client.name || "") >= 1);
     const cpfMatchScore = (ocr?.raw_text || "").match(/\b(\d{3}\.?\d{3}\.?\d{3}-?\d{2})\b/);
@@ -952,132 +462,47 @@ Deno.serve(async (req) => {
       single_open_match: amountMatchesInvoice && (combinationPicks?.length || 1) === 1,
       match_source: matchSource,
     });
-    console.log("[score]", { score: scoreResult.score, decision: scoreResult.decision, breakdown: scoreResult.breakdown });
 
-    // ⚠️ NÃO elevar fuzzy_name para auto por score:
-    // safeFuzzy é o único portão seguro. O score subia com apenas 1 token em comum
-    // (ex.: sobrenome "Silva") + valor + txid, causando baixa em cliente errado.
-    // Se safeFuzzy=false, exige revisão manual — mesmo com score alto.
-    if (eventStatus === "pendente_revisao" && requiresReview) {
-      console.log("[score] fuzzy_name mantido em revisão (safeFuzzy=false)", {
-        score: scoreResult.score, decision: scoreResult.decision, client_id: client?.id,
-      });
-    }
-
-    // Build candidates list (top 5) for review UI when not auto
-    const candidates: any[] = [];
-    if (client) {
-      candidates.push({ client_id: client.id, name: client.name, source: matchSource, confidence: scoreResult.score });
-    }
-    if ((eventStatus === "pendente_revisao" || !client) && senderName && clients) {
-      const others = clients
-        .filter((c: any) => c.id !== client?.id)
-        .map((c: any) => ({ c, s: strongNameScore(senderName, c.name || "") }))
-        .filter((x) => x.s > 0)
-        .sort((a, b) => b.s - a.s)
-        .slice(0, 5)
-        .map((x) => ({ client_id: x.c.id, name: x.c.name, source: "fuzzy_name_alt", confidence: Math.min(90, 40 + x.s * 15) }));
-      for (const o of others) if (!candidates.find((k) => k.client_id === o.client_id)) candidates.push(o);
-    }
-
-    const eventRow = {
-      organization_id,
-      client_id: client?.id || null,
-      phone,
-      raw_text: ocr?.raw_text || null,
-      ocr_payload: {
-        ...ocr,
-        push_name: push_name || null,
-        _match_source: matchSource,
-        _fuzzy_name_source: fuzzyNameSource,
-        _safe_fuzzy: safeFuzzy,
-        _amount_matches_invoice: amountMatchesInvoice,
-        _phone_name_conflict: phoneNameConflict,
-        _whatsapp_identity_authoritative: whatsappIdentityMatch,
-        _combination_picks: combinationPicks,
-        _force_reprocessed_at: force_reprocess ? new Date().toISOString() : null,
+    const { data: event, error: eventError } = await supabase
+      .from("auto_settlement_events")
+      .insert({
+        organization_id,
+        client_id: client?.id || null,
+        phone: normalizedPhone || phone || null,
+        amount_detected: amount,
+        status: eventStatus,
+        error_message: errorMessage,
+        payer_document: payerDocument,
+        message_id: message_id || null,
         remote_jid: remote_jid || null,
-      },
-      txid,
-      pix_end_to_end_id: ocr?.end_to_end_id || null,
-      end_to_end_id: ocr?.end_to_end_id || null,
-      payer_document: payerDocument,
-      amount_detected: amount,
-      whatsapp_message_id: message_id || null,
-      status: eventStatus,
-      error_message: errorMessage,
-      score: scoreResult.score,
-      score_breakdown: scoreResult.breakdown,
-      decision: scoreResult.decision,
-      candidates,
-      ocr_provider: ocrProviderUsed,
-      ocr_elapsed_ms: ocrElapsedMs,
-      updated_at: new Date().toISOString(),
-    };
+        ocr_payload: { ...ocr, push_name, receipt_hint, score: scoreResult },
+      })
+      .select("id")
+      .single();
+    if (eventError) throw eventError;
 
-    const { data: ev, error: insErr } = forcedExistingEventId
-      ? await supabase
-          .from("auto_settlement_events")
-          .update(eventRow)
-          .eq("id", forcedExistingEventId)
-          .select("id")
-          .single()
-      : await supabase
-          .from("auto_settlement_events")
-          .insert(eventRow)
-          .select("id")
-          .single();
+    console.log("[pix-ocr] event created", { event_id: event.id, client_id: client?.id, amount, score: scoreResult.score });
 
-    if (insErr) throw insErr;
-
-    await supabase.from("auto_settlement_logs").insert({
-      organization_id, event_id: ev.id, client_id: client?.id || null,
-      action: "ingested",
-      details: {
-        phone, amount, txid, client_found: !!client,
-        match_source: matchSource,
-        fuzzy_name_source: fuzzyNameSource,
-        safe_fuzzy: safeFuzzy,
-        amount_matches_invoice: amountMatchesInvoice,
-        combination_picks: combinationPicks,
-        requires_review: requiresReview,
-        score: scoreResult.score,
-        decision: scoreResult.decision,
-        score_breakdown: scoreResult.breakdown,
-        ocr_provider: ocrProviderUsed,
-        ocr_elapsed_ms: ocrElapsedMs,
-      },
-    });
-
-    // Auto-settle: match confiável OR score >= 80 (auto_ok/auto_high) com valor casado.
-    const scoreAllowsAuto = decisionAllowsAuto(scoreResult.decision) && amountMatchesInvoice;
-    if (client && amount && eventStatus === "recebido" && (!requiresReview || scoreAllowsAuto)) {
-      // Auto-learn LID → client em sinais confiáveis (CPF) e em fuzzy seguro
-      // (push_name + valor único). Próximas mensagens do mesmo LID viram match
-      // direto (`lid_map`) sem depender de OCR/nome.
-      if (looksLikeLid && (matchSource === "cpf" || safeFuzzy)) {
-        try {
-          await supabase.from("whatsapp_lid_map").upsert({
-            organization_id,
-            lid: rawPhone,
-            client_id: client.id,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: "organization_id,lid" });
-        } catch (e) {
-          console.warn("[pix-ocr] lid auto-learn failed (non-blocking)", e);
-        }
-      }
-      // @ts-ignore
-      EdgeRuntime.waitUntil(processEvent(supabase, ev.id, organization_id));
+    if (decisionAllowsAuto(scoreResult) && client && amount) {
+      await processEvent(supabase, event.id, organization_id);
     }
 
-    return new Response(JSON.stringify({ status: "queued", event_id: ev.id }), {
-      status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({
+      ok: true,
+      event_id: event.id,
+      client_id: client?.id || null,
+      amount,
+      status: eventStatus,
+      score: scoreResult,
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e: any) {
+  } catch (e) {
     console.error("ingest error", e);
-    return new Response(JSON.stringify({ error: String(e?.message || e) }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({ error: String((e as any)?.message || e) }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
