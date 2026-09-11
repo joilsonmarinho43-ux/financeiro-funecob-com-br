@@ -1,0 +1,57 @@
+name: Apply webhook fail-closed hardening
+
+on:
+  push:
+    branches: [security-hardening-2026-09]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Harden webhook authentication
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('supabase/functions/whatsapp-webhook/index.ts')
+          s = p.read_text()
+
+          old = '''  // Helper: extract provided secret from accepted headers (or ?secret= for GET test)\n  const getProvided = () =>\n    req.headers.get("x-webhook-secret") ||\n    req.headers.get("x-evolution-secret") ||\n    req.headers.get("authorization")?.replace(/^Bearer\\s+/i, "") ||\n    url.searchParams.get("secret") ||\n    "";'''
+          new = '''  // Shared-secret authentication is header-only. Never accept secrets in URLs.\n  const getProvided = () =>\n    req.headers.get("x-webhook-secret") ||\n    req.headers.get("x-evolution-secret") ||\n    req.headers.get("authorization")?.replace(/^Bearer\\s+/i, "") ||\n    "";'''
+          if old not in s:
+              raise SystemExit('expected getProvided block not found')
+          s = s.replace(old, new, 1)
+
+          old = '''  // Healthcheck / auth test endpoint — GET ?ping=1\n  // Use to validate secret config before flipping Evolution to authenticated mode.\n  if (req.method === "GET" && url.searchParams.get("ping") === "1") {\n    if (!expectedSecret) {\n      return new Response(JSON.stringify({\n        ok: true, auth: "disabled",\n        message: "EVOLUTION_WEBHOOK_SECRET not configured — webhook accepts all calls",\n      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });\n    }'''
+          new = '''  // Healthcheck / auth test endpoint — GET ?ping=1\n  // Missing configuration is an error; never report an unauthenticated webhook as healthy.\n  if (req.method === "GET" && url.searchParams.get("ping") === "1") {\n    if (!expectedSecret) {\n      return new Response(JSON.stringify({\n        ok: false, auth: "misconfigured",\n        message: "EVOLUTION_WEBHOOK_SECRET not configured",\n      }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });\n    }'''
+          if old not in s:
+              raise SystemExit('expected GET healthcheck block not found')
+          s = s.replace(old, new, 1)
+
+          old = '''  // Shared-secret authentication OBRIGATÓRIA: sem segredo configurado\n  // qualquer requisição externa poderia injetar eventos falsos de PIX e\n  // disparar conciliação automática (risco financeiro direto).\n  // Escape hatch explícito apenas para migrações: WEBHOOK_ALLOW_INSECURE=true.\n  if (!expectedSecret && Deno.env.get("WEBHOOK_ALLOW_INSECURE") !== "true") {\n    console.error(JSON.stringify({ tag: "wa-webhook", event: "webhook_secret_missing" }));\n    return new Response(\n      JSON.stringify({ error: "webhook não configurado: defina EVOLUTION_WEBHOOK_SECRET" }),\n      { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },\n    );\n  }\n\n  if (expectedSecret) {'''
+          new = '''  // Shared-secret authentication is mandatory. Never allow an insecure escape hatch.\n  if (!expectedSecret) {\n    console.error(JSON.stringify({ tag: "wa-webhook", event: "webhook_secret_missing" }));\n    return new Response(\n      JSON.stringify({ error: "webhook não configurado: defina EVOLUTION_WEBHOOK_SECRET" }),\n      { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },\n    );\n  }\n\n  {'''
+          if old not in s:
+              raise SystemExit('expected POST authentication block not found')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
+          PY
+
+          grep -nE 'WEBHOOK_ALLOW_INSECURE|searchParams\.get\("secret"\)|auth: "disabled"|webhook_secret_missing' supabase/functions/whatsapp-webhook/index.ts || true
+          git diff --check
+          git diff -- supabase/functions/whatsapp-webhook/index.ts
+
+      - name: Commit fix and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add supabase/functions/whatsapp-webhook/index.ts
+          git rm .github/workflows/security-webhook-fix.yml
+          git commit -m 'fix(security): fail closed whatsapp webhook authentication'
+          git push
