@@ -276,6 +276,37 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { action, instance_id, instance_name, organization_id } = body;
 
+    // Service-role queries bypass RLS, so tenant authorization must be enforced here.
+    const { data: callerOrgId, error: callerOrgErr } = await userClient.rpc("get_user_organization_id");
+    if (callerOrgErr || !callerOrgId) {
+      return new Response(JSON.stringify({ error: "Organization not found for authenticated user" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (organization_id && organization_id !== callerOrgId) {
+      return new Response(JSON.stringify({ error: "Forbidden: organization mismatch" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (instance_id) {
+      const { data: ownedInstance, error: ownedErr } = await supabase
+        .from("whatsapp_instances")
+        .select("id")
+        .eq("id", instance_id)
+        .eq("organization_id", callerOrgId)
+        .maybeSingle();
+      if (ownedErr || !ownedInstance) {
+        return new Response(JSON.stringify({ error: "Instance not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     if (!action) {
       return new Response(JSON.stringify({ error: "action is required" }), {
         status: 400,
@@ -307,13 +338,11 @@ Deno.serve(async (req) => {
 
     const baseUrl = apiHost.replace(/\/$/, "");
 
-    // Helper to make API calls with error handling
     async function apiCall(url: string, options: RequestInit): Promise<Response> {
       try {
         return await fetch(url, options);
       } catch (e) {
         console.error(`[whatsapp-manager] API call failed to ${url}:`, e);
-        // If HTTPS fails, try HTTP fallback
         if (url.startsWith("https://")) {
           const httpUrl = url.replace("https://", "http://");
           console.log(`[whatsapp-manager] Retrying with HTTP: ${httpUrl}`);
@@ -323,7 +352,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ─── CREATE INSTANCE ───
     if (action === "create_instance") {
       if (!instance_name || !organization_id) {
         return new Response(JSON.stringify({ error: "instance_name and organization_id required" }), {
@@ -332,8 +360,6 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Evolution identifica a sessão pelo nome no servidor, não pela organização.
-      // Reutilizar o mesmo nome faria duas empresas controlarem a mesma sessão.
       const { data: conflictingInstance } = await supabase
         .from("whatsapp_instances")
         .select("id, organization_id")
@@ -362,7 +388,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Save instance in DB
       const { data: dbInstance, error: dbErr } = await supabase
         .from("whatsapp_instances")
         .insert({
@@ -384,177 +409,64 @@ Deno.serve(async (req) => {
 
       try {
         const wh = await ensurePixWebhook(baseUrl, globalApiKey, instance_name, pixWebhookUrl, apiCall);
-        await supabase.from("global_settings").upsert({
-          key: "webhook_url",
-          value: pixWebhookUrl,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "key" });
-        if (!wh.ok) {
-          await supabase.from("system_logs").insert({
-            action: "whatsapp_pix_webhook_config_failed",
-            organization_id,
-            details: { instance_name, attempts: wh.attempts },
-          });
-        }
+        await supabase.from("global_settings").upsert({ key: "webhook_url", value: pixWebhookUrl, updated_at: new Date().toISOString() }, { onConflict: "key" });
+        if (!wh.ok) await supabase.from("system_logs").insert({ action: "whatsapp_pix_webhook_config_failed", organization_id, details: { instance_name, attempts: wh.attempts } });
       } catch (e) {
         console.error("PIX webhook setup failed:", e);
-        await supabase.from("system_logs").insert({
-          action: "whatsapp_pix_webhook_config_error",
-          organization_id,
-          details: { instance_name, error: String(e instanceof Error ? e.message : e) },
-        });
+        await supabase.from("system_logs").insert({ action: "whatsapp_pix_webhook_config_error", organization_id, details: { instance_name, error: String(e instanceof Error ? e.message : e) } });
       }
 
-      // Get QR code
       let qrCode = created.qrCode;
       if (!qrCode) {
         try {
           const qr = await requestQrCode(apiCall, baseUrl, globalApiKey, instance_name);
           qrCode = qr.qrCode;
-        } catch (e) {
-          console.error("QR fetch error:", e);
-        }
+        } catch (e) { console.error("QR fetch error:", e); }
       }
 
-      return new Response(JSON.stringify({
-        success: true,
-        instance_id: dbInstance.id,
-        instance_name,
-        qr_code: qrCode,
-      }), {
+      return new Response(JSON.stringify({ success: true, instance_id: dbInstance.id, instance_name, qr_code: qrCode }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // ─── GET QR CODE ───
     if (action === "get_qr") {
-      if (!instance_id) {
-        return new Response(JSON.stringify({ error: "instance_id required" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const { data: inst } = await supabase
-        .from("whatsapp_instances")
-        .select("*")
-        .eq("id", instance_id)
-        .single();
-
-      if (!inst) {
-        return new Response(JSON.stringify({ error: "Instance not found" }), {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
+      if (!instance_id) return new Response(JSON.stringify({ error: "instance_id required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const { data: inst } = await supabase.from("whatsapp_instances").select("*").eq("id", instance_id).eq("organization_id", callerOrgId).single();
+      if (!inst) return new Response(JSON.stringify({ error: "Instance not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
       const instApiKey = inst.api_key || globalApiKey;
-
-      // Evolution v1.6.0 já devolve um QR válido em /instance/connect mesmo com
-      // o estado "connecting". Então pedimos o QR primeiro e só derrubamos a
-      // sessão (logout) se a API realmente não devolver QR nenhum.
       let state = "";
       try {
-        const stateResp = await apiCall(`${instApiUrl}/instance/connectionState/${encodeURIComponent(inst.name)}`, {
-          method: "GET",
-          headers: { apikey: instApiKey },
-        });
+        const stateResp = await apiCall(`${instApiUrl}/instance/connectionState/${encodeURIComponent(inst.name)}`, { method: "GET", headers: { apikey: instApiKey } });
         const stateText = await stateResp.text();
-        let stateData: any = null;
-        try { stateData = stateText ? JSON.parse(stateText) : null; } catch { /* ignore */ }
+        let stateData: any = null; try { stateData = stateText ? JSON.parse(stateText) : null; } catch { /* ignore */ }
         state = String(stateData?.instance?.state || stateData?.state || "");
-        console.log(`[whatsapp-manager] state instance=${inst.name} status=${stateResp.status} state=${state}`);
-      } catch (e) {
-        console.warn("[whatsapp-manager] state pre-check failed", String(e));
-      }
-
+      } catch (e) { console.warn("[whatsapp-manager] state pre-check failed", String(e)); }
       if (state === "open" || state === "connected") {
-        await supabase.from("whatsapp_instances").update({ status: "connected" }).eq("id", instance_id);
-        return new Response(JSON.stringify({ success: true, status: "connected", instance_name: inst.name }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        await supabase.from("whatsapp_instances").update({ status: "connected" }).eq("id", instance_id).eq("organization_id", callerOrgId);
+        return new Response(JSON.stringify({ success: true, status: "connected", instance_name: inst.name }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-
       let qr = await requestQrCode(apiCall, instApiUrl, instApiKey, inst.name);
       let recovered = false;
-
-      // Sem QR (ou credencial recusada) → derruba a sessão presa e tenta de novo.
       if (!qr.ok || !qr.qrCode) {
-        await apiCall(`${instApiUrl}/instance/logout/${encodeURIComponent(inst.name)}`, {
-          method: "DELETE",
-          headers: { apikey: instApiKey },
-        }).catch(() => null);
+        await apiCall(`${instApiUrl}/instance/logout/${encodeURIComponent(inst.name)}`, { method: "DELETE", headers: { apikey: instApiKey } }).catch(() => null);
         await new Promise((r) => setTimeout(r, 1500));
         qr = await requestQrCode(apiCall, instApiUrl, instApiKey, inst.name);
         recovered = true;
       }
-
-      if (!qr.ok && !qr.qrCode) {
-        return new Response(JSON.stringify({
-          error: `Erro ao obter QR (HTTP ${qr.status}): ${qr.body}`,
-          status_code: qr.status,
-          instance_name: inst.name,
-        }), {
-          status: 502,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
+      if (!qr.ok && !qr.qrCode) return new Response(JSON.stringify({ error: `Erro ao obter QR (HTTP ${qr.status}): ${qr.body}`, status_code: qr.status, instance_name: inst.name }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const qrCode = qr.qrCode;
-
-      if (!qrCode) {
-        console.warn("[whatsapp-manager] QR not returned", {
-          instance: inst.name,
-          status: qr.status,
-          shape: responseShape(qr.data),
-        });
-      }
-
-      await supabase.from("whatsapp_instances").update({ status: "pairing" }).eq("id", instance_id);
-
-      return new Response(JSON.stringify({
-        success: true,
-        qr_code: qrCode,
-        pairing_code: qr.data?.pairingCode || null,
-        instance_name: inst.name,
-        status: qrCode ? "pairing" : "qr_unavailable",
-        recovered,
-        provider_status: qr.status,
-        provider_shape: responseShape(qr.data),
-        diagnostic: qrCode ? null : "A Evolution API respondeu sem QR Code. A instância pode estar travada em connecting/pairing; use reset_session ou reinicie a instância no servidor Evolution.",
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-
+      await supabase.from("whatsapp_instances").update({ status: "pairing" }).eq("id", instance_id).eq("organization_id", callerOrgId);
+      return new Response(JSON.stringify({ success: true, qr_code: qrCode, pairing_code: qr.data?.pairingCode || null, instance_name: inst.name, status: qrCode ? "pairing" : "qr_unavailable", recovered, provider_status: qr.status, provider_shape: responseShape(qr.data), diagnostic: qrCode ? null : "A Evolution API respondeu sem QR Code. A instância pode estar travada em connecting/pairing; use reset_session ou reinicie a instância no servidor Evolution." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ─── RESET STUCK SESSION ───
     if (action === "reset_session") {
-      if (!instance_id) {
-        return new Response(JSON.stringify({ error: "instance_id required" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const { data: inst } = await supabase
-        .from("whatsapp_instances")
-        .select("*")
-        .eq("id", instance_id)
-        .single();
-
-      if (!inst) {
-        return new Response(JSON.stringify({ error: "Instance not found" }), {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
+      if (!instance_id) return new Response(JSON.stringify({ error: "instance_id required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const { data: inst } = await supabase.from("whatsapp_instances").select("*").eq("id", instance_id).eq("organization_id", callerOrgId).single();
+      if (!inst) return new Response(JSON.stringify({ error: "Instance not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
       const instApiKey = inst.api_key || globalApiKey;
       const attempts: any[] = [];
-
       for (const step of [
         { label: "restart-put", method: "PUT", path: `/instance/restart/${encodeURIComponent(inst.name)}` },
         { label: "restart-post", method: "POST", path: `/instance/restart/${encodeURIComponent(inst.name)}` },
@@ -562,385 +474,139 @@ Deno.serve(async (req) => {
         { label: "delete-delete", method: "DELETE", path: `/instance/delete/${encodeURIComponent(inst.name)}` },
         { label: "delete-delete-force", method: "DELETE", path: `/instance/delete/${encodeURIComponent(inst.name)}?force=true` },
       ]) {
-        try {
-          const resp = await apiCall(`${instApiUrl}${step.path}`, { method: step.method, headers: { "Content-Type": "application/json", apikey: instApiKey } });
-          const text = await resp.text();
-          attempts.push({ step: step.label, ok: resp.ok, status: resp.status, body: text.slice(0, 200) });
-        } catch (e) {
-          attempts.push({ step: step.label, ok: false, error: String(e instanceof Error ? e.message : e) });
-        }
+        try { const resp = await apiCall(`${instApiUrl}${step.path}`, { method: step.method, headers: { "Content-Type": "application/json", apikey: instApiKey } }); const text = await resp.text(); attempts.push({ step: step.label, ok: resp.ok, status: resp.status, body: text.slice(0, 200) }); }
+        catch (e) { attempts.push({ step: step.label, ok: false, error: String(e instanceof Error ? e.message : e) }); }
       }
-
       const created = await createEvolutionInstance(apiCall, instApiUrl, instApiKey, inst.name, pixWebhookUrl);
       attempts.push({ step: "create", ok: created.ok, status: created.status, body: created.body, has_qr: !!created.qrCode });
-
       let qrCode = created.qrCode;
-      if (!qrCode) {
-        const qr = await requestQrCode(apiCall, instApiUrl, instApiKey, inst.name);
-        attempts.push({ step: "connect", ok: qr.ok, status: qr.status, body: qr.body, has_qr: !!qr.qrCode, shape: responseShape(qr.data) });
-        qrCode = qr.qrCode;
-      }
-
-      await supabase.from("whatsapp_instances").update({ status: qrCode ? "pairing" : "disconnected" }).eq("id", instance_id);
-      await supabase.from("system_logs").insert({
-        action: "whatsapp_instance_session_reset",
-        organization_id: inst.organization_id,
-        details: { instance_name: inst.name, attempts, has_qr: !!qrCode },
-      });
-
-      return new Response(JSON.stringify({
-        success: true,
-        instance_name: inst.name,
-        qr_code: qrCode,
-        attempts,
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (!qrCode) { const qr = await requestQrCode(apiCall, instApiUrl, instApiKey, inst.name); attempts.push({ step: "connect", ok: qr.ok, status: qr.status, body: qr.body, has_qr: !!qr.qrCode, shape: responseShape(qr.data) }); qrCode = qr.qrCode; }
+      await supabase.from("whatsapp_instances").update({ status: qrCode ? "pairing" : "disconnected" }).eq("id", instance_id).eq("organization_id", callerOrgId);
+      await supabase.from("system_logs").insert({ action: "whatsapp_instance_session_reset", organization_id: inst.organization_id, details: { instance_name: inst.name, attempts, has_qr: !!qrCode } });
+      return new Response(JSON.stringify({ success: true, instance_name: inst.name, qr_code: qrCode, attempts }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ─── CHECK STATUS ───
     if (action === "check_status") {
-      if (!instance_id) {
-        return new Response(JSON.stringify({ error: "instance_id required" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const { data: inst } = await supabase
-        .from("whatsapp_instances")
-        .select("*")
-        .eq("id", instance_id)
-        .single();
-
-      if (!inst) {
-        return new Response(JSON.stringify({ error: "Instance not found" }), {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
+      if (!instance_id) return new Response(JSON.stringify({ error: "instance_id required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const { data: inst } = await supabase.from("whatsapp_instances").select("*").eq("id", instance_id).eq("organization_id", callerOrgId).single();
+      if (!inst) return new Response(JSON.stringify({ error: "Instance not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
       const instApiKey = inst.api_key || globalApiKey;
-
       let statusResp: Response;
-      try {
-        statusResp = await apiCall(`${instApiUrl}/instance/connectionState/${inst.name}`, {
-          method: "GET",
-          headers: { apikey: instApiKey },
-        });
-      } catch {
-        await supabase.from("whatsapp_instances").update({ status: "disconnected" }).eq("id", instance_id);
-        return new Response(JSON.stringify({ 
-          success: true, status: "disconnected", instance_name: inst.name,
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      if (!statusResp.ok) {
-        return new Response(JSON.stringify({ 
-          success: true, status: "disconnected", instance_name: inst.name,
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
+      try { statusResp = await apiCall(`${instApiUrl}/instance/connectionState/${inst.name}`, { method: "GET", headers: { apikey: instApiKey } }); }
+      catch { await supabase.from("whatsapp_instances").update({ status: "disconnected" }).eq("id", instance_id).eq("organization_id", callerOrgId); return new Response(JSON.stringify({ success: true, status: "disconnected", instance_name: inst.name }), { headers: { ...corsHeaders, "Content-Type": "application/json" } }); }
+      if (!statusResp.ok) return new Response(JSON.stringify({ success: true, status: "disconnected", instance_name: inst.name }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const statusData = await statusResp.json();
       const state = statusData?.instance?.state || statusData?.state || "disconnected";
-
       let mappedStatus = "disconnected";
       if (state === "open" || state === "connected") mappedStatus = "connected";
       else if (state === "connecting" || state === "qrcode") mappedStatus = "pairing";
-
-      // Keep only one authoritative connection for the same routing slot.
-      // Main instances compete only with other main instances; collector
-      // instances compete only with the same collector, preserving multi-instance routing.
       if (mappedStatus === "connected") {
-        let staleQuery = supabase
-          .from("whatsapp_instances")
-          .update({ status: "disconnected" })
-          .eq("organization_id", inst.organization_id)
-          .eq("status", "connected")
-          .neq("id", instance_id);
-        staleQuery = inst.collector_id
-          ? staleQuery.eq("collector_id", inst.collector_id)
-          : staleQuery.is("collector_id", null);
+        let staleQuery = supabase.from("whatsapp_instances").update({ status: "disconnected" }).eq("organization_id", inst.organization_id).eq("status", "connected").neq("id", instance_id);
+        staleQuery = inst.collector_id ? staleQuery.eq("collector_id", inst.collector_id) : staleQuery.is("collector_id", null);
         await staleQuery;
       }
-
-      await supabase
-        .from("whatsapp_instances")
-        .update({ status: mappedStatus, updated_at: new Date().toISOString() })
-        .eq("id", instance_id);
-
-      // Connected instances must always point to the PIX OCR webhook. This
-      // self-heals older instances that were created before the webhook fix.
+      await supabase.from("whatsapp_instances").update({ status: mappedStatus, updated_at: new Date().toISOString() }).eq("id", instance_id).eq("organization_id", callerOrgId);
       if (mappedStatus === "connected") {
         try {
           const wh = await ensurePixWebhook(instApiUrl, instApiKey, inst.name, pixWebhookUrl, apiCall);
-          await supabase.from("global_settings").upsert({
-            key: "webhook_url",
-            value: pixWebhookUrl,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: "key" });
-          if (!wh.ok) {
-            await supabase.from("system_logs").insert({
-              action: "whatsapp_pix_webhook_config_failed",
-              organization_id: inst.organization_id,
-              details: { instance_name: inst.name, attempts: wh.attempts },
-            });
-          }
-        } catch (e) {
-          console.error("PIX webhook self-heal failed:", e);
-          await supabase.from("system_logs").insert({
-            action: "whatsapp_pix_webhook_config_error",
-            organization_id: inst.organization_id,
-            details: { instance_name: inst.name, error: String(e instanceof Error ? e.message : e) },
-          });
-        }
+          await supabase.from("global_settings").upsert({ key: "webhook_url", value: pixWebhookUrl, updated_at: new Date().toISOString() }, { onConflict: "key" });
+          if (!wh.ok) await supabase.from("system_logs").insert({ action: "whatsapp_pix_webhook_config_failed", organization_id: inst.organization_id, details: { instance_name: inst.name, attempts: wh.attempts } });
+        } catch (e) { console.error("PIX webhook self-heal failed:", e); await supabase.from("system_logs").insert({ action: "whatsapp_pix_webhook_config_error", organization_id: inst.organization_id, details: { instance_name: inst.name, error: String(e instanceof Error ? e.message : e) } }); }
       }
-
-      return new Response(JSON.stringify({
-        success: true, status: mappedStatus, raw_state: state, instance_name: inst.name,
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(JSON.stringify({ success: true, status: mappedStatus, raw_state: state, instance_name: inst.name }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ─── RESTART CONNECTION WITHOUT LOSING PAIRING ───
     if (action === "restart_connection") {
-      if (!instance_id) {
-        return new Response(JSON.stringify({ error: "instance_id required" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const { data: inst } = await supabase
-        .from("whatsapp_instances")
-        .select("*")
-        .eq("id", instance_id)
-        .single();
-
-      if (!inst) {
-        return new Response(JSON.stringify({ error: "Instance not found" }), {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
+      if (!instance_id) return new Response(JSON.stringify({ error: "instance_id required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const { data: inst } = await supabase.from("whatsapp_instances").select("*").eq("id", instance_id).eq("organization_id", callerOrgId).single();
+      if (!inst) return new Response(JSON.stringify({ error: "Instance not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
       const instApiKey = inst.api_key || globalApiKey;
-      const restart = await apiCall(`${instApiUrl}/instance/restart/${encodeURIComponent(inst.name)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", apikey: instApiKey },
-      });
+      const restart = await apiCall(`${instApiUrl}/instance/restart/${encodeURIComponent(inst.name)}`, { method: "PUT", headers: { "Content-Type": "application/json", apikey: instApiKey } });
       const restartBody = await restart.text();
-
-      if (!restart.ok) {
-        return new Response(JSON.stringify({ error: "Falha ao reiniciar a conexão", status: restart.status, details: restartBody.slice(0, 200) }), {
-          status: 502,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
+      if (!restart.ok) return new Response(JSON.stringify({ error: "Falha ao reiniciar a conexão", status: restart.status, details: restartBody.slice(0, 200) }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       let state = "restarting";
       for (let attempt = 0; attempt < 8; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 1500));
-        try {
-          const stateResponse = await apiCall(`${instApiUrl}/instance/connectionState/${encodeURIComponent(inst.name)}`, {
-            method: "GET",
-            headers: { apikey: instApiKey },
-          });
-          const statePayload = await stateResponse.json().catch(() => null);
-          state = statePayload?.instance?.state || statePayload?.state || "restarting";
-          if (state === "open" || state === "connected") break;
-        } catch { /* keep polling */ }
+        try { const stateResponse = await apiCall(`${instApiUrl}/instance/connectionState/${encodeURIComponent(inst.name)}`, { method: "GET", headers: { apikey: instApiKey } }); const statePayload = await stateResponse.json().catch(() => null); state = statePayload?.instance?.state || statePayload?.state || "restarting"; if (state === "open" || state === "connected") break; } catch { }
       }
-
       const mappedStatus = state === "open" || state === "connected" ? "connected" : "disconnected";
-      await supabase.from("whatsapp_instances").update({ status: mappedStatus }).eq("id", instance_id);
-      await supabase.from("system_logs").insert({
-        action: "whatsapp_connection_restarted",
-        organization_id: inst.organization_id,
-        details: { instance_name: inst.name, final_state: state },
-      });
-
-      return new Response(JSON.stringify({ success: mappedStatus === "connected", instance_name: inst.name, status: mappedStatus, raw_state: state }), {
-        status: mappedStatus === "connected" ? 200 : 503,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      await supabase.from("whatsapp_instances").update({ status: mappedStatus }).eq("id", instance_id).eq("organization_id", callerOrgId);
+      await supabase.from("system_logs").insert({ action: "whatsapp_connection_restarted", organization_id: inst.organization_id, details: { instance_name: inst.name, final_state: state } });
+      return new Response(JSON.stringify({ success: mappedStatus === "connected", instance_name: inst.name, status: mappedStatus, raw_state: state }), { status: mappedStatus === "connected" ? 200 : 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ─── DELIVERY DIAGNOSTIC ───
     if (action === "diagnose_delivery") {
-      if (!instance_id) {
-        return new Response(JSON.stringify({ error: "instance_id required" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const { data: inst } = await supabase
-        .from("whatsapp_instances")
-        .select("*")
-        .eq("id", instance_id)
-        .single();
-
-      if (!inst) {
-        return new Response(JSON.stringify({ error: "Instance not found" }), {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
+      if (!instance_id) return new Response(JSON.stringify({ error: "instance_id required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const { data: inst } = await supabase.from("whatsapp_instances").select("*").eq("id", instance_id).eq("organization_id", callerOrgId).single();
+      if (!inst) return new Response(JSON.stringify({ error: "Instance not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
       const instApiKey = inst.api_key || globalApiKey;
       const checks: Record<string, unknown> = {};
-
       for (const check of [
         { name: "connection", method: "GET", path: `/instance/connectionState/${encodeURIComponent(inst.name)}` },
         { name: "instance", method: "GET", path: `/instance/fetchInstances?instanceName=${encodeURIComponent(inst.name)}` },
         { name: "recent_messages", method: "POST", path: `/chat/findMessages/${encodeURIComponent(inst.name)}`, body: { limit: 20 } },
       ]) {
         try {
-          const response = await apiCall(`${instApiUrl}${check.path}`, {
-            method: check.method,
-            headers: { "Content-Type": "application/json", apikey: instApiKey },
-            body: check.body ? JSON.stringify(check.body) : undefined,
-          });
+          const response = await apiCall(`${instApiUrl}${check.path}`, { method: check.method, headers: { "Content-Type": "application/json", apikey: instApiKey }, body: check.body ? JSON.stringify(check.body) : undefined });
           const text = await response.text();
-          let payload: any = null;
-          try { payload = text ? JSON.parse(text) : null; } catch { payload = null; }
-
+          let payload: any = null; try { payload = text ? JSON.parse(text) : null; } catch { payload = null; }
           if (check.name === "recent_messages") {
-            const messages = extractMessages(payload).slice(0, 20).map((message: any) => ({
-              id: message?.key?.id || message?.messageId || message?.id || null,
-              from_me: message?.key?.fromMe ?? null,
-              status: message?.status || message?.messageStatus || message?.deliveryStatus || null,
-              timestamp: message?.messageTimestamp || message?.timestamp || message?.createdAt || null,
-            }));
+            const messages = extractMessages(payload).slice(0, 20).map((message: any) => ({ id: message?.key?.id || message?.messageId || message?.id || null, from_me: message?.key?.fromMe ?? null, status: message?.status || message?.messageStatus || message?.deliveryStatus || null, timestamp: message?.messageTimestamp || message?.timestamp || message?.createdAt || null }));
             checks[check.name] = { ok: response.ok, status: response.status, messages };
-          } else {
-            checks[check.name] = { ok: response.ok, status: response.status, payload };
-          }
-        } catch (error) {
-          checks[check.name] = { ok: false, error: String(error instanceof Error ? error.message : error) };
-        }
+          } else checks[check.name] = { ok: response.ok, status: response.status, payload };
+        } catch (error) { checks[check.name] = { ok: false, error: String(error instanceof Error ? error.message : error) }; }
       }
-
-      return new Response(JSON.stringify({ success: true, instance_name: inst.name, checks }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(JSON.stringify({ success: true, instance_name: inst.name, checks }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ─── RECOVER MISSED PIX RECEIPTS ───
     if (action === "recover_pix_receipts") {
       const hours = Number(body.hours || 24);
       const targetInstances = instance_id
-        ? (await supabase.from("whatsapp_instances").select("*").eq("id", instance_id)).data || []
-        : (await supabase.from("whatsapp_instances").select("*").eq("organization_id", organization_id)).data || [];
-
+        ? (await supabase.from("whatsapp_instances").select("*").eq("id", instance_id).eq("organization_id", callerOrgId)).data || []
+        : (await supabase.from("whatsapp_instances").select("*").eq("organization_id", callerOrgId)).data || [];
       const results: any[] = [];
       for (const inst of targetInstances || []) {
         const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
         const instApiKey = inst.api_key || globalApiKey;
         const wh = await ensurePixWebhook(instApiUrl, instApiKey, inst.name, pixWebhookUrl, apiCall);
         const { messages, details } = await fetchRecentMessages(apiCall, instApiUrl.replace(/\/$/, ""), instApiKey, inst.name, hours);
-        let forwarded = 0;
-        let skippedExisting = 0;
-        let candidates = 0;
+        let forwarded = 0, skippedExisting = 0, candidates = 0;
         for (const msg of messages) {
           if (!messageLooksLikeReceipt(msg)) continue;
           candidates++;
           const key = msg.key || msg.message?.key || {};
           const id = key.id || msg.messageId || msg.id || null;
           if (id) {
-            const { data: existing } = await supabase
-              .from("auto_settlement_events")
-              .select("id, status")
-              .eq("organization_id", inst.organization_id)
-              .eq("whatsapp_message_id", id)
-              .order("created_at", { ascending: false })
-              .limit(1)
-              .maybeSingle();
+            const { data: existing } = await supabase.from("auto_settlement_events").select("id, status").eq("organization_id", inst.organization_id).eq("whatsapp_message_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle();
             if (existing?.id && !body.force_reprocess) { skippedExisting++; continue; }
           }
-
           const payload = { event: "messages.upsert", instance: inst.name, data: msg, force_reprocess: !!body.force_reprocess };
-          const res = await fetch(`${supabaseUrl}/functions/v1/whatsapp-webhook`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceRoleKey}` },
-            body: JSON.stringify(payload),
-          });
+          const res = await fetch(`${supabaseUrl}/functions/v1/whatsapp-webhook`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceRoleKey}` }, body: JSON.stringify(payload) });
           forwarded += res.ok ? 1 : 0;
         }
-        await supabase.from("system_logs").insert({
-          action: "whatsapp_pix_receipt_recovery",
-          organization_id: inst.organization_id,
-          details: { instance_name: inst.name, hours, webhook: wh, fetched: messages.length, candidates, forwarded, skippedExisting, fetch_attempts: details },
-        });
+        await supabase.from("system_logs").insert({ action: "whatsapp_pix_receipt_recovery", organization_id: inst.organization_id, details: { instance_name: inst.name, hours, webhook: wh, fetched: messages.length, candidates, forwarded, skippedExisting, fetch_attempts: details } });
         results.push({ instance: inst.name, webhook_ok: wh.ok, fetched: messages.length, candidates, forwarded, skippedExisting, fetch_attempts: details });
       }
-
-      return new Response(JSON.stringify({ success: true, hours, results }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(JSON.stringify({ success: true, hours, results }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ─── DISCONNECT ───
     if (action === "disconnect") {
-      if (!instance_id) {
-        return new Response(JSON.stringify({ error: "instance_id required" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const { data: inst } = await supabase
-        .from("whatsapp_instances")
-        .select("*")
-        .eq("id", instance_id)
-        .single();
-
-      if (!inst) {
-        return new Response(JSON.stringify({ error: "Instance not found" }), {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
+      if (!instance_id) return new Response(JSON.stringify({ error: "instance_id required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const { data: inst } = await supabase.from("whatsapp_instances").select("*").eq("id", instance_id).eq("organization_id", callerOrgId).single();
+      if (!inst) return new Response(JSON.stringify({ error: "Instance not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
       const instApiKey = inst.api_key || globalApiKey;
-
-      try {
-        await apiCall(`${instApiUrl}/instance/logout/${inst.name}`, {
-          method: "DELETE",
-          headers: { apikey: instApiKey },
-        });
-      } catch (e) {
-        console.error("Logout error:", e);
-      }
-
-      await supabase.from("whatsapp_instances").update({ status: "disconnected" }).eq("id", instance_id);
-
-      return new Response(JSON.stringify({ success: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      try { await apiCall(`${instApiUrl}/instance/logout/${inst.name}`, { method: "DELETE", headers: { apikey: instApiKey } }); } catch (e) { console.error("Logout error:", e); }
+      await supabase.from("whatsapp_instances").update({ status: "disconnected" }).eq("id", instance_id).eq("organization_id", callerOrgId);
+      return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    return new Response(JSON.stringify({ error: "Invalid action" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
     console.error("WhatsApp manager error:", error);
-    return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : "Unknown error",
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
