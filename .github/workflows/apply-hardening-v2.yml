@@ -1,0 +1,74 @@
+name: Final Edge Hardening
+on:
+  push:
+    branches: [security-hardening-2026-09]
+    paths: ['.github/workflows/apply-hardening-v2.yml']
+permissions:
+  contents: write
+jobs:
+  harden:
+    if: ${{ !contains(github.event.head_commit.message, '[hardening-v2-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          def p(path, old, new):
+              f=Path(path); s=f.read_text(); c=s.count(old)
+              if c!=1: raise SystemExit(f'{path}: target count={c}')
+              f.write_text(s.replace(old,new,1))
+          p('supabase/functions/whatsapp-manager/index.ts', '''    const body = await req.json();
+    const { action, instance_id, instance_name, organization_id } = body;
+
+    if (!action) {''', '''    const body = await req.json();
+    const { action, instance_id, instance_name, organization_id } = body;
+
+    const { data: callerOrganizationId, error: callerOrganizationError } = await supabase.rpc("get_user_organization_id", { _user_id: user.id });
+    if (callerOrganizationError || !callerOrganizationId) {
+      return new Response(JSON.stringify({ error: "Usuário sem organização autorizada" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    if (organization_id && organization_id !== callerOrganizationId) {
+      return new Response(JSON.stringify({ error: "Acesso negado para esta organização" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    if (instance_id) {
+      const { data: authorizedInstance } = await supabase.from("whatsapp_instances").select("id").eq("id", instance_id).eq("organization_id", callerOrganizationId).maybeSingle();
+      if (!authorizedInstance) {
+        return new Response(JSON.stringify({ error: "Instância não encontrada ou não pertence à sua organização" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    if (!action) {''')
+          p('supabase/functions/billing-cron/index.ts', '''  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;''', '''  try {
+    const authHeader = req.headers.get("Authorization") || "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    if (!serviceRoleKey || authHeader !== `Bearer ${serviceRoleKey}`) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;''')
+          p('supabase/functions/pix-ocr-retry/index.ts', '''  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY);''', '''  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const authHeader = req.headers.get("Authorization") || "";
+  if (!SERVICE_KEY || authHeader !== `Bearer ${SERVICE_KEY}`) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY);''')
+          p('supabase/functions/whatsapp-sender/index.ts', '''  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;''', '''  try {
+    const authHeader = req.headers.get("Authorization") || "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    if (!serviceRoleKey || authHeader !== `Bearer ${serviceRoleKey}`) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;''')
+          print('hardening guards applied')
+          PY
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add supabase/functions .github/workflows/apply-hardening-v2.yml
+          git commit -m 'security: enforce tenant and cron authorization [hardening-v2-applied]'
+          git push
