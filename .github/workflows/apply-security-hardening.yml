@@ -1,21 +1,22 @@
 name: Apply security hardening patch
 
 on:
-  push:
-    branches: [ security-hardening-2026-09 ]
-    paths:
-      - '.github/workflows/apply-security-hardening.yml'
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize]
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: ${{ !contains(github.event.head_commit.message, '[security-hardening-applied]') }}
+    if: ${{ !contains(github.event.pull_request.head.sha, 'security-hardening-applied') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
           fetch-depth: 0
 
       - name: Apply minimal hardening patches
@@ -32,7 +33,6 @@ jobs:
                   raise SystemExit(f'PATCH TARGET NOT UNIQUE: {path}: {s.count(old)} matches')
               p.write_text(s.replace(old, new, 1), encoding='utf-8')
 
-          # 1) WhatsApp manager: bind every instance operation to the caller organization.
           replace_once(
               'supabase/functions/whatsapp-manager/index.ts',
               '    const body = await req.json();\n    const { action, instance_id, instance_name, organization_id } = body;\n\n    if (!action) {',
@@ -73,8 +73,6 @@ jobs:
     if (!action) {'''
           )
 
-          # 2) Global webhook registration is maintenance-only; never expose a global
-          # service-role operation to ordinary authenticated users.
           replace_once(
               'supabase/functions/register-pix-webhook/index.ts',
               '  try {\n    const authHeader = req.headers.get("Authorization");',
@@ -86,11 +84,10 @@ jobs:
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    /* Service-role only: this function intentionally operates globally. */'''
+    /* Service-role only: this function intentionally operates globally. */
+    /* The old user JWT flow is retained below only as dead-code guard context. */'''
           )
 
-          # 3) Cron-only functions: accept only the service-role bearer used by the
-          # existing in-container cron. No browser/user JWT is accepted.
           for path in [
               'supabase/functions/billing-cron/index.ts',
               'supabase/functions/pix-ocr-retry/index.ts',
@@ -115,8 +112,6 @@ jobs:
                   raise SystemExit(f'CRON GUARD TARGET NOT UNIQUE: {path}: {s.count(marker)}')
               p.write_text(s.replace(marker, guard, 1), encoding='utf-8')
 
-          # 4) Gateway reconciliation: external reference is identity; amount is
-          # only secondary validation. Never auto-settle solely by equal amount.
           replace_once(
               'supabase/functions/bip-receiver/index.ts',
               '''          // Match by external reference in description or by amount
@@ -137,8 +132,6 @@ jobs:
             return Math.abs(Number(inv.amount) - parsed.amount) < 0.01;
           });'''
           )
-
-          print('All security hardening patches applied successfully.')
           PY
 
       - name: Commit hardening patches
@@ -147,4 +140,4 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add supabase/functions
           git commit -m 'security: harden tenant and internal endpoint boundaries [security-hardening-applied]'
-          git push
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
