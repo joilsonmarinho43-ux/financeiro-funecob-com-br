@@ -22,16 +22,13 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-          import re
 
           def once(path, old, new):
-              p=Path(path); s=p.read_text(encoding='utf-8')
-              n=s.count(old)
-              if n != 1: raise SystemExit(f'{path}: expected 1 exact target, found {n}')
+              p=Path(path); s=p.read_text(encoding='utf-8'); n=s.count(old)
+              if n != 1: raise SystemExit(f'{path}: expected 1 target, found {n}')
               p.write_text(s.replace(old,new,1),encoding='utf-8')
 
-          # Tenant authorization in whatsapp-manager. Service-role queries are
-          # allowed, but every instance_id and organization_id is bound to the caller.
+          # whatsapp-manager: bind requested organization/instance to caller.
           once('supabase/functions/whatsapp-manager/index.ts',
 '''    const body = await req.json();
     const { action, instance_id, instance_name, organization_id } = body;
@@ -44,14 +41,12 @@ jobs:
       .rpc("get_user_organization_id", { _user_id: user.id });
     if (callerOrganizationError || !callerOrganizationId) {
       return new Response(JSON.stringify({ error: "Usuário sem organização autorizada" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (organization_id && organization_id !== callerOrganizationId) {
       return new Response(JSON.stringify({ error: "Acesso negado para esta organização" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (instance_id) {
@@ -63,42 +58,72 @@ jobs:
         .maybeSingle();
       if (!authorizedInstance) {
         return new Response(JSON.stringify({ error: "Instância não encontrada ou não pertence à sua organização" }), {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
     }
 
     if (!action) {''')
 
-          # Internal cron functions: require the exact service-role bearer already
-          # used for server-to-server invocations. This does not alter the cron payload.
-          for path in [
-              'supabase/functions/billing-cron/index.ts',
-              'supabase/functions/pix-ocr-retry/index.ts',
-              'supabase/functions/whatsapp-sender/index.ts',
-          ]:
-              p=Path(path); s=p.read_text(encoding='utf-8')
-              old='''  try {\n    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;'''
-              new='''  try {\n    const authHeader = req.headers.get("Authorization") || "";\n    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";\n    if (!serviceRoleKey || authHeader !== `Bearer ${serviceRoleKey}`) {\n      return new Response(JSON.stringify({ error: "Unauthorized" }), {\n        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },\n      });\n    }\n    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;'''
-              if path.endswith('pix-ocr-retry/index.ts') or path.endswith('whatsapp-sender/index.ts'):
-                  old='''  try {\n    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;'''
-              n=s.count(old)
-              if n != 1: raise SystemExit(f'{path}: expected 1 cron target, found {n}')
-              p.write_text(s.replace(old,new,1),encoding='utf-8')
+          # billing-cron: internal service-role bearer only.
+          once('supabase/functions/billing-cron/index.ts',
+'''  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;''',
+'''  try {
+    const authHeader = req.headers.get("Authorization") || "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    if (!serviceRoleKey || authHeader !== `Bearer ${serviceRoleKey}`) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;''')
 
-          # Global webhook registration is machine-only. It intentionally operates
-          # across all organizations, so a normal user JWT must never reach it.
-          p=Path('supabase/functions/register-pix-webhook/index.ts'); s=p.read_text(encoding='utf-8')
-          old='''    const authHeader = req.headers.get("Authorization");\n    if (!authHeader) {\n      return new Response(JSON.stringify({ error: "unauthorized" }), {\n        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },\n      });\n    }'''
-          new='''    const authHeader = req.headers.get("Authorization") || "";\n    if (!SERVICE_KEY || authHeader !== `Bearer ${SERVICE_KEY}`) {\n      return new Response(JSON.stringify({ error: "unauthorized" }), {\n        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },\n      });\n    }'''
-          n=s.count(old)
-          if n != 1: raise SystemExit(f'register-pix-webhook: expected auth target, found {n}')
-          p.write_text(s.replace(old,new,1),encoding='utf-8')
+          # pix-ocr-retry: guard before global retry queue processing.
+          once('supabase/functions/pix-ocr-retry/index.ts',
+'''  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY);''',
+'''  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const authHeader = req.headers.get("Authorization") || "";
+  if (!SERVICE_KEY || authHeader !== `Bearer ${SERVICE_KEY}`) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY);''')
 
-          print('validated edge hardening targets applied')
+          # whatsapp-sender: guard before reading the global queue.
+          once('supabase/functions/whatsapp-sender/index.ts',
+'''  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;''',
+'''  try {
+    const authHeader = req.headers.get("Authorization") || "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    if (!serviceRoleKey || authHeader !== `Bearer ${serviceRoleKey}`) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;''')
 
-      - name: Commit and remove runner
+          # register-pix-webhook: this endpoint is intentionally global and is therefore machine-only.
+          once('supabase/functions/register-pix-webhook/index.ts',
+'''    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }''',
+'''    const authHeader = req.headers.get("Authorization") || "";
+    if (!SERVICE_KEY || authHeader !== `Bearer ${SERVICE_KEY}`) {
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }''')
+
+          print('all edge authorization targets validated and patched')
+
+      - name: Commit hardened functions and remove runner
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
