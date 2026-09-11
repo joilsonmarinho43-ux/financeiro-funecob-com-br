@@ -1,76 +1,70 @@
-name: Gemini Auto-Fix App
+name: Gemini Code Review (read-only)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main, master ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
 
 jobs:
-  autofix:
+  review:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - name: Checkout do Código
+      - name: Checkout do código
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Instalar Dependências
+      - name: Instalar dependências
         run: |
           python -m pip install --upgrade pip
           pip install google-genai
 
-      - name: Executar Correção Automática com Gemini
+      - name: Analisar código com Gemini (sem modificar arquivos)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python -c '
-          import os, glob
+          python - <<'PY'
+          import os
+          from pathlib import Path
           from google import genai
 
-          client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+          client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+          roots = [Path("src"), Path("supabase/functions"), Path("deploy")]
+          extensions = {".ts", ".tsx", ".js", ".jsx", ".py", ".sql"}
+          files = [p for root in roots if root.exists() for p in root.rglob("*") if p.is_file() and p.suffix in extensions]
 
-          # Busca arquivos Python/JS da interface no projeto
-          files = glob.glob("**/*.py", recursive=True) + glob.glob("**/*.js", recursive=True)
-
-          for file_path in files:
-              if ".github" in file_path or "node_modules" in file_path or "venv" in file_path:
-                  continue
-
-              with open(file_path, "r", encoding="utf-8") as f:
-                  code = f.read()
-
+          findings = []
+          for path in files:
+              code = path.read_text(encoding="utf-8", errors="replace")
+              if len(code) > 50000:
+                  code = code[:50000]
               prompt = f"""
-              Você é um engenheiro de software sênior. Analise o código abaixo do arquivo {file_path}.
-              Identifique quaisquer erros de sintaxe, bugs de interface ou falhas de execução.
-              Retorne APENAS o código corrigido completo, sem explicações, sem marcadores de markdown como ```python.
-              Se não houver erros, retorne exatamente o mesmo código fornecido.
+              Faça uma revisão de segurança e estabilidade do arquivo {path} de um SaaS financeiro multi-tenant.
+              NÃO reescreva o código. Retorne somente uma lista objetiva de achados, cada um com:
+              severidade (CRITICAL/HIGH/MEDIUM/LOW), linha aproximada, risco e correção recomendada.
+              Se não houver achados relevantes, responda NO_SIGNIFICANT_FINDINGS.
 
               Código:
               {code}
               """
-
               response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-              fixed_code = response.text.strip()
+              text = (response.text or "").strip()
+              if text and text != "NO_SIGNIFICANT_FINDINGS":
+                  findings.append(f"## {path}\n{text}\n")
 
-              # Limpa eventuais marcadores de código
-              if fixed_code.startswith("```"):
-                  lines = fixed_code.split("\n")
-                  fixed_code = "\n".join(lines[1:-1])
+          Path("gemini-review.md").write_text("# Gemini read-only review\n\n" + "\n".join(findings), encoding="utf-8")
+          print(f"Reviewed {len(files)} files; report written to gemini-review.md")
 
-              with open(file_path, "w", encoding="utf-8") as f:
-                  f.write(fixed_code)
-
-          print("Análise e correções concluídas com sucesso.")
-          '
-
-      - name: Commitar e Enviar Alterações Corrigidas
-        run: |
-          git config --global user.name "Gemini Auto-Fix Bot"
-          git config --global user.email "action@github.com"
-          git add .
-          git diff --staged --quiet || (git commit -m "fix: correcoes automaticas aplicadas pelo Gemini" && git push)
+      - name: Publicar relatório
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemini-security-review
+          path: gemini-review.md
