@@ -86,8 +86,7 @@ jobs:
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    /* Service-role only: this function intentionally operates globally. */
-    /* The old user JWT flow is retained below only as dead-code guard context. */'''
+    /* Service-role only: this function intentionally operates globally. */'''
           )
 
           # 3) Cron-only functions: accept only the service-role bearer used by the
@@ -142,10 +141,10 @@ jobs:
           print('All security hardening patches applied successfully.')
           PY
 
-      - name: Commit hardening patches and remove one-time runner
+      - name: Commit hardening patches
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add supabase/functions .github/workflows/apply-security-hardening.yml
+          git add supabase/functions
           git commit -m 'security: harden tenant and internal endpoint boundaries [security-hardening-applied]'
           git push
