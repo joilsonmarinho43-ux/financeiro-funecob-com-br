@@ -313,22 +313,21 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const expectedSecret = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
 
-  // Helper: extract provided secret from accepted headers (or ?secret= for GET test)
+  // Shared-secret authentication is header-only. Never accept secrets in URLs.
   const getProvided = () =>
     req.headers.get("x-webhook-secret") ||
     req.headers.get("x-evolution-secret") ||
     req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
-    url.searchParams.get("secret") ||
     "";
 
   // Healthcheck / auth test endpoint — GET ?ping=1
-  // Use to validate secret config before flipping Evolution to authenticated mode.
+  // Missing configuration is an error; never report an unauthenticated webhook as healthy.
   if (req.method === "GET" && url.searchParams.get("ping") === "1") {
     if (!expectedSecret) {
       return new Response(JSON.stringify({
-        ok: true, auth: "disabled",
-        message: "EVOLUTION_WEBHOOK_SECRET not configured — webhook accepts all calls",
-      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        ok: false, auth: "misconfigured",
+        message: "EVOLUTION_WEBHOOK_SECRET not configured",
+      }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     const provided = getProvided();
     const ok = provided === expectedSecret;
@@ -352,11 +351,8 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Shared-secret authentication OBRIGATÓRIA: sem segredo configurado
-  // qualquer requisição externa poderia injetar eventos falsos de PIX e
-  // disparar conciliação automática (risco financeiro direto).
-  // Escape hatch explícito apenas para migrações: WEBHOOK_ALLOW_INSECURE=true.
-  if (!expectedSecret && Deno.env.get("WEBHOOK_ALLOW_INSECURE") !== "true") {
+  // Shared-secret authentication is mandatory. Never allow an insecure escape hatch.
+  if (!expectedSecret) {
     console.error(JSON.stringify({ tag: "wa-webhook", event: "webhook_secret_missing" }));
     return new Response(
       JSON.stringify({ error: "webhook não configurado: defina EVOLUTION_WEBHOOK_SECRET" }),
@@ -364,7 +360,7 @@ Deno.serve(async (req) => {
     );
   }
 
-  if (expectedSecret) {
+  {
     const provided = getProvided();
     if (provided !== expectedSecret) {
       console.warn(JSON.stringify({
