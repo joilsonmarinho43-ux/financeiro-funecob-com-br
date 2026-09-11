@@ -1,16 +1,28 @@
-import * as jose from 'jsr:@panva/jose@6'
-
 console.log('FUNecob Edge main worker started')
 
 const JWT_SECRET = Deno.env.get('JWT_SECRET')
 const SUPABASE_JWKS = parseJwks(Deno.env.get('SUPABASE_JWKS'))
 const VERIFY_JWT = Deno.env.get('VERIFY_JWT') === 'true'
 
-function parseJwks(raw: string | undefined): jose.JSONWebKeySet | null {
+// JWT verification is disabled in the production Compose stack (Kong handles
+// gateway authentication). Do not import jose during normal requests: the
+// previous top-level JSR import forced the Edge Runtime to download/initialize
+// a remote module before it could dispatch the actual function worker.
+// When VERIFY_JWT=true, load jose lazily and keep the same hybrid JWT support.
+let joseModule: any = null
+
+async function getJose(): Promise<any> {
+  if (!joseModule) {
+    joseModule = await import('jsr:@panva/jose@6')
+  }
+  return joseModule
+}
+
+function parseJwks(raw: string | undefined): any | null {
   if (!raw) return null
   try {
     const parsed = JSON.parse(raw)
-    return parsed?.keys && Array.isArray(parsed.keys) ? parsed as jose.JSONWebKeySet : null
+    return parsed?.keys && Array.isArray(parsed.keys) ? parsed : null
   } catch {
     return null
   }
@@ -27,6 +39,7 @@ function getAuthToken(req: Request): string {
 async function isValidLegacyJWT(jwt: string): Promise<boolean> {
   if (!JWT_SECRET) return false
   try {
+    const jose = await getJose()
     await jose.jwtVerify(jwt, new TextEncoder().encode(JWT_SECRET))
     return true
   } catch {
@@ -37,6 +50,7 @@ async function isValidLegacyJWT(jwt: string): Promise<boolean> {
 async function isValidJWT(jwt: string): Promise<boolean> {
   if (!SUPABASE_JWKS) return false
   try {
+    const jose = await getJose()
     await jose.jwtVerify(jwt, jose.createLocalJWKSet(SUPABASE_JWKS))
     return true
   } catch {
@@ -45,6 +59,7 @@ async function isValidJWT(jwt: string): Promise<boolean> {
 }
 
 async function isValidHybridJWT(jwt: string): Promise<boolean> {
+  const jose = await getJose()
   const { alg } = jose.decodeProtectedHeader(jwt)
   if (alg === 'HS256') return isValidLegacyJWT(jwt)
   if (alg === 'ES256' || alg === 'RS256') return isValidJWT(jwt)
