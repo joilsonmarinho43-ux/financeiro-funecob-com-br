@@ -1,7 +1,7 @@
 // WhatsApp Webhook → PIX OCR Auto-Settlement
 // Receives Evolution API events (messages.upsert) and forwards PIX receipts
 // to pix-ocr-settlement. Decoupled — never touches existing billing logic.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // --- Evolution API: fallback por variáveis de ambiente (VPS própria) ---
 // Precedência: whatsapp_instances > global_settings > ENV.
@@ -335,19 +335,11 @@ Deno.serve(async (req) => {
       tag: "wa-webhook",
       event: ok ? "webhook_auth_success" : "webhook_auth_failed",
       mode: "ping",
-      ip: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || null,
-      ua: req.headers.get("user-agent") || null,
-      provided_present: provided.length > 0,
+      ip: req.headers.get("x-forwarded-for") || "",
     }));
-    return new Response(JSON.stringify({
-      ok, auth: "enabled",
-      message: ok ? "secret matches" : "secret mismatch or missing",
-    }), { status: ok ? 200 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "method not allowed" }), {
-      status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({ ok, auth: ok ? "valid" : "invalid" }), {
+      status: ok ? 200 : 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
@@ -363,369 +355,177 @@ Deno.serve(async (req) => {
   {
     const provided = getProvided();
     if (provided !== expectedSecret) {
-      console.warn(JSON.stringify({
-        tag: "wa-webhook",
-        event: "webhook_auth_failed",
-        ip: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || null,
-        ua: req.headers.get("user-agent") || null,
-        provided_present: provided.length > 0,
-      }));
+      console.warn(JSON.stringify({ tag: "wa-webhook", event: "webhook_auth_failed" }));
       return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    console.log(JSON.stringify({
-      tag: "wa-webhook",
-      event: "webhook_auth_success",
-      ip: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || null,
-    }));
   }
 
-
-  let payload: any;
-  try { payload = await req.json(); }
-  catch { return new Response(JSON.stringify({ error: "invalid json" }), { status: 400, headers: corsHeaders }); }
-
-  // ACK fast — Evolution doesn't retry forever
-  const ack = new Response(JSON.stringify({ ok: true }), {
-    status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-
-  // Process async
-  // @ts-ignore
-  EdgeRuntime.waitUntil(handleEvent(payload).catch((e) => console.error("[wa-webhook] handle error", e)));
-  return ack;
-});
-
-async function handleEvent(payload: any) {
-  const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
-
-  // Evolution API v2 envelope: { event, instance, data: {...} }
-  const event = payload?.event || payload?.type;
-  const instanceName = payload?.instance || payload?.instanceName || payload?.data?.instance || payload?.data?.instanceName;
-  if (!instanceName) { console.log("[wa-webhook] no instance"); return; }
-
-  // Only process incoming messages
-  if (normalizeEventName(event) !== "messages.upsert") {
-    return;
-  }
-
-  const dataItems = asArray(payload?.data || payload?.message || {});
-  for (const msg of dataItems) {
-    await handleMessage(supabase, payload, instanceName, msg);
-  }
-}
-
-async function handleMessage(supabase: any, payload: any, instanceName: string, msg: any) {
-  const key = msg.key || {};
-  if (key.fromMe) return; // ignore our own sends
-
-  const remoteJid: string = key.remoteJid || "";
-  if (remoteJid.endsWith("@g.us")) return; // ignore groups
-
-  // ===== Phone extraction tolerant to Evolution v2 @lid protocol =====
-  // remoteJid may be "<phone>@s.whatsapp.net" (legacy) OR "<lid>@lid" (new).
-  // Real phone often lives in: senderPn, remoteJidAlt, participantPn,
-  // participantAlt, msg.pushName-related fields, or msg.contextInfo.
-  // We collect all candidates and pick the first that LOOKS like a BR phone.
-  function looksLikePhone(d: string): boolean {
-    return looksLikeBrazilianPhone(d);
-  }
-  const candidates: string[] = [
-    jidToDigits(key.senderPn),
-    jidToDigits(key.remoteJidAlt),
-    jidToDigits(key.participantPn),
-    jidToDigits(key.participantAlt),
-    jidToDigits(key.participant),
-    jidToDigits(msg?.senderPn),
-    jidToDigits(msg?.participantPn),
-    // remoteJid LAST — only if it's @s.whatsapp.net (not @lid)
-    (remoteJid.endsWith("@lid") || !looksLikeBrazilianPhone(jidToDigits(remoteJid))) ? "" : jidToDigits(remoteJid),
-    // Absolute fallback — accept LID as last resort so we still log the event
-    jidToDigits(remoteJid),
-  ].filter(Boolean);
-
-  let phone = candidates.find(looksLikePhone) || "";
-  const isLidOnly = !phone && candidates.length > 0;
-  if (!phone) phone = candidates[0]; // log the LID so admin sees the event
-  if (!phone) return;
-
-  if (isLidOnly) {
-    console.log("[wa-webhook] only @lid available, phone may not match clients", {
-      remoteJid, candidates,
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  // Resolve instance → org + api creds
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return new Response(JSON.stringify({ error: "invalid json" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const eventName = normalizeEventName(body?.event || body?.type || "");
+  if (eventName !== "messages.upsert") {
+    return new Response(JSON.stringify({ received: true, ignored: true, event: eventName || null }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const instanceName = body?.instance || body?.instanceName || body?.data?.instance || "";
+  const payload = body?.data || body?.payload || body;
+  const msg = payload?.messages?.[0] || payload?.message || payload;
+
+  try {
+    const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
+    await handleMessage(supabase, payload, instanceName, msg);
+    return new Response(JSON.stringify({ received: true }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    console.error("[wa-webhook] handler error", e);
+    return new Response(JSON.stringify({ received: true, error: "internal handler error" }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
+
+async function handleMessage(supabase: any, payload: any, instanceName: string, msg: any) {
+  const key = msg?.key || msg?.message?.key || {};
+  const remoteJid = key?.remoteJid || msg?.remoteJid || payload?.remoteJid || "";
+  const messageId = key?.id || msg?.id || msg?.messageId || "";
+  const pushName = msg?.pushName || msg?.push_name || payload?.pushName || "";
+  const rawText = msg?.message?.conversation || msg?.message?.extendedTextMessage?.text || msg?.text || msg?.caption || "";
+  const messageObj = msg?.message || msg;
+
+  if (!instanceName || !remoteJid) return;
+
   const { data: instance } = await supabase
     .from("whatsapp_instances")
-    .select("id, name, organization_id, api_url, api_key")
-    .eq("name", instanceName)
-    .order("updated_at", { ascending: false })
-    .limit(1)
+    .select("id, organization_id, instance_name, api_url, api_key, webhook_enabled")
+    .eq("instance_name", instanceName)
     .maybeSingle();
 
-  if (!instance?.organization_id) {
-    console.log("[wa-webhook] instance not found", instanceName);
-    return;
-  }
+  if (!instance?.organization_id) return;
 
   await logWebhookReceipt(supabase, instance.organization_id, "MESSAGES_UPSERT", {
     instance: instanceName,
-    message_id: key.id || msg.messageId || null,
-    remote_jid: remoteJid || null,
-    message_type: msg.messageType || Object.keys(msg.message || {})[0] || null,
-    push_name: msg?.pushName || msg?.push_name || payload?.data?.pushName || null,
-    received_at: new Date().toISOString(),
+    message_id: messageId,
+    remote_jid: remoteJid,
+    push_name: pushName,
+    text: rawText,
   });
 
-  // Feature flag check (early exit — saves OCR credits)
   const { data: flag } = await supabase
-    .from("global_settings").select("value").eq("key", "auto_settlement_enabled").maybeSingle();
-  if (!flag || flag.value !== "true") return;
+    .from("global_settings")
+    .select("value")
+    .eq("key", "auto_settlement_enabled")
+    .maybeSingle();
+  const autoEnabled = flag?.value === true || flag?.value === "true";
+  if (!autoEnabled) return;
 
-  const messageType: string = msg.messageType || Object.keys(msg.message || {}).find((k) => k.endsWith("Message")) || "";
-  const messageObj = msg.message || {};
-  const caption: string = messageObj?.imageMessage?.caption ||
-                          messageObj?.documentMessage?.caption ||
-                          messageObj?.videoMessage?.caption ||
-                          msg?.caption || "";
-  const textBody: string = messageObj?.conversation ||
-                           messageObj?.extendedTextMessage?.text ||
-                           messageObj?.ephemeralMessage?.message?.conversation ||
-                           messageObj?.ephemeralMessage?.message?.extendedTextMessage?.text ||
-                           msg?.text || "";
+  const apiUrl = (instance.api_url || envEvolutionUrl()).replace(/\/+$/, "");
+  const apiKey = instance.api_key || envEvolutionKey();
+  const rawPhone = jidToDigits(remoteJid);
+  let phone = looksLikeBrazilianPhone(rawPhone) ? rawPhone : "";
+  let resolutionEndpoint: string | null = null;
 
-  // WhatsApp contact display name — used downstream to identify clients when
-  // remoteJid is @lid and the OCR can't extract a sender_name from the image.
-  const pushName: string = msg?.pushName || msg?.push_name || payload?.data?.pushName || "";
+  if (!phone && rawPhone) {
+    const resolved = await resolveLidToPhone(apiUrl, apiKey, instanceName, rawPhone);
+    phone = resolved.phone || "";
+    resolutionEndpoint = resolved.endpoint;
+  }
 
-  const doc = messageObj?.documentMessage || messageObj?.documentWithCaptionMessage?.message?.documentMessage || null;
-  const image = messageObj?.imageMessage || messageObj?.viewOnceMessage?.message?.imageMessage || messageObj?.ephemeralMessage?.message?.imageMessage || null;
-  const documentMime: string = doc?.mimetype || msg?.mimetype || "";
-  const documentFileName: string = doc?.fileName || msg?.fileName || "";
-  const isImage = !!image || messageType === "imageMessage";
-  const isDocImage = !!doc && documentMime.startsWith("image/");
-  const isPdf = !!doc && (
-    documentMime === "application/pdf" || documentFileName.toLowerCase().endsWith(".pdf")
+  if (!phone) {
+    await logAutoSettlement(supabase, instance.organization_id, "webhook_unresolved_sender", {
+      instance: instanceName,
+      remote_jid: remoteJid,
+      message_id: messageId,
+      push_name: pushName,
+      reason: "could_not_resolve_sender_phone",
+    });
+    return;
+  }
+
+  const receiptHint = looksLikePix(rawText);
+  const hasMedia = !!(
+    messageObj?.imageMessage ||
+    messageObj?.documentMessage ||
+    messageObj?.documentWithCaptionMessage?.message?.documentMessage ||
+    messageObj?.imageMessage?.url ||
+    messageObj?.documentMessage?.url
   );
 
-  // Decision: forward to PIX-OCR if (a) image/PDF receipt, or
-  // (b) text mentioning PIX with an amount.
-  const messageId = key.id || msg.messageId || crypto.randomUUID();
+  if (!receiptHint && !hasMedia) return;
 
-  if (isImage || isDocImage || isPdf) {
-    await logAutoSettlement(supabase, instance.organization_id, "webhook_media_candidate", {
-      instance: instanceName,
-      phone,
-      remote_jid: remoteJid || null,
-      message_id: messageId,
-      message_type: messageType || null,
-      media_mime_type: documentMime || (isImage ? "image/jpeg" : null),
-      push_name: pushName || null,
-    });
+  let mediaBase64: string | null = null;
+  let mediaMimeType: string | null = null;
+  if (hasMedia) {
+    mediaMimeType =
+      messageObj?.imageMessage?.mimetype ||
+      messageObj?.documentMessage?.mimetype ||
+      messageObj?.documentWithCaptionMessage?.message?.documentMessage?.mimetype ||
+      null;
+    mediaBase64 = await fetchMediaBase64(apiUrl, apiKey, instanceName, messageObj);
   }
 
-  // Resolve API creds (instance first, then global fallback)
-  let apiUrl = instance.api_url || "";
-  let apiKey = instance.api_key || "";
-  if (!apiUrl || !apiKey) {
-    const { data: gs } = await supabase
-      .from("global_settings").select("key,value")
-      .in("key", ["api_host", "global_api_key"]);
-    const map: Record<string, string> = {};
-    (gs || []).forEach((s: any) => { map[s.key] = s.value; });
-    apiUrl = apiUrl || map.api_host || envEvolutionUrl();
-    apiKey = apiKey || map.global_api_key || envEvolutionKey();
-  }
+  const body = {
+    organization_id: instance.organization_id,
+    phone,
+    raw_text: rawText,
+    push_name: pushName,
+    media_base64: mediaBase64,
+    media_mime_type: mediaMimeType,
+    receipt_hint: receiptHint,
+    message_id: messageId,
+    instance_name: instanceName,
+    remote_jid: remoteJid,
+    lid_resolution_endpoint: resolutionEndpoint,
+  };
 
-  // Se só temos o @lid, tenta resolver para telefone real.
-  // Ordem: (1) cache whatsapp_lid_map → (2) Evolution API fallbacks.
-  if (isLidOnly && apiUrl && apiKey) {
-    const lidDigits = phone;
-    const orgId = instance.organization_id;
-
-    // ===== 1) Cache lookup =====
-    let cacheHit = false;
-    try {
-      const { data: cached } = await supabase
-        .from("whatsapp_lid_map")
-        .select("client_id, lid")
-        .eq("organization_id", orgId)
-        .eq("lid", lidDigits)
-        .maybeSingle();
-      if (cached?.client_id) {
-        cacheHit = true;
-        console.log(JSON.stringify({
-          tag: "wa-webhook", event: "lid_cache_hit",
-          lid: lidDigits, client_id: cached.client_id, instance: instanceName,
-        }));
-        // Tenta recuperar o telefone real do cliente vinculado para os passos seguintes
-        const { data: cli } = await supabase
-          .from("clients").select("phone").eq("id", cached.client_id).maybeSingle();
-        const phoneDigits = (cli?.phone || "").replace(/\D/g, "");
-        if (looksLikeBrazilianPhone(phoneDigits)) phone = phoneDigits;
-      } else {
-        console.log(JSON.stringify({
-          tag: "wa-webhook", event: "lid_cache_miss",
-          lid: lidDigits, instance: instanceName,
-        }));
-      }
-    } catch (e) {
-      console.warn("[wa-webhook] lid cache lookup failed (non-blocking)", e);
-    }
-
-    // ===== 2) Evolution API fallbacks (só se cache miss) =====
-    if (!cacheHit) {
-      const { phone: resolved, endpoint } = await resolveLidToPhone(apiUrl, apiKey, instanceName, lidDigits);
-      if (resolved) {
-        console.log(JSON.stringify({
-          tag: "wa-webhook", event: "lid_resolve_success",
-          lid: lidDigits, phone: resolved, endpoint, instance: instanceName,
-        }));
-        phone = resolved;
-        // Auto-vincula LID→cliente se o telefone bate com algum cadastro
-        try {
-          const last10 = resolved.replace(/^55/, "").slice(-10);
-          const { data: cli } = await supabase
-            .from("clients").select("id, phone").eq("organization_id", orgId);
-          const match = (cli || []).find((c: any) => {
-            const p = (c.phone || "").replace(/\D/g, "").replace(/^55/, "");
-            return p && (p === resolved.replace(/^55/, "") || p.slice(-10) === last10);
-          });
-          if (match) {
-            await supabase.from("whatsapp_lid_map").upsert({
-              organization_id: orgId,
-              lid: lidDigits,
-              client_id: match.id,
-              updated_at: new Date().toISOString(),
-            }, { onConflict: "organization_id,lid" });
-            console.log(JSON.stringify({
-              tag: "wa-webhook", event: "lid_auto_linked",
-              lid: lidDigits, client_id: match.id,
-            }));
-          }
-        } catch (e) {
-          console.warn("[wa-webhook] lid auto-link failed (non-blocking)", e);
-        }
-      } else {
-        const keySnapshot = {
-          remoteJid: key?.remoteJid || null,
-          remoteJidAlt: key?.remoteJidAlt || null,
-          participant: key?.participant || null,
-          participantPn: key?.participantPn || null,
-          participantAlt: key?.participantAlt || null,
-          senderPn: key?.senderPn || null,
-          id: key?.id || null,
-        };
-        const endpointsTried = ["findContacts", "whatsappNumbers", "fetchProfile", "findChats", "findMessages"];
-        console.warn(JSON.stringify({
-          tag: "wa-webhook", event: "lid_resolve_failed",
-          lid: lidDigits, instance: instanceName, message_id: messageId,
-          push_name: pushName || null,
-          key: keySnapshot,
-          endpoints_tried: endpointsTried,
-        }));
-        try {
-          await supabase.from("auto_settlement_logs").insert({
-            organization_id: orgId,
-            action: "lid_resolve_failed",
-            details: {
-              lid: lidDigits, instance: instanceName, message_id: messageId,
-              push_name: pushName || null,
-              key: keySnapshot,
-              endpoints_tried: endpointsTried,
-            },
-          });
-        } catch (e) {
-          console.warn("[wa-webhook] failed to log lid_resolve_failed", e);
-        }
-      }
-    }
-  }
-
-  let body: any = null;
-
-  if (isImage || isDocImage || isPdf) {
-    // Evolution v2 sometimes embeds base64 directly in the payload — use it first
-    const inlineB64 = msg?.message?.base64
-      || msg?.base64
-      || image?.base64
-      || doc?.base64
-      || msg?.media?.base64
-      || msg?.data?.base64
-      || null;
-    const base64 = inlineB64
-      || (apiUrl && apiKey
-        ? await fetchMediaBase64(apiUrl, apiKey, instanceName, { key, message: messageObj })
-        : null);
-    const mediaMimeType = documentMime || (isImage ? "image/jpeg" : "application/octet-stream");
-    const fallbackRawText = caption || `Comprovante PIX recebido (${documentFileName || mediaMimeType || "arquivo"})`;
-    body = {
-      organization_id: instance.organization_id,
-      phone,
-      push_name: pushName || null,
-      image_base64: base64,
-      media_mime_type: mediaMimeType,
-      receipt_hint: true,
-      message_id: messageId,
-      raw_text: fallbackRawText,
-      remote_jid: remoteJid || null,
-      force_reprocess: !!payload?.force_reprocess,
-    };
-    if (!base64) {
-      console.error("[wa-webhook] media WITHOUT base64 — enviando para revisão manual", {
-        instance: instanceName,
-        phone,
-        messageId,
-        mediaMimeType,
-        hasApiCreds: !!(apiUrl && apiKey),
-      });
-      body.ocr_error = "media_fetch_failed";
-      await logAutoSettlement(supabase, instance.organization_id, "media_fetch_failed", {
-        instance: instanceName,
-        phone,
-        message_id: messageId,
-        media_mime_type: mediaMimeType,
-        has_api_creds: !!(apiUrl && apiKey),
-      });
-    }
-  } else if ((textBody && looksLikePix(textBody))) {
-    const amount = extractAmountFromText(textBody);
-    if (!amount) return;
-    body = {
-      organization_id: instance.organization_id,
-      phone,
-      push_name: pushName || null,
-      raw_text: textBody,
-      manual_amount: amount,
-      manual_txid: `WA-TXT-${messageId}`,
-      message_id: messageId,
-      force_reprocess: !!payload?.force_reprocess,
-    };
-  } else {
-    return; // not a PIX receipt — ignore
-  }
-
-  // Forward to pix-ocr-settlement
   try {
-    const res = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/pix-ocr-settlement`, {
+    const baseUrl = SUPABASE_URL.replace(/\/$/, "");
+    const res = await fetchWithTimeout(`${baseUrl}/functions/v1/pix-ocr-settlement`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${SERVICE_KEY}`,
+        apikey: SERVICE_KEY,
       },
       body: JSON.stringify(body),
-    }, 90000);
+    }, 12000);
     const t = await res.text();
-    console.log("[wa-webhook] forwarded", res.status, t.slice(0, 200));
-    await logAutoSettlement(supabase, instance.organization_id, "webhook_forwarded_to_pix_ocr", {
-      message_id: messageId,
-      status: res.status,
-      response: t.slice(0, 300),
-    });
     if (!res.ok) {
+      console.error("[wa-webhook] pix-ocr-settlement failed", res.status, t.slice(0, 500));
       await createFallbackEvent(supabase, body, "erro", `pix-ocr-settlement retornou HTTP ${res.status}: ${t.slice(0, 200)}`);
+    } else {
+      await logAutoSettlement(supabase, instance.organization_id, "webhook_forwarded_to_pix_ocr", {
+        message_id: messageId,
+        remote_jid: remoteJid,
+        phone,
+        receipt_hint: receiptHint,
+        has_media: hasMedia,
+        resolution_endpoint: resolutionEndpoint,
+        pix_ocr_response: t.slice(0, 500),
+      });
     }
   } catch (e) {
     console.error("[wa-webhook] forward error", e);
