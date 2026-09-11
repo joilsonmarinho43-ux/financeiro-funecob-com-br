@@ -15,6 +15,11 @@
 //   80-94 auto  (auto_ok, logged)
 //   60-79 pendente_revisao (review_recommended)
 //   <60   pendente_revisao (review_required)
+//
+// Safety gate: a score can never authorize automatic settlement unless the
+// client is positively identified, the amount is present, and there is either
+// a provider transaction identifier or a trusted payer identity. Name/fuzzy
+// matching and amount alone are supporting evidence, never sufficient identity.
 
 export type ScoreInputs = {
   client_identified: boolean;
@@ -43,7 +48,11 @@ export function computeScore(x: ScoreInputs): ScoreResult {
   if (x.match_source === "phone" || x.match_source === "lid_map") b.phone_match_bonus = 5;
 
   const raw = Object.values(b).reduce((s, v) => s + v, 0);
-  const score = Math.min(100, raw);
+  // Hard financial safety gate. A high numerical score must not override
+  // missing identity or payment identity evidence.
+  const safetyGate = x.client_identified && x.amount_found && (x.txid_found || x.payer_known);
+  const score = Math.min(100, safetyGate ? raw : Math.min(79, raw));
+
   let decision: ScoreResult["decision"];
   if (score >= 95) decision = "auto_high";
   else if (score >= 80) decision = "auto_ok";
