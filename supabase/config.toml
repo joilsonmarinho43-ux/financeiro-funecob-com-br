@@ -5,7 +5,3 @@ verify_jwt = false
 
 [functions.whatsapp-webhook]
 verify_jwt = false
-
-# User-facing Edge Functions use JWT verification by default.
-# Only the two provider/webhook endpoints above intentionally accept
-# unauthenticated requests because they implement their own authentication.
