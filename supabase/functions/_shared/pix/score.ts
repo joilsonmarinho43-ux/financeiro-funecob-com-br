@@ -1,25 +1,10 @@
 // PIX confidence score engine (0–100).
 // Consumed by pix-ocr-settlement to decide auto/review.
 //
-// Point rubric (per spec):
-//   client_identified : +35
-//   amount_found      : +25
-//   txid_found        : +15
-//   name_compatible   : +10
-//   payer_known       : +10   (trusted_payers)
-//   single_open_match : +5
-//   phone_match_bonus : +5    (extra confidence when phone is the match source)
-//
-// Cap = 100. Decision thresholds:
-//   >=95  auto  (auto_high)
-//   80-94 auto  (auto_ok, logged)
-//   60-79 pendente_revisao (review_recommended)
-//   <60   pendente_revisao (review_required)
-//
-// Safety gate: a score can never authorize automatic settlement unless the
-// client is positively identified, the amount is present, and there is either
-// a provider transaction identifier or a trusted payer identity. Name/fuzzy
-// matching and amount alone are supporting evidence, never sufficient identity.
+// Security rule: score alone must never authorize an automatic settlement.
+// Automatic settlement requires a strong identity source (phone, LID map,
+// CPF, or trusted payer) AND a transaction identity signal (txid or a
+// provider/reference match). Amount/name/single-match are supporting signals.
 
 export type ScoreInputs = {
   client_identified: boolean;
@@ -48,14 +33,13 @@ export function computeScore(x: ScoreInputs): ScoreResult {
   if (x.match_source === "phone" || x.match_source === "lid_map") b.phone_match_bonus = 5;
 
   const raw = Object.values(b).reduce((s, v) => s + v, 0);
-  // Hard financial safety gate. A high numerical score must not override
-  // missing identity or payment identity evidence.
-  const safetyGate = x.client_identified && x.amount_found && (x.txid_found || x.payer_known);
-  const score = Math.min(100, safetyGate ? raw : Math.min(79, raw));
+  const score = Math.min(100, raw);
+  const strongIdentity = x.client_identified && ["phone", "lid_map", "cpf", "trusted_payer"].includes(x.match_source || "");
+  const transactionIdentity = x.txid_found;
 
   let decision: ScoreResult["decision"];
-  if (score >= 95) decision = "auto_high";
-  else if (score >= 80) decision = "auto_ok";
+  if (strongIdentity && transactionIdentity && score >= 95) decision = "auto_high";
+  else if (strongIdentity && transactionIdentity && score >= 80) decision = "auto_ok";
   else if (score >= 60) decision = "review_recommended";
   else decision = "review_required";
   return { score, breakdown: b, decision };
