@@ -1,0 +1,200 @@
+name: repair-webhook-file
+
+on:
+  push:
+    branches:
+      - security-hardening-2026-09
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: security-hardening-2026-09
+          fetch-depth: 0
+
+      - name: Restore complete pre-repair webhook and reapply security hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="supabase/functions/whatsapp-webhook/index.ts"
+          git show cd0298bc7536569feda16e04de47e0abe77c10cb:"$FILE" > "$FILE"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("supabase/functions/whatsapp-webhook/index.ts")
+          s = p.read_text()
+
+          s = s.replace(
+              'import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";',
+              'import { createClient } from "https://esm.sh/@supabase/supabase-js@2";'
+          )
+
+          s = s.replace(
+              '  // Helper: extract provided secret from accepted headers (or ?secret= for GET test)\n'
+              '  const getProvided = () =>\n'
+              '    req.headers.get("x-webhook-secret") ||\n'
+              '    req.headers.get("x-evolution-secret") ||\n'
+              '    req.headers.get("authorization")?.replace(/^Bearer\\s+/i, "") ||\n'
+              '    url.searchParams.get("secret") ||\n'
+              '    "";',
+              '  // Shared-secret authentication is header-only. Never accept secrets in URLs.\n'
+              '  const getProvided = () =>\n'
+              '    req.headers.get("x-webhook-secret") ||\n'
+              '    req.headers.get("x-evolution-secret") ||\n'
+              '    req.headers.get("authorization")?.replace(/^Bearer\\s+/i, "") ||\n'
+              '    "";'
+          )
+
+          old_ping = '''  if (req.method === "GET" && url.searchParams.get("ping") === "1") {
+            if (!expectedSecret) {
+              return new Response(JSON.stringify({
+                ok: true, auth: "disabled",
+                message: "EVOLUTION_WEBHOOK_SECRET not configured — webhook accepts all calls",
+              }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+            const provided = getProvided();
+            const ok = provided === expectedSecret;
+            console.log(JSON.stringify({
+              tag: "wa-webhook",
+              event: ok ? "webhook_auth_success" : "webhook_auth_failed",
+              mode: "ping",
+              ip: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || null,
+              ua: req.headers.get("user-agent") || null,
+              provided_present: provided.length > 0,
+            }));
+            return new Response(JSON.stringify({
+              ok, auth: "enabled",
+              message: ok ? "secret matches" : "secret mismatch or missing",
+            }), { status: ok ? 200 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
+
+          if (req.method !== "POST") {
+            return new Response(JSON.stringify({ error: "method not allowed" }), {
+              status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+
+          // Shared-secret authentication OBRIGATÓRIA: sem segredo configurado
+          // qualquer requisição externa poderia injetar eventos falsos de PIX e
+          // disparar conciliação automática (risco financeiro direto).
+          // Escape hatch explícito apenas para migrações: WEBHOOK_ALLOW_INSECURE=true.
+          if (!expectedSecret && Deno.env.get("WEBHOOK_ALLOW_INSECURE") !== "true") {
+            console.error(JSON.stringify({ tag: "wa-webhook", event: "webhook_secret_missing" }));
+            return new Response(
+              JSON.stringify({ error: "webhook não configurado: defina EVOLUTION_WEBHOOK_SECRET" }),
+              { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+
+          if (expectedSecret) {
+            const provided = getProvided();
+            if (provided !== expectedSecret) {
+              console.warn(JSON.stringify({
+                tag: "wa-webhook",
+                event: "webhook_auth_failed",
+                ip: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || null,
+                ua: req.headers.get("user-agent") || null,
+                provided_present: provided.length > 0,
+              }));
+              return new Response(JSON.stringify({ error: "unauthorized" }), {
+                status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+              });
+            }
+            console.log(JSON.stringify({
+              tag: "wa-webhook",
+              event: "webhook_auth_success",
+              ip: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || null,
+            }));
+          }
+'''
+
+          new_ping = '''  // Healthcheck / auth test endpoint — GET ?ping=1
+          // Missing configuration is an error; never report an unauthenticated webhook as healthy.
+          if (req.method === "GET" && url.searchParams.get("ping") === "1") {
+            if (!expectedSecret) {
+              return new Response(JSON.stringify({
+                ok: false, auth: "misconfigured",
+                message: "EVOLUTION_WEBHOOK_SECRET not configured",
+              }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+            const provided = getProvided();
+            const ok = provided === expectedSecret;
+            console.log(JSON.stringify({
+              tag: "wa-webhook",
+              event: ok ? "webhook_auth_success" : "webhook_auth_failed",
+              mode: "ping",
+              ip: req.headers.get("x-forwarded-for") || "",
+            }));
+            return new Response(JSON.stringify({ ok, auth: ok ? "valid" : "invalid" }), {
+              status: ok ? 200 : 401,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+
+          // Shared-secret authentication is mandatory. Never allow an insecure escape hatch.
+          if (!expectedSecret) {
+            console.error(JSON.stringify({ tag: "wa-webhook", event: "webhook_secret_missing" }));
+            return new Response(
+              JSON.stringify({ error: "webhook não configurado: defina EVOLUTION_WEBHOOK_SECRET" }),
+              { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+
+          {
+            const provided = getProvided();
+            if (provided !== expectedSecret) {
+              console.warn(JSON.stringify({ tag: "wa-webhook", event: "webhook_auth_failed" }));
+              return new Response(JSON.stringify({ error: "unauthorized" }), {
+                status: 401,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              });
+            }
+          }
+
+          if (req.method !== "POST") {
+            return new Response(JSON.stringify({ error: "method not allowed" }), {
+              status: 405,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+'''
+
+          if old_ping not in s:
+              raise SystemExit("security block to replace was not found")
+          s = s.replace(old_ping, new_ping, 1)
+
+          if 'url.searchParams.get("secret")' in s:
+              raise SystemExit("secret query parameter still present")
+          if 'WEBHOOK_ALLOW_INSECURE' in s:
+              raise SystemExit("insecure escape hatch still present")
+          if '@2.45.0' in s:
+              raise SystemExit("old supabase SDK import still present")
+
+          p.write_text(s)
+          PY
+
+          git diff --check
+          grep -nE 'supabase-js|searchParams.get\("secret"\)|WEBHOOK_ALLOW_INSECURE|webhook_secret_missing' "$FILE"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$FILE"
+          git commit -m "fix: restore webhook and align edge runtime import"
+          git push origin security-hardening-2026-09
+
+      - name: Remove repair workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/repair-webhook-file.yml
+          git commit -m "chore: remove temporary repair workflow"
+          git push origin security-hardening-2026-09
