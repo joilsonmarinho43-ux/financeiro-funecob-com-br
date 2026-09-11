@@ -33,37 +33,78 @@ jobs:
         run: |
           python - <<'PY'
           import os
+          import time
           from pathlib import Path
           from google import genai
 
-          client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+          api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+          if not api_key:
+              Path("gemini-review.md").write_text(
+                  "# Gemini read-only review\n\nGEMINI_API_KEY não configurada; revisão externa não executada.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          client = genai.Client(api_key=api_key)
           roots = [Path("src"), Path("supabase/functions"), Path("deploy")]
           extensions = {".ts", ".tsx", ".js", ".jsx", ".py", ".sql"}
-          files = [p for root in roots if root.exists() for p in root.rglob("*") if p.is_file() and p.suffix in extensions]
+          files = [
+              p for root in roots if root.exists()
+              for p in root.rglob("*")
+              if p.is_file() and p.suffix in extensions
+          ]
 
           findings = []
+          failures = []
           for path in files:
               code = path.read_text(encoding="utf-8", errors="replace")
               if len(code) > 50000:
                   code = code[:50000]
               prompt = f"""
-              Faça uma revisão de segurança e estabilidade do arquivo {path} de um SaaS financeiro multi-tenant.
-              NÃO reescreva o código. Retorne somente uma lista objetiva de achados, cada um com:
-              severidade (CRITICAL/HIGH/MEDIUM/LOW), linha aproximada, risco e correção recomendada.
-              Se não houver achados relevantes, responda NO_SIGNIFICANT_FINDINGS.
+          Faça uma revisão de segurança e estabilidade do arquivo {path} de um SaaS financeiro multi-tenant.
+          NÃO reescreva o código. Retorne somente uma lista objetiva de achados, cada um com:
+          severidade (CRITICAL/HIGH/MEDIUM/LOW), linha aproximada, risco e correção recomendada.
+          Se não houver achados relevantes, responda NO_SIGNIFICANT_FINDINGS.
 
-              Código:
-              {code}
-              """
-              response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+          Código:
+          {code}
+          """
+
+              response = None
+              last_error = None
+              for attempt in range(3):
+                  try:
+                      response = client.models.generate_content(
+                          model="gemini-2.5-flash",
+                          contents=prompt,
+                      )
+                      break
+                  except Exception as exc:
+                      last_error = exc
+                      if attempt < 2:
+                          time.sleep(5 * (attempt + 1))
+
+              if response is None:
+                  failures.append(f"- {path}: {last_error}")
+                  continue
+
               text = (response.text or "").strip()
               if text and text != "NO_SIGNIFICANT_FINDINGS":
                   findings.append(f"## {path}\n{text}\n")
 
-          Path("gemini-review.md").write_text("# Gemini read-only review\n\n" + "\n".join(findings), encoding="utf-8")
-          print(f"Reviewed {len(files)} files; report written to gemini-review.md")
+          report = "# Gemini read-only review\n\n"
+          if findings:
+              report += "\n".join(findings)
+          else:
+              report += "NO_SIGNIFICANT_FINDINGS\n"
+          if failures:
+              report += "\n## Arquivos não revisados por falha temporária\n" + "\n".join(failures) + "\n"
+          Path("gemini-review.md").write_text(report, encoding="utf-8")
+          print(f"Reviewed {len(files)} files; findings={len(findings)} failures={len(failures)}")
+          PY
 
       - name: Publicar relatório
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: gemini-security-review
