@@ -35,6 +35,4 @@ Deno.serve(async (req) => {
     const { action, instance_id, instance_name, organization_id } = body;
 
     // Service-role queries bypass RLS, so tenant authorization must be enforced here.
-    const { data: callerOrgId, error: callerOrgErr } = await userClient.rpc("get_user_organization_id", {
-      _user_id: user.id,
-    });
+    const { data: callerOrgId, error: callerOrgErr } = await userClient.rpc("get_user_organization_id", { _user_id: user.id });
