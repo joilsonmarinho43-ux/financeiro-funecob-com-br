@@ -16,6 +16,16 @@ GRANT ALL                             ON ALL TABLES IN SCHEMA public TO service_
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO authenticated, service_role;
 
+-- Sensitive machine-to-machine functions must remain inaccessible to
+-- authenticated users even after the global grants are reapplied.
+REVOKE EXECUTE
+ON FUNCTION public.settle_invoice_from_webhook(uuid, uuid, text, text, numeric)
+FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE
+ON FUNCTION public.settle_invoice_from_webhook(uuid, uuid, text, text, numeric)
+TO service_role;
+
 -- Objetos futuros.
 DO $$
 DECLARE r text;

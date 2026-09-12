@@ -1,7 +1,7 @@
 // WhatsApp Webhook → PIX OCR Auto-Settlement
 // Receives Evolution API events (messages.upsert) and forwards PIX receipts
 // to pix-ocr-settlement. Decoupled — never touches existing billing logic.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // --- Evolution API: fallback por variáveis de ambiente (VPS própria) ---
 // Precedência: whatsapp_instances > global_settings > ENV.
@@ -313,22 +313,21 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const expectedSecret = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
 
-  // Helper: extract provided secret from accepted headers (or ?secret= for GET test)
+  // Shared-secret authentication is header-only. Never accept secrets in URLs.
   const getProvided = () =>
     req.headers.get("x-webhook-secret") ||
     req.headers.get("x-evolution-secret") ||
     req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
-    url.searchParams.get("secret") ||
     "";
 
   // Healthcheck / auth test endpoint — GET ?ping=1
-  // Use to validate secret config before flipping Evolution to authenticated mode.
+  // Missing configuration is an error; never report an unauthenticated webhook as healthy.
   if (req.method === "GET" && url.searchParams.get("ping") === "1") {
     if (!expectedSecret) {
       return new Response(JSON.stringify({
-        ok: true, auth: "disabled",
-        message: "EVOLUTION_WEBHOOK_SECRET not configured — webhook accepts all calls",
-      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        ok: false, auth: "misconfigured",
+        message: "EVOLUTION_WEBHOOK_SECRET not configured",
+      }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     const provided = getProvided();
     const ok = provided === expectedSecret;
@@ -352,11 +351,8 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Shared-secret authentication OBRIGATÓRIA: sem segredo configurado
-  // qualquer requisição externa poderia injetar eventos falsos de PIX e
-  // disparar conciliação automática (risco financeiro direto).
-  // Escape hatch explícito apenas para migrações: WEBHOOK_ALLOW_INSECURE=true.
-  if (!expectedSecret && Deno.env.get("WEBHOOK_ALLOW_INSECURE") !== "true") {
+  // Shared-secret authentication is mandatory. Never allow an insecure escape hatch.
+  if (!expectedSecret) {
     console.error(JSON.stringify({ tag: "wa-webhook", event: "webhook_secret_missing" }));
     return new Response(
       JSON.stringify({ error: "webhook não configurado: defina EVOLUTION_WEBHOOK_SECRET" }),
@@ -364,7 +360,7 @@ Deno.serve(async (req) => {
     );
   }
 
-  if (expectedSecret) {
+  {
     const provided = getProvided();
     if (provided !== expectedSecret) {
       console.warn(JSON.stringify({
@@ -384,7 +380,6 @@ Deno.serve(async (req) => {
       ip: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || null,
     }));
   }
-
 
   let payload: any;
   try { payload = await req.json(); }
@@ -443,15 +438,13 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
     jidToDigits(key.participant),
     jidToDigits(msg?.senderPn),
     jidToDigits(msg?.participantPn),
-    // remoteJid LAST — only if it's @s.whatsapp.net (not @lid)
     (remoteJid.endsWith("@lid") || !looksLikeBrazilianPhone(jidToDigits(remoteJid))) ? "" : jidToDigits(remoteJid),
-    // Absolute fallback — accept LID as last resort so we still log the event
     jidToDigits(remoteJid),
   ].filter(Boolean);
 
   let phone = candidates.find(looksLikePhone) || "";
   const isLidOnly = !phone && candidates.length > 0;
-  if (!phone) phone = candidates[0]; // log the LID so admin sees the event
+  if (!phone) phone = candidates[0];
   if (!phone) return;
 
   if (isLidOnly) {
@@ -460,7 +453,6 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
     });
   }
 
-  // Resolve instance → org + api creds
   const { data: instance } = await supabase
     .from("whatsapp_instances")
     .select("id, name, organization_id, api_url, api_key")
@@ -483,7 +475,6 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
     received_at: new Date().toISOString(),
   });
 
-  // Feature flag check (early exit — saves OCR credits)
   const { data: flag } = await supabase
     .from("global_settings").select("value").eq("key", "auto_settlement_enabled").maybeSingle();
   if (!flag || flag.value !== "true") return;
@@ -500,8 +491,6 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
                            messageObj?.ephemeralMessage?.message?.extendedTextMessage?.text ||
                            msg?.text || "";
 
-  // WhatsApp contact display name — used downstream to identify clients when
-  // remoteJid is @lid and the OCR can't extract a sender_name from the image.
   const pushName: string = msg?.pushName || msg?.push_name || payload?.data?.pushName || "";
 
   const doc = messageObj?.documentMessage || messageObj?.documentWithCaptionMessage?.message?.documentMessage || null;
@@ -514,8 +503,6 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
     documentMime === "application/pdf" || documentFileName.toLowerCase().endsWith(".pdf")
   );
 
-  // Decision: forward to PIX-OCR if (a) image/PDF receipt, or
-  // (b) text mentioning PIX with an amount.
   const messageId = key.id || msg.messageId || crypto.randomUUID();
 
   if (isImage || isDocImage || isPdf) {
@@ -530,7 +517,6 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
     });
   }
 
-  // Resolve API creds (instance first, then global fallback)
   let apiUrl = instance.api_url || "";
   let apiKey = instance.api_key || "";
   if (!apiUrl || !apiKey) {
@@ -543,13 +529,10 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
     apiKey = apiKey || map.global_api_key || envEvolutionKey();
   }
 
-  // Se só temos o @lid, tenta resolver para telefone real.
-  // Ordem: (1) cache whatsapp_lid_map → (2) Evolution API fallbacks.
   if (isLidOnly && apiUrl && apiKey) {
     const lidDigits = phone;
     const orgId = instance.organization_id;
 
-    // ===== 1) Cache lookup =====
     let cacheHit = false;
     try {
       const { data: cached } = await supabase
@@ -564,7 +547,6 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
           tag: "wa-webhook", event: "lid_cache_hit",
           lid: lidDigits, client_id: cached.client_id, instance: instanceName,
         }));
-        // Tenta recuperar o telefone real do cliente vinculado para os passos seguintes
         const { data: cli } = await supabase
           .from("clients").select("phone").eq("id", cached.client_id).maybeSingle();
         const phoneDigits = (cli?.phone || "").replace(/\D/g, "");
@@ -579,7 +561,6 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
       console.warn("[wa-webhook] lid cache lookup failed (non-blocking)", e);
     }
 
-    // ===== 2) Evolution API fallbacks (só se cache miss) =====
     if (!cacheHit) {
       const { phone: resolved, endpoint } = await resolveLidToPhone(apiUrl, apiKey, instanceName, lidDigits);
       if (resolved) {
@@ -588,7 +569,6 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
           lid: lidDigits, phone: resolved, endpoint, instance: instanceName,
         }));
         phone = resolved;
-        // Auto-vincula LID→cliente se o telefone bate com algum cadastro
         try {
           const last10 = resolved.replace(/^55/, "").slice(-10);
           const { data: cli } = await supabase
@@ -651,7 +631,6 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
   let body: any = null;
 
   if (isImage || isDocImage || isPdf) {
-    // Evolution v2 sometimes embeds base64 directly in the payload — use it first
     const inlineB64 = msg?.message?.base64
       || msg?.base64
       || image?.base64
@@ -708,10 +687,9 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
       force_reprocess: !!payload?.force_reprocess,
     };
   } else {
-    return; // not a PIX receipt — ignore
+    return;
   }
 
-  // Forward to pix-ocr-settlement
   try {
     const res = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/pix-ocr-settlement`, {
       method: "POST",
