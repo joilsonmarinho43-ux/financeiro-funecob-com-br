@@ -624,8 +624,30 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
         } catch (e) {
           console.warn("[wa-webhook] failed to log lid_resolve_failed", e);
         }
+        // Financial safety boundary: an unresolved LID is not a verified
+        // customer identity. Never forward it to OCR/auto-settlement.
+        await logAutoSettlement(supabase, orgId, "lid_blocked_from_settlement", {
+          lid: lidDigits,
+          instance: instanceName,
+          message_id: messageId,
+          reason: "sender_identity_unresolved",
+        });
+        return;
       }
     }
+  }
+
+  // A LID must be resolved to a real Brazilian phone before any financial
+  // processing. This also covers missing Evolution credentials or a failed
+  // cache lookup, where the previous code could continue with the raw LID.
+  if (isLidOnly && !looksLikeBrazilianPhone(phone)) {
+    await logAutoSettlement(supabase, instance.organization_id, "lid_blocked_from_settlement", {
+      lid: phone,
+      instance: instanceName,
+      message_id: messageId,
+      reason: "sender_identity_unresolved_or_invalid",
+    });
+    return;
   }
 
   let body: any = null;
