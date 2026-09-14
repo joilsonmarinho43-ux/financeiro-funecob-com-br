@@ -16,6 +16,15 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY") || "";
 
+function jsonResponse(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+}
+
+function isInternalRequest(req: Request): boolean {
+  const authorization = req.headers.get("authorization") || "";
+  return authorization === `Bearer ${SERVICE_KEY}`;
+}
+
 function normalizePhone(p: string): string {
   return (p || "").replace(/\D/g, "").replace(/^55/, "");
 }
@@ -190,11 +199,12 @@ async function processEvent(supabase: any, eventId: string, organizationId: stri
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (!isInternalRequest(req)) return jsonResponse({ error: "unauthorized" }, 401);
   try {
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
     const body = await req.json();
     const { organization_id, phone, push_name, image_base64, media_mime_type, receipt_hint, message_id, raw_text, remote_jid } = body || {};
-    if (!organization_id || !image_base64) return new Response(JSON.stringify({ error: "organization_id e image_base64 são obrigatórios" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!organization_id || !image_base64) return jsonResponse({ error: "organization_id e image_base64 são obrigatórios" }, 400);
     const normalizedPhone = normalizePhone(phone || "");
     const { data: clients, error: clientsError } = await supabase.from("clients").select("id,name,phone,document").eq("organization_id", organization_id);
     if (clientsError) throw clientsError;
@@ -231,7 +241,7 @@ Deno.serve(async (req) => {
         const trusted = await findTrustedPayer(supabase, organization_id, ocr?.sender_name || push_name || null, cpfDoc);
         if (trusted && trusted.confidence >= 85) {
           const byTrusted = (clients || []).find((c: any) => c.id === trusted.client_id);
-          if (byTrusted) { client = byTrusted; matchSource = "cpf"; }
+          if (byTrusted) { client = byTrusted; matchSource = "trusted_payer"; }
         }
       }
       const tryFuzzy = (rawName: string) => {
@@ -275,6 +285,9 @@ Deno.serve(async (req) => {
       client_id: client?.id || null,
       phone: normalizedPhone || phone || null,
       amount_detected: amount,
+      txid: ocr?.txid || null,
+      pix_end_to_end_id: ocr?.end_to_end_id || null,
+      end_to_end_id: ocr?.end_to_end_id || null,
       status: eventStatus,
       error_message: errorMessage,
       payer_document: payerDocument,
@@ -285,9 +298,9 @@ Deno.serve(async (req) => {
     console.log("[pix-ocr] event created", { event_id: event.id, client_id: client?.id, amount, score: scoreResult.score });
     if (decisionAllowsAuto(scoreResult) && client && amount) await processEvent(supabase, event.id, organization_id);
 
-    return new Response(JSON.stringify({ ok: true, event_id: event.id, client_id: client?.id || null, amount, status: eventStatus, score: scoreResult }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return jsonResponse({ ok: true, event_id: event.id, client_id: client?.id || null, amount, status: eventStatus, score: scoreResult });
   } catch (e) {
     console.error("ingest error", e);
-    return new Response(JSON.stringify({ error: String((e as any)?.message || e) }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return jsonResponse({ error: String((e as any)?.message || e) }, 500);
   }
 });
