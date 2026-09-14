@@ -26,6 +26,22 @@ GRANT EXECUTE
 ON FUNCTION public.settle_invoice_from_webhook(uuid, uuid, text, text, numeric)
 TO service_role;
 
+REVOKE EXECUTE
+ON FUNCTION public.auto_settlement_process_payment(uuid)
+FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE
+ON FUNCTION public.auto_settlement_process_payment(uuid)
+TO service_role;
+
+REVOKE EXECUTE
+ON FUNCTION public.perform_baixa_manual(uuid, date, uuid, uuid)
+FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE
+ON FUNCTION public.perform_baixa_manual(uuid, date, uuid, uuid)
+TO service_role;
+
 -- Objetos futuros.
 DO $$
 DECLARE r text;
