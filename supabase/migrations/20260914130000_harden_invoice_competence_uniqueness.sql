@@ -61,8 +61,3 @@ CREATE TRIGGER invoices_validate_due_date
 BEFORE INSERT ON public.invoices
 FOR EACH ROW
 EXECUTE FUNCTION public.trg_invoices_validate_due_date();
-
--- Explicitly keep the financial trigger executable only through the existing
--- protected application paths. The migration does not broaden permissions.
-REVOKE EXECUTE ON FUNCTION public.trg_invoices_validate_due_date() FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.trg_invoices_validate_due_date() TO service_role;
