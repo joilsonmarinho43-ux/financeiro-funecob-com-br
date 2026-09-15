@@ -163,44 +163,27 @@ export default function Settlement() {
     mutationFn: async (invoice: any) => {
       if (!organizationId || !user) throw new Error("Erro de contexto");
 
-      // Mark invoice as paid
-      await supabase.from("invoices").update({ status: "pago", paid_date: format(new Date(), "yyyy-MM-dd") }).eq("id", invoice.id);
-
-      // Create transaction
-      await supabase.from("transactions").insert({
-        organization_id: organizationId,
-        type: "entrada",
-        amount: invoice.amount,
-        description: `Baixa - ${foundClient?.name} - ${invoice.description || "Fatura"}`,
-        invoice_id: invoice.id,
-        created_by: user.id,
+      const { data, error } = await supabase.rpc("perform_settlement_baixa", {
+        p_invoice_id: invoice.id,
+        p_organization_id: organizationId,
+        p_barcode_raw: barcode,
+        p_paid_date: format(new Date(), "yyyy-MM-dd"),
       });
 
-      // Record bip
-      await supabase.from("bips").insert({
-        organization_id: organizationId,
-        client_id: foundClient?.id,
-        collector_id: user.id,
-        barcode_raw: barcode,
-        action: "baixa",
-        amount: invoice.amount,
-        invoice_id: invoice.id,
-        status: "processed",
-      } as any);
-
-      // Send WhatsApp confirmation
-      if (foundClient?.phone) {
-        await supabase.from("whatsapp_queue").insert({
-          organization_id: organizationId,
-          phone: foundClient.phone,
-          message: `✅ Pagamento confirmado!\n\nCliente: ${foundClient.name}\nValor: ${formatCurrency(Number(invoice.amount))}\nData: ${format(new Date(), "dd/MM/yyyy")}\n\nObrigado pelo pagamento!`,
-          status: "queued",
-        });
+      if (error) throw error;
+      if (!data?.success) {
+        throw new Error(data?.error || "Não foi possível realizar a baixa");
       }
+
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["recent-bips"] });
-      toast({ title: "✅ Baixa realizada com sucesso!", description: "Fatura paga, transação registrada e WhatsApp enviado." });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      const whatsappMessage = data?.whatsapp_queued
+        ? "Fatura paga, transação registrada e confirmação de WhatsApp enfileirada."
+        : "Fatura paga e transação registrada. A confirmação de WhatsApp não foi enfileirada.";
+      toast({ title: "✅ Baixa realizada com sucesso!", description: whatsappMessage });
       resetState();
     },
     onError: (err: Error) => toast({ title: "Erro na baixa", description: err.message, variant: "destructive" }),
