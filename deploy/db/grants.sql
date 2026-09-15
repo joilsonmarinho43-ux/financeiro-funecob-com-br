@@ -16,6 +16,51 @@ GRANT ALL                             ON ALL TABLES IN SCHEMA public TO service_
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO authenticated, service_role;
 
+-- Sensitive machine-to-machine functions must remain inaccessible to
+-- authenticated users even after the global grants are reapplied.
+REVOKE EXECUTE
+ON FUNCTION public.settle_invoice_from_webhook(uuid, uuid, text, text, numeric)
+FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE
+ON FUNCTION public.settle_invoice_from_webhook(uuid, uuid, text, text, numeric)
+TO service_role;
+
+REVOKE EXECUTE
+ON FUNCTION public.auto_settlement_process_payment(uuid)
+FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE
+ON FUNCTION public.auto_settlement_process_payment(uuid)
+TO service_role;
+
+REVOKE EXECUTE
+ON FUNCTION public.perform_baixa_manual(uuid, date, uuid, uuid)
+FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE
+ON FUNCTION public.perform_baixa_manual(uuid, date, uuid, uuid)
+TO service_role;
+
+-- Recurrence helpers are internal financial functions. They may be invoked
+-- by trusted service-role flows (for example, perform_baixa_manual) but must
+-- never be directly callable by authenticated clients.
+REVOKE EXECUTE
+ON FUNCTION public.generate_next_recurrence(uuid, uuid)
+FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE
+ON FUNCTION public.generate_next_recurrence(uuid, uuid)
+TO service_role;
+
+REVOKE EXECUTE
+ON FUNCTION public.rebuild_client_recurrence(uuid, date, boolean)
+FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE
+ON FUNCTION public.rebuild_client_recurrence(uuid, date, boolean)
+TO service_role;
+
 -- Objetos futuros.
 DO $$
 DECLARE r text;

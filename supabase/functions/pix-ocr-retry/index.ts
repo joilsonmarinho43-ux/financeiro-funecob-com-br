@@ -14,6 +14,15 @@ const BACKOFF_MIN = [1, 5, 15, 60, 240]; // minutes per attempt
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const authHeader = req.headers.get("Authorization") || "";
+  if (!SERVICE_KEY || authHeader !== `Bearer ${SERVICE_KEY}`) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
   const nowIso = new Date().toISOString();
 
