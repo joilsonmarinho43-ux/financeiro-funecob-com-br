@@ -42,6 +42,25 @@ GRANT EXECUTE
 ON FUNCTION public.perform_baixa_manual(uuid, date, uuid, uuid)
 TO service_role;
 
+-- Recurrence helpers are internal financial functions. They may be invoked
+-- by trusted service-role flows (for example, perform_baixa_manual) but must
+-- never be directly callable by authenticated clients.
+REVOKE EXECUTE
+ON FUNCTION public.generate_next_recurrence(uuid, uuid)
+FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE
+ON FUNCTION public.generate_next_recurrence(uuid, uuid)
+TO service_role;
+
+REVOKE EXECUTE
+ON FUNCTION public.rebuild_client_recurrence(uuid, date, boolean)
+FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE
+ON FUNCTION public.rebuild_client_recurrence(uuid, date, boolean)
+TO service_role;
+
 -- Objetos futuros.
 DO $$
 DECLARE r text;
