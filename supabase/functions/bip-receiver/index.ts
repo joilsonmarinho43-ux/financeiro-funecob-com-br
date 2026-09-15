@@ -54,9 +54,9 @@ function parseWebhookPayload(provider: string, body: any): { paid: boolean; exte
     switch (provider) {
       case "mercadopago":
         if (body?.action === "payment.updated" || body?.action === "payment.created") {
-          return { paid: body?.data?.status === "approved" || body?.type === "payment", externalId: String(body?.data?.id) };
+          return { paid: true, externalId: String(body?.data?.id || "") };
         }
-        if (body?.status === "approved") return { paid: true, externalId: String(body?.id), amount: body?.transaction_amount };
+        if (body?.status === "approved") return { paid: true, externalId: String(body?.id || ""), amount: body?.transaction_amount };
         return { paid: true, externalId: String(body?.data?.id || body?.id || "") };
       case "asaas":
         if (body?.event === "PAYMENT_RECEIVED" || body?.event === "PAYMENT_CONFIRMED") {
@@ -101,6 +101,56 @@ function parseWebhookPayload(provider: string, body: any): { paid: boolean; exte
     console.error("Error parsing webhook payload:", e);
     return null;
   }
+}
+
+function normalizeGatewayToken(value: unknown): string {
+  let token = String(value || "").trim();
+  if (token.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(token);
+      token = String(parsed?.access_token || parsed?.token || parsed?.api_key || token).trim();
+    } catch { /* keep original */ }
+  }
+  return token;
+}
+
+async function resolveMercadoPagoPayment(supabase: any, organizationId: string, paymentId: string, gatewayApiKey: unknown): Promise<{ invoice: any; externalId: string; amount?: number } | null> {
+  const accessToken = normalizeGatewayToken(gatewayApiKey);
+  if (!accessToken) return null;
+
+  const response = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const raw = await response.text();
+  let payment: any = {};
+  try { payment = JSON.parse(raw); } catch { /* invalid provider response */ }
+
+  if (!response.ok) {
+    console.error("[bip-receiver] Mercado Pago payment lookup failed:", response.status, raw.slice(0, 300));
+    return null;
+  }
+
+  if (String(payment?.status || "").toLowerCase() !== "approved") return null;
+
+  const externalReference = String(payment?.external_reference || "").trim();
+  const metadataInvoiceId = String(payment?.metadata?.invoice_id || "").trim();
+  const invoiceId = externalReference || metadataInvoiceId;
+  if (!invoiceId) return null;
+
+  const { data: invoice, error } = await supabase
+    .from("invoices")
+    .select("*, clients(name, phone, collector_id)")
+    .eq("organization_id", organizationId)
+    .eq("id", invoiceId)
+    .eq("status", "aberto")
+    .maybeSingle();
+
+  if (error || !invoice) return null;
+
+  const amount = payment?.transaction_amount != null ? Number(payment.transaction_amount) : undefined;
+  if (amount != null && (!Number.isFinite(amount) || amount <= 0)) return null;
+
+  return { invoice, externalId: paymentId, amount };
 }
 
 async function trySendWhatsApp(instance: any, phone: string, message: string): Promise<boolean> {
@@ -175,13 +225,33 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ received: true, action: "no_match", reason: "missing_transaction_identity" }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      // Transaction/reference identity is mandatory. Amount is never allowed to select an invoice.
       let invoice: any = null;
-      const { data: invoices } = await supabase.from("invoices").select("*, clients(name, phone, collector_id)").eq("organization_id", orgParam).eq("status", "aberto").limit(100);
-      if (invoices && invoices.length > 0) invoice = invoices.find((inv: any) => String(inv.description || "").includes(externalId));
+      let settlementExternalId = externalId;
+      let settlementAmount = parsed.amount ?? null;
+
+      if (providerParam === "mercadopago") {
+        const resolved = await resolveMercadoPagoPayment(supabase, orgParam, externalId, (billingSettings as any).gateway_api_key);
+        if (resolved) {
+          invoice = resolved.invoice;
+          settlementExternalId = resolved.externalId;
+          settlementAmount = resolved.amount ?? null;
+        }
+      } else {
+        // Legacy providers: preserve their provider-specific reference semantics.
+        // Amount is never allowed to select an invoice.
+        const { data: invoices } = await supabase
+          .from("invoices")
+          .select("*, clients(name, phone, collector_id)")
+          .eq("organization_id", orgParam)
+          .eq("status", "aberto")
+          .limit(100);
+        if (invoices && invoices.length > 0) {
+          invoice = invoices.find((inv: any) => String(inv.description || "").includes(externalId));
+        }
+      }
 
       if (!invoice) {
-        await logWebhook("no_match", 200, { externalId, amount: parsed.amount, reason: "transaction_identity_not_linked_to_invoice" });
+        await logWebhook("no_match", 200, { externalId, amount: settlementAmount, reason: providerParam === "mercadopago" ? "mercadopago_payment_not_linked_to_exact_invoice" : "transaction_identity_not_linked_to_invoice" });
         return new Response(JSON.stringify({ received: true, action: "no_match", message: "Payment received but no matching invoice reference found", externalId }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
@@ -189,8 +259,8 @@ Deno.serve(async (req) => {
         p_organization_id: orgParam,
         p_invoice_id: invoice.id,
         p_provider: providerParam,
-        p_external_id: externalId,
-        p_amount: parsed.amount ?? null,
+        p_external_id: settlementExternalId,
+        p_amount: settlementAmount,
       });
       if (settlementErr) {
         console.error("[bip-receiver] atomic settlement failed", settlementErr);
