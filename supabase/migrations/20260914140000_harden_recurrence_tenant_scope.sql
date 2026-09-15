@@ -1,11 +1,8 @@
 -- FuneCob: harden recurrence helpers against tenant-scope ambiguity.
 -- Additive migration: preserves existing financial protections.
 
--- client_original_due_day() is SECURITY DEFINER and therefore must not infer
--- recurrence history without explicitly constraining it to the client's tenant.
--- The client UUID is globally unique, but resolving its organization first makes
--- the security boundary explicit and prevents accidental cross-tenant queries if
--- the function is reused later.
+-- client_original_due_day() is SECURITY DEFINER and therefore keeps its
+-- recurrence history explicitly tied to the organization stored on the client.
 CREATE OR REPLACE FUNCTION public.client_original_due_day(p_client_id uuid)
 RETURNS int
 LANGUAGE sql
@@ -25,9 +22,9 @@ AS $$
   LIMIT 1
 $$;
 
--- Keep recurrence-integrity calculations deterministic per tenant. The previous
--- DISTINCT ON(client_id) could choose an arbitrary tenant row if this function
--- is ever called against inconsistent historical data.
+-- The integrity report is diagnostic but reads financial data under
+-- SECURITY DEFINER. A tenant member may inspect only their own organization;
+-- an admin/service-role caller may request a global report.
 CREATE OR REPLACE FUNCTION public.audit_recurrence_integrity(p_organization_id uuid DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -40,7 +37,24 @@ DECLARE
   v_duplicates jsonb;
   v_gaps jsonb;
   v_invalid jsonb;
+  v_caller_org uuid;
+  v_is_admin boolean;
 BEGIN
+  v_is_admin := COALESCE(public.has_role(auth.uid(), 'admin'::app_role), false);
+  v_caller_org := public.get_user_organization_id(auth.uid());
+
+  IF auth.uid() IS NOT NULL AND NOT v_is_admin THEN
+    IF v_caller_org IS NULL THEN
+      RAISE EXCEPTION 'Usuário sem organização';
+    END IF;
+    IF p_organization_id IS NULL THEN
+      RAISE EXCEPTION 'organization_id é obrigatório para usuário não-admin';
+    END IF;
+    IF p_organization_id <> v_caller_org THEN
+      RAISE EXCEPTION 'Acesso negado à organização solicitada';
+    END IF;
+  END IF;
+
   WITH dc AS (
     SELECT client_id, organization_id,
            EXTRACT(DAY FROM due_date)::int AS dia,
