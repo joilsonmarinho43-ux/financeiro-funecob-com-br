@@ -6,11 +6,15 @@
 -- organization_id in the duplicate test. The unique partial index below is the
 -- authoritative concurrency-safe guard: one open invoice per organization,
 -- client and competence month.
+--
+-- due_date is a calendar date in FuneCob. Cast explicitly to timestamp without
+-- time zone so date_trunc uses PostgreSQL's IMMUTABLE overload and can be used
+-- safely in a unique index expression.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_open_org_client_month
 ON public.invoices (
   organization_id,
   client_id,
-  (date_trunc('month', due_date))
+  (date_trunc('month', due_date::timestamp))
 )
 WHERE status = 'aberto';
 
