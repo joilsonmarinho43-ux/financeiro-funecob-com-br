@@ -56,20 +56,39 @@ function extractEvolutionMessageId(payload: any): string | null {
   return candidates.find((value) => typeof value === "string" && value.trim().length > 0) || null;
 }
 
-async function resolveWhatsAppNumber(apiUrl: string, apiKey: string, instanceName: string, phone: string): Promise<string> {
+async function resolveWhatsAppNumber(
+  apiUrl: string,
+  apiKey: string,
+  instanceName: string,
+  phone: string,
+): Promise<{ destination: string; verified: boolean }> {
   const candidates = [phone];
-  if (phone.startsWith("55") && phone.length === 13 && phone[4] === "9") candidates.push(phone.slice(0, 4) + phone.slice(5));
-  else if (phone.startsWith("55") && phone.length === 12) candidates.push(phone.slice(0, 4) + "9" + phone.slice(4));
-  try {
-    const response = await fetch(`${apiUrl}/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`, {
-      method: "POST", headers: { "Content-Type": "application/json", apikey: apiKey }, body: JSON.stringify({ numbers: candidates }),
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok || !Array.isArray(body)) return phone;
-    const match = body.find((item: any) => item?.exists === true);
-    const resolved = String(match?.jid || match?.number || "").replace(/@.*$/, "").replace(/\D/g, "");
-    return resolved || phone;
-  } catch { return phone; }
+  if (phone.startsWith("55") && phone.length === 13 && phone[4] === "9") {
+    candidates.push(phone.slice(0, 4) + phone.slice(5));
+  } else if (phone.startsWith("55") && phone.length === 12) {
+    candidates.push(phone.slice(0, 4) + "9" + phone.slice(4));
+  }
+
+  const response = await fetch(apiUrl + "/chat/whatsappNumbers/" + encodeURIComponent(instanceName), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: apiKey },
+    body: JSON.stringify({ numbers: candidates }),
+  });
+  const body = await response.json().catch(() => null);
+
+  if (!response.ok || !Array.isArray(body)) {
+    throw new Error("Falha ao verificar destinatário WhatsApp (HTTP " + response.status + ")");
+  }
+
+  const match = body.find((item: any) => item?.exists === true);
+  if (!match) throw new Error("Destinatário não confirmado no WhatsApp pela Evolution API");
+
+  const resolved = String(match?.jid || match?.number || "")
+    .replace(/@.*$/, "")
+    .replace(/\D/g, "");
+  if (!resolved) throw new Error("Evolution confirmou o WhatsApp, mas não retornou o número/JID do destinatário");
+
+  return { destination: resolved, verified: true };
 }
 
 // --- Advanced message variation ---
@@ -177,13 +196,38 @@ Deno.serve(async (req) => {
         const apiKey = instance?.api_key || gs.global_api_key || envEvolutionKey();
         const instanceName = instance?.name || "";
         if (!instanceName || !apiUrl || !apiKey) { const retryAt = new Date(Date.now() + 5 * 60_000).toISOString(); await supabase.from("whatsapp_queue").update({ status: "queued", scheduled_for: retryAt, error_message: "Aguardando reconexão do WhatsApp — nenhuma tentativa consumida" }).eq("id", item.id); paused++; continue; }
-        const phone = normalizeBRPhone(item.phone), destination = await resolveWhatsAppNumber(apiUrl, apiKey, instanceName, phone), sendUrl = `${apiUrl}/message/sendText/${instanceName}`, variedMessage = varyMessage(item.message, config.randomness_level || "medium");
-        console.log(`[whatsapp-sender] Sending to ${phone.slice(0, 4)}**** via ${sendUrl} (attempt ${retryCount + 1})`);
+        const phone = normalizeBRPhone(item.phone);
+        const resolved = await resolveWhatsAppNumber(apiUrl, apiKey, instanceName, phone);
+        const destination = resolved.destination;
+        const sendUrl = apiUrl + "/message/sendText/" + instanceName;
+        const variedMessage = varyMessage(item.message, config.randomness_level || "medium");
+        console.log("[whatsapp-sender] Sending verified destination to " + phone.slice(0, 4) + "**** (attempt " + (retryCount + 1) + ")");
         const sendResult = await sendEvolutionText(sendUrl, apiKey, destination, variedMessage);
-        if (!sendResult.ok || !sendResult.messageId) throw new Error(`API ${sendResult.status} sem confirmação: ${sendResult.body.slice(0, 300)}`);
+        if (!sendResult.ok || !sendResult.messageId) throw new Error("API " + sendResult.status + " sem confirmação: " + sendResult.body.slice(0, 300));
         const providerMessageId = sendResult.messageId;
-        await supabase.from("whatsapp_queue").update({ status: "sent", sent_at: new Date().toISOString(), error_message: null }).eq("id", item.id);
-        await supabase.from("whatsapp_messages").insert({ organization_id: item.organization_id, phone: item.phone, message: variedMessage, direction: "outgoing", status: "sent", instance_id: instance?.id || null, sent_at: new Date().toISOString() });
+        const sentAt = new Date().toISOString();
+
+        const { error: queueUpdateError } = await supabase.from("whatsapp_queue").update({
+          status: "sent",
+          sent_at: sentAt,
+          provider_message_id: providerMessageId,
+          delivery_status: "sent",
+          error_message: null,
+        }).eq("id", item.id);
+        if (queueUpdateError) throw queueUpdateError;
+
+        const { error: messageInsertError } = await supabase.from("whatsapp_messages").insert({
+          organization_id: item.organization_id,
+          client_id: item.client_id || null,
+          phone: destination,
+          message: variedMessage,
+          direction: "outgoing",
+          status: "sent",
+          instance_id: instance?.id || null,
+          provider_message_id: providerMessageId,
+          sent_at: sentAt,
+        });
+        if (messageInsertError) throw messageInsertError;
         limits.minute++; limits.hour++; limits.day++; sent++;
         console.log(`[whatsapp-sender] Accepted ${providerMessageId.slice(0, 8)} for ${phone.slice(0, 4)}****`);
       } catch (err) {
