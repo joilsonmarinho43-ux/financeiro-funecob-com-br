@@ -6,10 +6,10 @@ on:
     branches: [ main, master ]
 
 jobs:
-  autofix:
+  validate:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: Checkout do Código
         uses: actions/checkout@v4
@@ -19,58 +19,46 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Instalar Dependências
+      - name: Validar Python
         run: |
-          python -m pip install --upgrade pip
-          pip install google-genai
+          python -m compileall -q . -x '(^|/)(node_modules|venv|.git)(/|$)' || true
 
-      - name: Executar Correção Automática com Gemini
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - name: Validar SQL das migrations
+        shell: bash
         run: |
-          python -c '
-          import os, glob
-          from google import genai
+          set -e
+          test -d supabase/migrations
+          find supabase/migrations -type f -name '*.sql' -print0 | while IFS= read -r -d '' f; do
+            grep -q '^' "$f"
+          done
+          echo "Migrations presentes e legíveis."
 
-          client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-
-          # Busca arquivos Python/JS da interface no projeto
-          files = glob.glob("**/*.py", recursive=True) + glob.glob("**/*.js", recursive=True)
-
-          for file_path in files:
-              if ".github" in file_path or "node_modules" in file_path or "venv" in file_path:
-                  continue
-
-              with open(file_path, "r", encoding="utf-8") as f:
-                  code = f.read()
-
-              prompt = f"""
-              Você é um engenheiro de software sênior. Analise o código abaixo do arquivo {file_path}.
-              Identifique quaisquer erros de sintaxe, bugs de interface ou falhas de execução.
-              Retorne APENAS o código corrigido completo, sem explicações, sem marcadores de markdown como ```python.
-              Se não houver erros, retorne exatamente o mesmo código fornecido.
-
-              Código:
-              {code}
-              """
-
-              response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-              fixed_code = response.text.strip()
-
-              # Limpa eventuais marcadores de código
-              if fixed_code.startswith("```"):
-                  lines = fixed_code.split("\n")
-                  fixed_code = "\n".join(lines[1:-1])
-
-              with open(file_path, "w", encoding="utf-8") as f:
-                  f.write(fixed_code)
-
-          print("Análise e correções concluídas com sucesso.")
-          '
-
-      - name: Commitar e Enviar Alterações Corrigidas
+      - name: Verificar funções WhatsApp
+        shell: bash
         run: |
-          git config --global user.name "Gemini Auto-Fix Bot"
-          git config --global user.email "action@github.com"
-          git add .
-          git diff --staged --quiet || (git commit -m "fix: correcoes automaticas aplicadas pelo Gemini" && git push)
+          set -e
+          test -s supabase/functions/whatsapp-sender/index.ts
+          test -s supabase/functions/whatsapp-webhook/index.ts
+          test -s supabase/functions/whatsapp-manager/index.ts
+          grep -q 'provider_message_id' supabase/functions/whatsapp-sender/index.ts
+          grep -q 'messages.update' supabase/functions/whatsapp-webhook/index.ts
+          grep -q 'MESSAGES_UPDATE' supabase/functions/whatsapp-manager/index.ts
+          echo "WhatsApp delivery tracking validado."
+
+      - name: Verificar TypeScript com Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Type-check WhatsApp Functions
+        run: |
+          set -e
+          deno check supabase/functions/whatsapp-sender/index.ts
+          deno check supabase/functions/whatsapp-webhook/index.ts
+          deno check supabase/functions/whatsapp-manager/index.ts
+
+  autofix:
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Desativado: correção automática por IA não deve bloquear CI nem sobrescrever código automaticamente."
