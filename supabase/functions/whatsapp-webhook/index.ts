@@ -401,6 +401,81 @@ Deno.serve(async (req) => {
   return ack;
 });
 
+function extractProviderMessageId(value: any): string | null {
+  const candidates = [
+    value?.key?.id, value?.message?.key?.id, value?.data?.key?.id,
+    value?.data?.message?.key?.id, value?.messageId, value?.data?.messageId, value?.id,
+  ];
+  return candidates.find((v) => typeof v === "string" && v.trim())?.trim() || null;
+}
+
+function normalizeDeliveryStatus(value: any): "pending" | "sent" | "delivered" | "read" | "failed" | null {
+  const raw = String(value ?? "").toLowerCase().replace(/[-\s]/g, "_");
+  if (!raw) return null;
+  if (raw.includes("error") || ["failed", "failure"].includes(raw)) return "failed";
+  if (raw.includes("read") || ["played", "read_by_recipient"].includes(raw)) return "read";
+  if (raw.includes("deliver") || ["delivery_ack", "deliveryack"].includes(raw)) return "delivered";
+  if (raw.includes("server_ack") || ["sent", "ack", "serverack"].includes(raw)) return "sent";
+  if (["pending", "queued"].includes(raw)) return "pending";
+  const n = Number(value);
+  if (n === 1) return "failed";
+  if (n === 2) return "pending";
+  if (n === 3) return "sent";
+  if (n === 4) return "delivered";
+  if (n >= 5) return "read";
+  return null;
+}
+
+function extractDeliveryStatus(value: any): any {
+  return value?.status ?? value?.messageStatus ?? value?.message_status ??
+    value?.deliveryStatus ?? value?.delivery_status ?? value?.data?.status ??
+    value?.data?.messageStatus ?? value?.data?.message_status ??
+    value?.data?.deliveryStatus ?? value?.data?.delivery_status ??
+    value?.update?.status ?? value?.data?.update?.status ?? null;
+}
+
+function extractFailureMessage(value: any): string | null {
+  const candidate = value?.error?.message ?? value?.error ?? value?.data?.error?.message ??
+    value?.data?.error ?? value?.update?.error?.message ?? value?.data?.update?.error?.message;
+  if (candidate == null) return null;
+  return typeof candidate === "string" ? candidate.slice(0, 1000) : JSON.stringify(candidate).slice(0, 1000);
+}
+
+async function handleMessageUpdate(supabase: any, instanceName: string, update: any) {
+  const providerMessageId = extractProviderMessageId(update);
+  const status = normalizeDeliveryStatus(extractDeliveryStatus(update));
+  if (!providerMessageId || !status) {
+    console.warn("[wa-webhook] message update without usable id/status", { instance: instanceName, providerMessageId, status });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const failureMessage = status === "failed" ? extractFailureMessage(update) : null;
+  const rank: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3, failed: 4 };
+
+  const { data: currentMessages } = await supabase
+    .from("whatsapp_messages").select("id,status").eq("provider_message_id", providerMessageId).limit(20);
+
+  for (const current of currentMessages || []) {
+    const currentStatus = String(current.status || "sent").toLowerCase();
+    if (status !== "failed" && (rank[status] ?? 0) <= (rank[currentStatus] ?? 1)) continue;
+
+    const patch: Record<string, any> = { status };
+    if (status === "delivered") patch.delivered_at = now;
+    if (status === "read") { patch.read_at = now; patch.delivered_at = now; }
+    if (status === "failed") { patch.failed_at = now; if (failureMessage) patch.error_message = failureMessage; }
+    await supabase.from("whatsapp_messages").update(patch).eq("id", current.id);
+  }
+
+  const queuePatch: Record<string, any> = { delivery_status: status };
+  if (status === "delivered") queuePatch.delivered_at = now;
+  if (status === "read") { queuePatch.read_at = now; queuePatch.delivered_at = now; }
+  if (status === "failed") { queuePatch.failed_at = now; if (failureMessage) queuePatch.error_message = failureMessage; }
+  await supabase.from("whatsapp_queue").update(queuePatch).eq("provider_message_id", providerMessageId);
+
+  console.log("[wa-webhook] delivery update", { instance: instanceName, providerMessageId, status });
+}
+
 async function handleEvent(payload: any) {
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
@@ -409,15 +484,18 @@ async function handleEvent(payload: any) {
   const instanceName = payload?.instance || payload?.instanceName || payload?.data?.instance || payload?.data?.instanceName;
   if (!instanceName) { console.log("[wa-webhook] no instance"); return; }
 
-  // Only process incoming messages
-  if (normalizeEventName(event) !== "messages.upsert") {
+  const normalizedEvent = normalizeEventName(event);
+
+  if (normalizedEvent === "messages.update") {
+    const dataItems = asArray(payload?.data || payload?.message || payload?.update || {});
+    for (const update of dataItems) await handleMessageUpdate(supabase, instanceName, update);
     return;
   }
 
+  if (normalizedEvent !== "messages.upsert") return;
+
   const dataItems = asArray(payload?.data || payload?.message || {});
-  for (const msg of dataItems) {
-    await handleMessage(supabase, payload, instanceName, msg);
-  }
+  for (const msg of dataItems) await handleMessage(supabase, payload, instanceName, msg);
 }
 
 async function handleMessage(supabase: any, payload: any, instanceName: string, msg: any) {
