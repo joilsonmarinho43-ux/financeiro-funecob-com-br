@@ -23,7 +23,7 @@ function resolveApiUrl(instanceUrl: string | null, globalHost: string | null): s
   return url;
 }
 
-const PIX_WEBHOOK_EVENTS = ["MESSAGES_UPSERT"];
+const PIX_WEBHOOK_EVENTS = ["MESSAGES_UPSERT", "MESSAGES_UPDATE"];
 
 function webhookPayloads(targetUrl: string) {
   const flat = {
