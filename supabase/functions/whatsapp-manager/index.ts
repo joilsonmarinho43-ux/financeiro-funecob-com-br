@@ -176,7 +176,7 @@ async function ensurePixWebhook(
       body: JSON.stringify(payload),
     });
     const text = await resp.text();
-    attempts.push({ ok: resp.ok, status: resp.status, body: text.slice(0, 300), shape: payload.webhook ? "nested" : "flat" });
+    attempts.push({ ok: resp.ok, status: resp.status, body: text.slice(0, 300), shape: ("webhook" in payload) ? "nested" : "flat" });
     if (resp.ok) return { ok: true, attempts };
   }
   return { ok: false, attempts };
