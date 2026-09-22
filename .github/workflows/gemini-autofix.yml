@@ -1,64 +1,46 @@
-name: Gemini Auto-Fix App
+name: Funecob CI
 
 on:
-  workflow_dispatch:
   push:
-    branches: [ main, master ]
+    branches:
+      - main
+      - master
+  workflow_dispatch:
 
 jobs:
   validate:
+    name: Validate WhatsApp backend
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - name: Checkout do Código
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configurar Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Validar Python
-        run: |
-          python -m compileall -q . -x '(^|/)(node_modules|venv|.git)(/|$)' || true
-
-      - name: Validar SQL das migrations
-        shell: bash
-        run: |
-          set -e
-          test -d supabase/migrations
-          find supabase/migrations -type f -name '*.sql' -print0 | while IFS= read -r -d '' f; do
-            grep -q '^' "$f"
-          done
-          echo "Migrations presentes e legíveis."
-
-      - name: Verificar funções WhatsApp
-        shell: bash
-        run: |
-          set -e
-          test -s supabase/functions/whatsapp-sender/index.ts
-          test -s supabase/functions/whatsapp-webhook/index.ts
-          test -s supabase/functions/whatsapp-manager/index.ts
-          grep -q 'provider_message_id' supabase/functions/whatsapp-sender/index.ts
-          grep -q 'messages.update' supabase/functions/whatsapp-webhook/index.ts
-          grep -q 'MESSAGES_UPDATE' supabase/functions/whatsapp-manager/index.ts
-          echo "WhatsApp delivery tracking validado."
-
-      - name: Verificar TypeScript com Deno
+      - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
 
-      - name: Type-check WhatsApp Functions
+      - name: Type-check WhatsApp Edge Functions
         run: |
           set -e
           deno check supabase/functions/whatsapp-sender/index.ts
           deno check supabase/functions/whatsapp-webhook/index.ts
           deno check supabase/functions/whatsapp-manager/index.ts
 
-  autofix:
-    if: false
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Desativado: correção automática por IA não deve bloquear CI nem sobrescrever código automaticamente."
+      - name: Validate delivery-tracking migration
+        run: |
+          set -e
+          test -s supabase/migrations/20260922115000_whatsapp_delivery_tracking.sql
+          grep -q "provider_message_id" supabase/migrations/20260922115000_whatsapp_delivery_tracking.sql
+          grep -q "delivered_at" supabase/migrations/20260922115000_whatsapp_delivery_tracking.sql
+          grep -q "read_at" supabase/migrations/20260922115000_whatsapp_delivery_tracking.sql
+
+      - name: Validate WhatsApp delivery integration
+        run: |
+          set -e
+          grep -q "provider_message_id" supabase/functions/whatsapp-sender/index.ts
+          grep -q "messages.update" supabase/functions/whatsapp-webhook/index.ts
+          grep -q "MESSAGES_UPDATE" supabase/functions/whatsapp-manager/index.ts
+          echo "WhatsApp delivery tracking: OK"
