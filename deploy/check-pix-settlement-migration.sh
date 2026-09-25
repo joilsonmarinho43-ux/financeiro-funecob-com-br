@@ -13,6 +13,7 @@ cleanup() {
 trap cleanup EXIT
 
 "${dc[@]}" createdb -U postgres "$db"
+"${dc[@]}" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db" -q -c 'DROP SCHEMA public CASCADE' >/dev/null
 "${dc[@]}" pg_dump -U postgres -d postgres --schema-only --schema=public --schema=auth --no-owner --no-privileges --no-comments \
   | "${dc[@]}" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db" -q >/dev/null
 
