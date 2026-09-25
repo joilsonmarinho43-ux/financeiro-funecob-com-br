@@ -489,7 +489,7 @@ Deno.serve(async (req) => {
 
     console.log("[pix-ocr] event created", { event_id: event.id, client_id: client?.id, amount, score: scoreResult.score });
 
-    if (decisionAllowsAuto(scoreResult) && client && amount) {
+    if (decisionAllowsAuto(scoreResult.decision) && client && amount) {
       await processEvent(supabase, event.id, organization_id);
     }
 
