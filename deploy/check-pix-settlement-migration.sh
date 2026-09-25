@@ -15,6 +15,7 @@ trap cleanup EXIT
 "${dc[@]}" createdb -U postgres "$db"
 "${dc[@]}" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db" -q -c 'DROP SCHEMA public CASCADE' >/dev/null
 "${dc[@]}" pg_dump -U postgres -d postgres --schema-only --schema=public --schema=auth --schema=extensions --no-owner --no-privileges --no-comments \
+  | awk '{ print; if ($0 == "CREATE SCHEMA extensions;") print "CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;" }' \
   | "${dc[@]}" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db" -q >/dev/null
 
 "${dc[@]}" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db" \
