@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireOrgAuth } from "../_shared/requireOrgAuth.ts";
 
 // --- Evolution API: fallback por variáveis de ambiente (VPS própria) ---
 // Precedência: whatsapp_instances > global_settings > ENV.
@@ -275,6 +276,31 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const { action, instance_id, instance_name, organization_id } = body;
+
+    let authorizedOrg = organization_id;
+    if (instance_id) {
+      const { data: target, error: targetError } = await supabase
+        .from("whatsapp_instances").select("organization_id")
+        .eq("id", instance_id).maybeSingle();
+      if (targetError || !target?.organization_id) {
+        return new Response(JSON.stringify({ error: "Instance not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (organization_id && organization_id !== target.organization_id) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      authorizedOrg = target.organization_id;
+    }
+    if (!authorizedOrg) {
+      return new Response(JSON.stringify({ error: "organization_id required" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const orgAuth = await requireOrgAuth(req, authorizedOrg, corsHeaders);
+    if (!orgAuth.ok) return orgAuth.response;
 
     if (!action) {
       return new Response(JSON.stringify({ error: "action is required" }), {
