@@ -207,13 +207,13 @@ export default function BillingSettings() {
     refetchInterval: 30000,
   });
 
-  const { data: whatsappInstance } = useQuery({
+  const { data: whatsappInstance, isLoading: instanceLoading, isError: instanceError } = useQuery({
     queryKey: ["robot-whatsapp-instance", organizationId],
     queryFn: async () => {
       if (!organizationId) return null;
       const { data, error } = await supabase
         .from("whatsapp_instances")
-        .select("name, status, api_url, api_key")
+        .select("name, status, api_url")
         .eq("organization_id", organizationId)
         .eq("status", "connected")
         .limit(1)
@@ -222,6 +222,7 @@ export default function BillingSettings() {
       return data;
     },
     enabled: !!organizationId,
+    refetchInterval: 30000,
   });
 
   useEffect(() => {
@@ -396,7 +397,7 @@ export default function BillingSettings() {
                     )}
                     <div>
                       <p className="text-[10px] text-muted-foreground">WhatsApp</p>
-                      <p className="text-xs font-semibold text-foreground">{whatsappInstance ? whatsappInstance.name : "Sem conexão"}</p>
+                      <p className="text-xs font-semibold text-foreground">{instanceLoading ? "Verificando..." : instanceError ? "Falha ao consultar" : whatsappInstance ? whatsappInstance.name : "Sem conexão"}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-border">
@@ -407,7 +408,7 @@ export default function BillingSettings() {
                     )}
                     <div>
                       <p className="text-[10px] text-muted-foreground">API</p>
-                      <p className="text-xs font-semibold text-foreground">{whatsappInstance?.api_url ? "Configurada" : "Pendente"}</p>
+                      <p className="text-xs font-semibold text-foreground">{instanceLoading ? "Verificando..." : instanceError ? "Falha ao consultar" : whatsappInstance?.api_url ? "Configurada" : "Pendente"}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-border">
@@ -419,7 +420,7 @@ export default function BillingSettings() {
                   </div>
                 </div>
 
-                {!whatsappInstance && (
+                {!instanceLoading && !instanceError && !whatsappInstance && (
                   <div className="rounded-lg bg-warning/10 border border-warning/20 p-3 text-sm flex items-start gap-2">
                     <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
                     <p className="text-muted-foreground">
