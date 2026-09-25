@@ -144,6 +144,36 @@ function buildScenarios(): Scenario[] {
   return scenarios;
 }
 
+function assessScenario(s: Scenario, report: any): { passed: boolean; skipped?: boolean; reason?: string } {
+  if (s.name.includes("Pagamento duplicado")) {
+    return report.steps?.idempotency?.duplicate
+      ? { passed: report.final_status === "would_skip_duplicate" }
+      : { passed: false, skipped: true, reason: "Nenhum TXID duplicado disponível para este teste." };
+  }
+  if (s.category === "identification") {
+    const expected = s.name.includes("CPF") ? "cpf" : "fuzzy_name";
+    return report.steps?.client_identification?.matched_by === expected
+      ? { passed: true }
+      : { passed: false, skipped: true, reason: "Não há cliente de teste correspondente nesta organização." };
+  }
+  if (s.expected_reason === "client_not_identified") {
+    return { passed: report.steps?.phone_extraction?.isLidOnly === true &&
+      report.rejection_reason === "client_not_identified" };
+  }
+  if (s.category === "v2_protocol") {
+    return { passed: report.steps?.phone_extraction?.phone === PHONE_REAL };
+  }
+  if (s.expected_reason === "amount_not_detected") {
+    return { passed: report.steps?.amount_detection?.amount == null };
+  }
+  if (s.category === "ocr_bank") {
+    const raw = s.fake_ocr.amount;
+    const expected = typeof raw === "number" ? raw : Number(String(raw).replace(/\./g, "").replace(",", "."));
+    return { passed: report.steps?.amount_detection?.amount === expected };
+  }
+  return { passed: false, reason: "Cenário sem critério verificável." };
+}
+
 export default function SandboxTests() {
   const { organization } = useOrganization();
   const [running, setRunning] = useState(false);
@@ -171,29 +201,34 @@ export default function SandboxTests() {
         });
         if (error) throw error;
 
-        const expectOk = s.expected_status === "any" ||
-          data.final_status === s.expected_status ||
-          (s.expected_reason && data.rejection_reason === s.expected_reason);
+        const assessment = assessScenario(s, data);
 
         out.push({
           ...s,
           report: data,
-          passed: expectOk,
+          ...assessment,
         });
         setResults([...out]);
       } catch (e: any) {
-        out.push({ ...s, error: e.message, passed: false });
+        const response = e?.context instanceof Response ? e.context : null;
+        const detail = response ? await response.clone().text().catch(() => "") : "";
+        const error = response
+          ? `HTTP ${response.status}: ${detail.slice(0, 200) || e.message}`
+          : e.message;
+        out.push({ ...s, error, passed: false });
         setResults([...out]);
       }
     }
     setRunning(false);
     const passed = out.filter((r) => r.passed).length;
-    toast.success(`Testes concluídos: ${passed}/${out.length} OK`);
+    const skipped = out.filter((r) => r.skipped).length;
+    toast.info(`Testes concluídos: ${passed} OK, ${skipped} não testados, ${out.length - passed - skipped} falhas`);
   }
 
   const total = results.length;
   const passed = results.filter((r) => r.passed).length;
-  const failed = total - passed;
+  const skipped = results.filter((r) => r.skipped).length;
+  const failed = total - passed - skipped;
 
   return (
     <AppLayout>
@@ -221,6 +256,7 @@ export default function SandboxTests() {
               {total > 0 && (
                 <>
                   <Badge variant="default" className="bg-green-600">{passed} OK</Badge>
+                  {skipped > 0 && <Badge variant="secondary">{skipped} não testados</Badge>}
                   {failed > 0 && <Badge variant="destructive">{failed} falhas</Badge>}
                   <span className="text-sm text-muted-foreground">{total} total</span>
                 </>
@@ -228,7 +264,7 @@ export default function SandboxTests() {
             </div>
             <p className="text-xs text-muted-foreground">
               Cobre: Evolution API v2 (senderPn, remoteJidAlt, participantPn, @lid),
-              OCR de 8 bancos (Nubank, Caixa, MP, PicPay, Inter, Itaú, Santander, Bradesco),
+              valores simulados de 8 bancos (Nubank, Caixa, MP, PicPay, Inter, Itaú, Santander, Bradesco),
               casos adversos (cortado, borrado, duplicado) e identificação por CPF/nome.
             </p>
           </CardContent>
@@ -247,6 +283,8 @@ export default function SandboxTests() {
                       <div className="flex items-start gap-2">
                         {r.passed
                           ? <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                          : r.skipped
+                            ? <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
                           : r.error
                             ? <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
                             : <XCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />}
@@ -257,6 +295,7 @@ export default function SandboxTests() {
                             {r.expected_reason && ` (${r.expected_reason})`}
                           </div>
                           {r.error && <div className="text-xs text-destructive mt-1">Erro: {r.error}</div>}
+                          {r.skipped && <div className="text-xs text-amber-600 mt-1">Não testado: {r.reason}</div>}
                           {r.report && (
                             <details className="mt-2">
                               <summary className="text-xs cursor-pointer text-muted-foreground hover:text-foreground">

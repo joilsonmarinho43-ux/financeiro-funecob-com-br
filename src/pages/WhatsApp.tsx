@@ -1493,7 +1493,7 @@ function MonitorTab({ organizationId }: { organizationId: string }) {
       ]);
 
       const totalWeek = (sentWeek.count || 0) + (failedWeek.count || 0);
-      const successRate = totalWeek > 0 ? Math.round(((sentWeek.count || 0) / totalWeek) * 100) : 100;
+      const successRate = totalWeek > 0 ? Math.round(((sentWeek.count || 0) / totalWeek) * 100) : null;
 
       return {
         sentToday: sentToday.count || 0,
@@ -1546,7 +1546,7 @@ function MonitorTab({ organizationId }: { organizationId: string }) {
             </Card>
             <Card className="border-0 shadow-sm">
               <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold text-primary">{stats.successRate}%</p>
+                <p className="text-2xl font-bold text-primary">{stats.successRate === null ? "—" : `${stats.successRate}%`}</p>
                 <p className="text-xs text-muted-foreground">Taxa Sucesso (7d)</p>
               </CardContent>
             </Card>
@@ -1570,9 +1570,9 @@ function MonitorTab({ organizationId }: { organizationId: string }) {
               <div className="pt-2">
                 <div className="flex justify-between text-xs text-muted-foreground mb-1">
                   <span>Taxa de sucesso</span>
-                  <span>{stats.successRate}%</span>
+                  <span>{stats.successRate === null ? "Sem envios" : `${stats.successRate}%`}</span>
                 </div>
-                <Progress value={stats.successRate} className="h-2" />
+                <Progress value={stats.successRate ?? 0} className="h-2" />
               </div>
             </CardContent>
           </Card>

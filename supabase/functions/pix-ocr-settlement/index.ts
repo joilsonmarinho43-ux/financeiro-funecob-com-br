@@ -469,6 +469,11 @@ Deno.serve(async (req) => {
       single_open_match: amountMatchesInvoice && (combinationPicks?.length || 1) === 1,
       match_source: matchSource,
     });
+    const autoDecision = decisionAllowsAuto(scoreResult.decision);
+    if (eventStatus === "recebido" && !autoDecision) {
+      eventStatus = "pendente_revisao";
+      errorMessage = `confiança insuficiente para baixa automática (score ${scoreResult.score})`;
+    }
 
     const { data: event, error: eventError } = await supabase
       .from("auto_settlement_events")
@@ -489,7 +494,7 @@ Deno.serve(async (req) => {
 
     console.log("[pix-ocr] event created", { event_id: event.id, client_id: client?.id, amount, score: scoreResult.score });
 
-    if (decisionAllowsAuto(scoreResult) && client && amount) {
+    if (autoDecision && client && amount) {
       await processEvent(supabase, event.id, organization_id);
     }
 
