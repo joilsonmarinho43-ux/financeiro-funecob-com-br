@@ -294,7 +294,14 @@ Deno.serve(async (req) => {
 
     const apiHost = gs.api_host || envEvolutionUrl();
     const globalApiKey = gs.global_api_key || envEvolutionKey();
-    const pixWebhookUrl = `${supabaseUrl}/functions/v1/whatsapp-webhook`;
+    const webhookSecret = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
+    if (!webhookSecret) {
+      return new Response(JSON.stringify({ error: "Webhook secret not configured" }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const pixWebhookUrl = `${supabaseUrl}/functions/v1/whatsapp-webhook?secret=${encodeURIComponent(webhookSecret)}`;
 
     if (!apiHost || !globalApiKey) {
       return new Response(JSON.stringify({ 

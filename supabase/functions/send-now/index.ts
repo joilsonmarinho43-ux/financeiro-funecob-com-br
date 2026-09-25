@@ -139,15 +139,21 @@ Deno.serve(async (req) => {
     if (!providerMessageId) throw new Error("Evolution accepted a message without an identifier");
 
     // Log the sent message
-    await supabase.from("whatsapp_messages").insert({
+    const { error: logError } = await supabase.from("whatsapp_messages").insert({
       organization_id,
       phone,
       message,
       direction: "outgoing",
       status: "sent",
+      provider_message_id: providerMessageId,
       instance_id: instance?.id || null,
       sent_at: new Date().toISOString(),
     });
+    if (logError) {
+      console.error("[send-now] message_log_failed", {
+        code: logError.code, message: logError.message,
+      });
+    }
 
     console.log(`[send-now] Accepted ${providerMessageId.slice(0, 8)} for ${cleanPhone.slice(0, 4)}****`);
 
