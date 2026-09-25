@@ -182,7 +182,12 @@ export default function SandboxTests() {
         });
         setResults([...out]);
       } catch (e: any) {
-        out.push({ ...s, error: e.message, passed: false });
+        const response = e?.context instanceof Response ? e.context : null;
+        const detail = response ? await response.clone().text().catch(() => "") : "";
+        const error = response
+          ? `HTTP ${response.status}: ${detail.slice(0, 200) || e.message}`
+          : e.message;
+        out.push({ ...s, error, passed: false });
         setResults([...out]);
       }
     }
