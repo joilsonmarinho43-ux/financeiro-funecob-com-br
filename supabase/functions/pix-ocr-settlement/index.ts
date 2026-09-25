@@ -316,7 +316,14 @@ async function processEvent(supabase: any, eventId: string, organizationId: stri
 
       if (!confirmationLog?.id) {
         try {
-          await deliverPaymentConfirmation(supabase, organizationId, ev);
+          await deliverPaymentConfirmation(supabase, {
+            organizationId,
+            eventId: ev.id,
+            clientId: ev.client_id,
+            originPhone: ev.phone,
+            totalAmount: Number(ev.amount_detected),
+            txid: ev.txid || ev.end_to_end_id || ev.pix_end_to_end_id || ev.ocr_payload?.end_to_end_id || null,
+          });
         } catch (e) {
           console.warn("[confirmation] delivery failed after successful settlement", e);
         }
