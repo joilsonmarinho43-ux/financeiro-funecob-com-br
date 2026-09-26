@@ -5,6 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { recordTrustedPayer, findTrustedPayer } from "../_shared/pix/trustedPayers.ts";
 import { deliverPaymentConfirmation } from "../_shared/paymentReceipt.ts";
 import { computeScore, decisionAllowsAuto } from "../_shared/pix/score.ts";
+import { autoIdentityVerified, normalizeBrazilianPhone, uniquePhoneMatch } from "../_shared/pix/identity.ts";
 import { recordProviderFailure, recordProviderSuccess } from "../_shared/pix/ocrStats.ts";
 
 const corsHeaders = {
@@ -17,21 +18,7 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY") || "";
 
 function normalizePhone(p: string): string {
-  return (p || "").replace(/\D/g, "").replace(/^55/, "");
-}
-// Returns a set of phone variants to tolerate the mobile "9" prefix
-// (e.g. "9184456470" cadastrado vs "91984456470" enviado pelo WhatsApp).
-function phoneVariants(p: string): string[] {
-  const n = normalizePhone(p);
-  if (!n) return [];
-  const set = new Set<string>([n]);
-  // 11 digits with 9 → also try 10 digits (drop the 9 after DDD)
-  if (n.length === 11 && n[2] === "9") set.add(n.slice(0, 2) + n.slice(3));
-  // 10 digits → also try 11 digits (insert 9 after DDD)
-  if (n.length === 10) set.add(n.slice(0, 2) + "9" + n.slice(2));
-  // last 8 digits fallback for partial cadastros
-  if (n.length >= 8) set.add(n.slice(-8));
-  return [...set];
+  return normalizeBrazilianPhone(p);
 }
 
 // Coerces amount from OCR (which often returns string like "44.00" or "44,00")
@@ -358,6 +345,7 @@ Deno.serve(async (req) => {
       message_id,
       raw_text,
       remote_jid,
+      phone_verified,
     } = body || {};
 
     if (!organization_id || !image_base64) {
@@ -376,11 +364,10 @@ Deno.serve(async (req) => {
 
     let client: any = null;
     let matchSource = "";
-    const phoneCandidates = phoneVariants(normalizedPhone);
-    for (const candidate of phoneCandidates) {
-      const found = (clients || []).find((c: any) => phoneVariants(c.phone || "").includes(candidate));
-      if (found) { client = found; matchSource = "phone"; break; }
-    }
+    const { matches: phoneMatches, client: uniqueClient } = uniquePhoneMatch(
+      normalizedPhone, clients || [], phone_verified === true,
+    );
+    if (uniqueClient) { client = uniqueClient; matchSource = "phone"; }
 
     const ocr = await runOcr(image_base64, media_mime_type || "image/jpeg");
     if (raw_text && !ocr.raw_text) ocr.raw_text = raw_text;
@@ -395,7 +382,7 @@ Deno.serve(async (req) => {
       if (secondPass.raw_text) ocr.raw_text = `${ocr.raw_text || ""}\n${secondPass.raw_text}`.trim();
     }
 
-    if (!client && clients?.length) {
+    if (!client && phoneMatches.length !== 1 && clients?.length) {
       const ocrText = `${ocr?.raw_text || ""} ${ocr?.sender_name || ""}`.toLowerCase();
       const cpfMatch = ocrText.match(/\b(\d{3}\.?\d{3}\.?\d{3}-?\d{2})\b/);
       if (cpfMatch) {
@@ -476,19 +463,32 @@ Deno.serve(async (req) => {
       single_open_match: amountMatchesInvoice && (combinationPicks?.length || 1) === 1,
       match_source: matchSource,
     });
+    // A pontuação não prova que o comprovante pertence ao cadastro. Um PIX pode
+    // ser encaminhado por terceiros, e um nome/telefone parcial pode coincidir.
+    // Só a combinação de telefone real único e nome completo igual autoriza auto.
+    const identityVerified = matchSource === "phone" && autoIdentityVerified(
+      senderName, client?.name || "", phoneMatches.length === 1,
+    );
+    if (eventStatus === "recebido" && (!identityVerified || !decisionAllowsAuto(scoreResult.decision))) {
+      eventStatus = "pendente_revisao";
+      errorMessage = !identityVerified
+        ? "identidade do pagador e telefone do cadastro não confirmados; revisão manual obrigatória"
+        : `confiança insuficiente para baixa automática (score ${scoreResult.score})`;
+    }
+    const verifiedClient = identityVerified ? client : null;
 
     const { data: event, error: eventError } = await supabase
       .from("auto_settlement_events")
       .insert({
         organization_id,
-        client_id: client?.id || null,
+        client_id: verifiedClient?.id || null,
         phone: normalizedPhone || phone || null,
         amount_detected: amount,
         status: eventStatus,
         error_message: errorMessage,
         payer_document: payerDocument,
         whatsapp_message_id: message_id || null,
-        ocr_payload: { ...ocr, push_name, receipt_hint, remote_jid, score: scoreResult },
+        ocr_payload: { ...ocr, push_name, receipt_hint, remote_jid, phone_verified: phone_verified === true, match_source: matchSource, candidate_client_id: client?.id || null, score: scoreResult },
       })
       .select("id")
       .single();
@@ -496,14 +496,14 @@ Deno.serve(async (req) => {
 
     console.log("[pix-ocr] event created", { event_id: event.id, client_id: client?.id, amount, score: scoreResult.score });
 
-    if (decisionAllowsAuto(scoreResult.decision) && client && amount) {
+    if (eventStatus === "recebido" && identityVerified && client && amount) {
       await processEvent(supabase, event.id, organization_id);
     }
 
     return new Response(JSON.stringify({
       ok: true,
       event_id: event.id,
-      client_id: client?.id || null,
+      client_id: verifiedClient?.id || null,
       amount,
       status: eventStatus,
       score: scoreResult,
