@@ -429,6 +429,26 @@ export async function deliverPaymentConfirmation(
 
   // 5) Destino: origem é prioridade; se @lid → cadastro
   const { destination, isLidFallback, isDivergent } = resolveDestinationDigits(args.originPhone, client.phone);
+  // Um LID não resolvido ou telefone divergente não comprova que o cadastro
+  // pertence ao remetente. Só enviar ao cadastro se houve vínculo manual.
+  if (isLidFallback || isDivergent) {
+    const { data: manualLink, error: manualLinkError } = await supabase
+      .from("auto_settlement_logs")
+      .select("id")
+      .eq("event_id", args.eventId)
+      .eq("client_id", args.clientId)
+      .eq("action", "manual_link")
+      .limit(1)
+      .maybeSingle();
+    if (manualLinkError || !manualLink) {
+      await supabase.from("auto_settlement_logs").insert({
+        organization_id: args.organizationId, event_id: args.eventId, client_id: args.clientId,
+        action: "confirmation_blocked",
+        details: { reason: "destinatario_nao_verificado", lid_fallback_cadastro: isLidFallback, divergente_cadastro: isDivergent },
+      });
+      return { ok: false, pdfUrl, receiptNo };
+    }
+  }
 
   // 6) Texto
   const text = buildConfirmationText({
