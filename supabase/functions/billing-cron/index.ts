@@ -238,13 +238,13 @@ Deno.serve(async (req) => {
             .replace(/{titular_pix}/g, (settings as any).pix_holder_name || "");
 
           // Use ON CONFLICT to enforce idempotency via unique index
-          const { error: reminderErr } = await supabase.from("billing_reminders").insert({
+          const { data: insertedReminder, error: reminderErr } = await supabase.from("billing_reminders").insert({
             organization_id: orgId,
             invoice_id: invoice.id,
             reminder_type: reminder.type,
             reminder_date: todayStr,
             status: "pending",
-          } as any);
+          } as any).select("id").single();
 
           // Skip if duplicate (already sent today)
           if (reminderErr) {
@@ -252,13 +252,26 @@ Deno.serve(async (req) => {
             console.error(`[billing-cron] Reminder insert error:`, reminderErr.message);
             continue;
           }
+          if (!insertedReminder) {
+            console.error(`[billing-cron] Reminder insert returned no ID for invoice ${invoice.id}`);
+            continue;
+          }
 
-          await supabase.from("whatsapp_queue").insert({
+          const { error: queueErr } = await supabase.from("whatsapp_queue").insert({
             organization_id: orgId,
+            reminder_id: insertedReminder.id,
             phone: client.phone,
             message,
             status: "queued",
           });
+
+          if (queueErr) {
+            console.error(`[billing-cron] Queue insert failed for reminder ${insertedReminder.id}:`, queueErr.message);
+            await supabase.from("billing_reminders")
+              .update({ status: "failed", error_message: `Falha ao criar item na fila: ${queueErr.message}` })
+              .eq("id", insertedReminder.id);
+            continue;
+          }
 
           totalQueued++;
           totalProcessed++;
