@@ -51,7 +51,8 @@ export function DashboardEnhancements({
   const navigate = useNavigate();
   const { organizationId } = useOrganization();
 
-  const inadimplencia = activeClients > 0 ? (overdueClients / activeClients) * 100 : 0;
+  const totalActiveClients = activeClients + overdueClients;
+  const inadimplencia = totalActiveClients > 0 ? (overdueClients / totalActiveClients) * 100 : 0;
 
   // PIX central — últimos 7 dias (evita zerar o painel quando não há PIX hoje)
   const { data: pixStats } = useQuery({
@@ -194,7 +195,7 @@ export function DashboardEnhancements({
             <p className={`text-2xl font-bold ${inadimplencia > 30 ? "text-destructive" : inadimplencia > 15 ? "text-warning" : "text-success"}`}>
               {inadimplencia.toFixed(1)}%
             </p>
-            <p className="text-[10px] text-muted-foreground">{overdueClients} de {activeClients} ativos</p>
+            <p className="text-[10px] text-muted-foreground">{overdueClients} de {totalActiveClients} ativos</p>
           </div>
         </CardContent>
       </Card>
