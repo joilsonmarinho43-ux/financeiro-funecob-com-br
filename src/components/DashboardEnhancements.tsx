@@ -230,7 +230,7 @@ export function DashboardEnhancements({
 
       {/* PIX Central */}
       <Card
-        onClick={() => navigate("/admin/auto-settlement")}
+        onClick={() => navigate("/pix")}
         className="border-0 shadow-sm overflow-hidden cursor-pointer transition-transform hover:scale-[1.005] hover:shadow-md"
       >
         <div className="px-4 py-3 bg-primary/10 flex items-center gap-2">
@@ -240,11 +240,11 @@ export function DashboardEnhancements({
         </div>
         <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "PIX Recebidos (7d)", value: pixStats?.total ?? "—", color: "text-foreground", to: "/admin/auto-settlement" },
+            { label: "PIX Recebidos (7d)", value: pixStats?.total ?? "—", color: "text-foreground", to: "/pix" },
 
-            { label: "Reconhecidos Auto.", value: pixStats?.conciliated ?? "—", color: "text-success", to: "/admin/auto-settlement?status=conciliado" },
-            { label: "Processando", value: pixStats?.processing ?? "—", color: "text-primary", to: "/admin/auto-settlement?status=processando" },
-            { label: "Aguardando Conferência", value: pixStats?.pending ?? "—", color: "text-warning", to: "/admin/auto-settlement?status=pendente_revisao" },
+            { label: "Reconhecidos Auto.", value: pixStats?.conciliated ?? "—", color: "text-success", to: "/pix?status=conciliado" },
+            { label: "Processando", value: pixStats?.processing ?? "—", color: "text-primary", to: "/pix?status=processando" },
+            { label: "Aguardando Conferência", value: pixStats?.pending ?? "—", color: "text-warning", to: "/pix?status=pendente_revisao" },
           ].map((p) => (
             <button
               key={p.label}
