@@ -523,13 +523,12 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
     jidToDigits(msg?.participantPn),
     // remoteJid LAST — only if it's @s.whatsapp.net (not @lid)
     (remoteJid.endsWith("@lid") || !looksLikeBrazilianPhone(jidToDigits(remoteJid))) ? "" : jidToDigits(remoteJid),
-    // Absolute fallback — accept LID as last resort so we still log the event
-    jidToDigits(remoteJid),
   ].filter(Boolean);
 
   let phone = candidates.find(looksLikePhone) || "";
-  const isLidOnly = !phone && candidates.length > 0;
-  if (!phone) phone = candidates[0]; // log the LID so admin sees the event
+  const isLidOnly = !phone && remoteJid.endsWith("@lid");
+  let phoneVerified = !isLidOnly;
+  if (!phone) phone = jidToDigits(remoteJid) || candidates[0]; // log LID; never mark it verified
   if (!phone) return;
 
   if (isLidOnly) {
@@ -661,6 +660,7 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
     if (!cacheHit) {
       const { phone: resolved, endpoint } = await resolveLidToPhone(apiUrl, apiKey, instanceName, lidDigits);
       if (resolved) {
+        phoneVerified = true;
         console.log(JSON.stringify({
           tag: "wa-webhook", event: "lid_resolve_success",
           lid: lidDigits, phone: resolved, endpoint, instance: instanceName,
@@ -746,6 +746,7 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
     body = {
       organization_id: instance.organization_id,
       phone,
+      phone_verified: phoneVerified,
       push_name: pushName || null,
       image_base64: base64,
       media_mime_type: mediaMimeType,
@@ -778,6 +779,7 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
     body = {
       organization_id: instance.organization_id,
       phone,
+      phone_verified: phoneVerified,
       push_name: pushName || null,
       raw_text: textBody,
       manual_amount: amount,
