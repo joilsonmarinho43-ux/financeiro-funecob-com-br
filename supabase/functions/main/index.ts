@@ -104,6 +104,15 @@ Deno.serve(async (req: Request) => {
     })
   }
 
+  if (/whatsapp|send|campaign|sms|queue|reminder|pix-ocr|settlement|auto-mode/i.test(serviceName)
+      && !["send-now", "whatsapp-webhook", "pix-ocr-settlement", "whatsapp-manager", "pix-ocr-sandbox", "whatsapp-sender", "pix-ocr-retry"].includes(serviceName))
+      return new Response("blocked", { status: 503 })
+  if (["whatsapp-sender", "pix-ocr-retry", "billing-cron"].includes(serviceName)) {
+    const internalKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+    if (!internalKey || req.headers.get("authorization") !== `Bearer ${internalKey}`)
+      return new Response("Forbidden", { status: 403 })
+  }
+
   const servicePath = `/home/deno/functions/${serviceName}`
   const envVarsObj = Deno.env.toObject()
   const envVars = Object.keys(envVarsObj).map((key) => [key, envVarsObj[key]])
