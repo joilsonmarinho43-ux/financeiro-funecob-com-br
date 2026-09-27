@@ -31,6 +31,7 @@ import AutoSettlement from "./pages/AutoSettlement";
 import PhoneAudit from "./pages/PhoneAudit";
 import MissedSettlements from "./pages/MissedSettlements";
 import PixAnalytics from "./pages/PixAnalytics";
+import PixEvents from "./pages/PixEvents";
 import SystemHealth from "./pages/SystemHealth";
 import SandboxTests from "./pages/SandboxTests";
 import NotFound from "./pages/NotFound";
@@ -125,6 +126,7 @@ const App = () => (
               <Route path="/clientes/planos" element={<ProtectedRoute><Plans /></ProtectedRoute>} />
               <Route path="/clientes" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
               <Route path="/financeiro" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
+              <Route path="/pix" element={<ProtectedRoute><PixEvents /></ProtectedRoute>} />
               <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
               <Route path="/movimentacoes" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
               <Route path="/prestacao" element={<ProtectedRoute><Settlement /></ProtectedRoute>} />
