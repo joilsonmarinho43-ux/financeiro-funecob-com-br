@@ -1,3 +1,4 @@
+import { normalizeDeliveryStatus } from "../_shared/deliveryStatus.ts";
 // WhatsApp Webhook → PIX OCR Auto-Settlement
 // Receives Evolution API events (messages.upsert) and forwards PIX receipts
 // to pix-ocr-settlement. Decoupled — never touches existing billing logic.
@@ -409,22 +410,6 @@ function extractProviderMessageId(value: any): string | null {
   return candidates.find((v) => typeof v === "string" && v.trim())?.trim() || null;
 }
 
-function normalizeDeliveryStatus(value: any): "pending" | "sent" | "delivered" | "read" | "failed" | null {
-  const raw = String(value ?? "").toLowerCase().replace(/[-\s]/g, "_");
-  if (!raw) return null;
-  if (raw.includes("error") || ["failed", "failure"].includes(raw)) return "failed";
-  if (raw.includes("read") || ["played", "read_by_recipient"].includes(raw)) return "read";
-  if (raw.includes("deliver") || ["delivery_ack", "deliveryack"].includes(raw)) return "delivered";
-  if (raw.includes("server_ack") || ["sent", "ack", "serverack"].includes(raw)) return "sent";
-  if (["pending", "queued"].includes(raw)) return "pending";
-  const n = Number(value);
-  if (n === 1) return "failed";
-  if (n === 2) return "pending";
-  if (n === 3) return "sent";
-  if (n === 4) return "delivered";
-  if (n >= 5) return "read";
-  return null;
-}
 
 function extractDeliveryStatus(value: any): any {
   return value?.status ?? value?.messageStatus ?? value?.message_status ??
