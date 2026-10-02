@@ -29,6 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           npm pkg set overrides.lodash=4.18.1
+          npm pkg set 'overrides.@figuro/chatwoot-sdk.axios=1.20.0'
           mv patches/baileys+7.0.0-rc.6.patch patches/baileys+7.0.0-rc14.patch
           npm install --package-lock-only --ignore-scripts --save-exact 'baileys@npm:@whiskeysockets/baileys@7.0.0-rc14'
           set +e
