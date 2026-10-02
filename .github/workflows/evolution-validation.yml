@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: evolution-foundation/evolution-api
-          ref: 2.4.0-rc2
+          ref: 5624bdaea81c58e4db60fe2a3a8de7c48bba1e60
           path: evolution-source
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -28,6 +28,7 @@ jobs:
         working-directory: evolution-source
         run: |
           set -euo pipefail
+          npm pkg set overrides.lodash=4.18.1
           mv patches/baileys+7.0.0-rc.6.patch patches/baileys+7.0.0-rc14.patch
           npm install --package-lock-only --ignore-scripts --save-exact 'baileys@npm:@whiskeysockets/baileys@7.0.0-rc14'
           set +e
@@ -63,6 +64,21 @@ jobs:
       - name: Audit production dependencies
         working-directory: evolution-source
         run: npm audit --omit=dev --package-lock-only --audit-level=high --json > production-audit.json
+      - name: Summarize production audit
+        if: always()
+        working-directory: evolution-source
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("production-audit.json")
+          if p.exists():
+              d = json.loads(p.read_text())
+              print(d.get("metadata", {}).get("vulnerabilities", {}))
+              for name, issue in d.get("vulnerabilities", {}).items():
+                  if issue.get("severity") in ("high", "critical"):
+                      print(name, issue["severity"], "fix:", issue.get("fixAvailable"))
+          PY
       - name: Preserve validation reports
         if: always()
         uses: actions/upload-artifact@v4
