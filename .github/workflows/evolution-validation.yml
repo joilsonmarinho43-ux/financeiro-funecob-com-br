@@ -1,0 +1,76 @@
+name: Evolution validation
+on:
+  push:
+    branches: [ci/evolution-validation]
+    paths: [.github/workflows/evolution-validation.yml, deploy/evolution/**]
+  pull_request:
+    paths: [.github/workflows/evolution-validation.yml, deploy/evolution/**]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout Evolution candidate
+        uses: actions/checkout@v4
+        with:
+          repository: evolution-foundation/evolution-api
+          ref: 2.4.0-rc2
+          path: evolution-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Reproduce candidate changes
+        working-directory: evolution-source
+        run: |
+          set -euo pipefail
+          mv patches/baileys+7.0.0-rc.6.patch patches/baileys+7.0.0-rc14.patch
+          npm install --package-lock-only --ignore-scripts --save-exact 'baileys@npm:@whiskeysockets/baileys@7.0.0-rc14'
+          set +e
+          npm audit fix --package-lock-only --ignore-scripts --omit=dev > audit-fix.log 2>&1
+          audit_exit=$?
+          set -e
+          if [ "$audit_exit" -gt 1 ]; then cat audit-fix.log; exit "$audit_exit"; fi
+          npm install --package-lock-only --ignore-scripts --save-exact sharp@0.35.5
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts")
+          text = p.read_text()
+          start = "  private async generateLinkPreview(text: string) {"
+          end = "  private async sendMessage("
+          assert text.count(start) == 1 and text.count(end) == 1
+          a = text.index(start)
+          b = text.index(end, a)
+          text = text[:a] + "  private async generateLinkPreview(_text: string): Promise<any> {\n    return undefined;\n  }\n\n" + text[b:]
+          text = text.replace("import { getLinkPreview } from 'link-preview-js';\n", "")
+          text = text.replace("generateHighQualityLinkPreview: true,", "generateHighQualityLinkPreview: false,")
+          p.write_text(text)
+          PY
+      - name: Build candidate and type-check
+        working-directory: evolution-source
+        run: docker build -t evolution-ci:candidate .
+      - name: Verify installed Baileys
+        run: |
+          docker run --rm --network none --entrypoint node evolution-ci:candidate -e '
+          const fs = require("fs");
+          const p = JSON.parse(fs.readFileSync("/evolution/node_modules/baileys/package.json","utf8"));
+          if(p.version !== "7.0.0-rc14") process.exit(1);
+          console.log("Baileys:",p.version);'
+      - name: Audit production dependencies
+        working-directory: evolution-source
+        run: npm audit --omit=dev --package-lock-only --audit-level=high --json > production-audit.json
+      - name: Preserve validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evolution-validation
+          path: |
+            evolution-source/production-audit.json
+            evolution-source/audit-fix.log
+            evolution-source/package.json
+            evolution-source/package-lock.json
+          if-no-files-found: ignore
