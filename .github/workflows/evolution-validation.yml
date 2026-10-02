@@ -59,7 +59,7 @@ jobs:
           docker.write_text(text.replace(marker, marker + "\nCOPY ./vendor ./vendor", 1))
           PY
           rm vendor/whiskeysockets-baileys-7.0.0-rc14.tgz
-          npm pack ./vendor/baileys-source/package --pack-destination vendor
+          npm pack ./vendor/baileys-source/package --ignore-scripts --pack-destination vendor
           npm install --package-lock-only --ignore-scripts
           set +e
           npm audit fix --package-lock-only --ignore-scripts --omit=dev > audit-fix.log 2>&1
