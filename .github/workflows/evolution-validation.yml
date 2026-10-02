@@ -41,8 +41,10 @@ jobs:
           p = root / "package.json"
           data = json.loads(p.read_text())
           assert data["version"] == "7.0.0-rc14"
-          assert "link-preview-js" in data["dependencies"]
-          del data["dependencies"]["link-preview-js"]
+          groups = ("dependencies", "optionalDependencies", "peerDependencies", "peerDependenciesMeta", "devDependencies")
+          assert any("link-preview-js" in data.get(group, {}) for group in groups)
+          for group in groups:
+              data.get(group, {}).pop("link-preview-js", None)
           p.write_text(json.dumps(data, indent=2) + "\n")
           module = root / "lib/Utils/link-preview.js"
           assert "getLinkPreview" in module.read_text()
