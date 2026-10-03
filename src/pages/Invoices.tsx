@@ -261,7 +261,7 @@ export default function Invoices() {
       // Clean URL only — template já contém o label
       const portalSection = portalLink || "";
 
-      if ((settings as any)?.compact_reminders && settings?.pix_key && settings.billing_mode !== "gateway") pixOrLink = compactPixBlock(settings.pix_key);
+      if ((settings as any)?.compact_reminders && settings?.pix_key && settings.billing_mode !== "gateway") pixOrLink = compactPixBlock(settings.pix_key, (settings as any).pix_holder_name);
       const template = (settings as any)?.compact_reminders ? COMPACT_REMINDER_TEMPLATE : settings?.template_reminder || "Olá {nome}! Sua fatura de {valor} vence em {vencimento}. {link_ou_chave_pix}";
       const message = template
         .replace(/\*?\{nome\}\*?/g, `*${(client.name || "Cliente").trim()}*`)
