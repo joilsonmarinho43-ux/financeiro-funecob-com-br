@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { organizationLogo } from "../../supabase/functions/_shared/organizationBranding";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,9 +23,11 @@ export function useOrganization() {
     enabled: !!user,
   });
 
+  const organization = useMemo(() => membership?.organizations ? { ...membership.organizations, logo_url: organizationLogo(membership.organizations) } : null, [membership?.organizations]);
+
   return {
     organizationId: membership?.organization_id ?? null,
-    organization: membership?.organizations ? { ...membership.organizations, logo_url: organizationLogo(membership.organizations) } : null,
+    organization,
     memberRole: membership?.role ?? null,
     isLoading,
   };

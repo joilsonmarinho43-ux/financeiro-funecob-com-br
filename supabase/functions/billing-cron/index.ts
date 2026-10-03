@@ -1,3 +1,4 @@
+import { COMPACT_REMINDER_TEMPLATE, compactPixBlock } from "../_shared/compactReminder.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getOrCreatePortalLink } from "../_shared/portalLink.ts";
 
@@ -127,6 +128,7 @@ Deno.serve(async (req) => {
 
       // Build Pix block per invoice (includes item description and total amount)
       const buildPixBlock = (itemDesc: string, amountStr: string): string | null => {
+        if (settings.compact_reminders && settings.pix_key && settings.billing_mode !== "gateway") return compactPixBlock(settings.pix_key);
         if (settings.billing_mode === "gateway" && settings.gateway_provider) {
           return null; // gerado dinamicamente por fatura
         }
@@ -229,7 +231,7 @@ Deno.serve(async (req) => {
           const staticPix = buildPixBlock(itemDesc, amount);
           const pixOrLink = staticPix ?? await getGatewayLink(invoice.id);
 
-          const message = reminder.template
+          const message = (settings.compact_reminders ? COMPACT_REMINDER_TEMPLATE : reminder.template)
             .replace(/\*?\{nome\}\*?/g, `*${(client.name || "Cliente").trim()}*`)
             .replace(/{valor}/g, amount)
             .replace(/{vencimento}/g, formattedDueDate)

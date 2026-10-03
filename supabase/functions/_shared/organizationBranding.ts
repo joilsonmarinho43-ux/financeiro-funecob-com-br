@@ -6,6 +6,6 @@ export function isSolDaVida(name?: string | null): boolean {
 }
 
 export function organizationLogo(org?: { name?: string | null; logo_url?: string | null } | null): string | null {
-  return org?.logo_url || (isSolDaVida(org?.name) ? SOL_DA_VIDA_LOGO : null);
+  return org?.logo_url || null;
 }
 

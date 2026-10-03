@@ -27,6 +27,10 @@ export default function Settings() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
 
+  useEffect(() => () => {
+    if (logoPreview?.startsWith("blob:")) URL.revokeObjectURL(logoPreview);
+  }, [logoPreview]);
+
   useEffect(() => {
     if (organization) {
       const org = organization as any;
@@ -37,13 +41,17 @@ export default function Settings() {
       setSupportPhone(org.support_phone || "");
       setPrimaryColor(org.primary_color || "#0ea5e9");
       setSecondaryColor(org.secondary_color || "#1e293b");
-      if (org.logo_url) setLogoPreview(org.logo_url);
+      setLogoPreview(org.logo_url || null);
     }
   }, [organization]);
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!["image/png", "image/jpeg"].includes(file.type)) {
+      toast({ title: "Formato inválido", description: "Escolha uma imagem PNG ou JPG", variant: "destructive" });
+      return;
+    }
     if (file.size > 2 * 1024 * 1024) {
       toast({ title: "Arquivo muito grande", description: "Máximo 2MB", variant: "destructive" });
       return;
@@ -57,24 +65,45 @@ export default function Settings() {
     setLogoPreview(null);
   };
 
+  const selectedLogoUrl = async () => {
+    if (!organizationId) throw new Error("Organização não encontrada");
+    let logoUrl = (organization as any)?.logo_url || null;
+
+    if (logoFile) {
+      const ext = logoFile.type === "image/png" ? "png" : "jpg";
+      const path = `${organizationId}/logo-${crypto.randomUUID()}.${ext}`;
+      const { error: uploadErr } = await supabase.storage
+        .from("logos")
+        .upload(path, logoFile, { upsert: false, contentType: logoFile.type });
+      if (uploadErr) throw uploadErr;
+      const { data: urlData } = supabase.storage.from("logos").getPublicUrl(path);
+      logoUrl = urlData.publicUrl;
+    } else if (!logoPreview) {
+      logoUrl = null;
+    }
+
+    return logoUrl;
+  };
+
+  const saveLogoMutation = useMutation({
+    mutationFn: async () => {
+      const logoUrl = await selectedLogoUrl();
+      const { error } = await supabase.from("organizations").update({ logo_url: logoUrl }).eq("id", organizationId!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setLogoFile(null);
+      queryClient.invalidateQueries({ queryKey: ["organization-membership"] });
+      toast({ title: "Logo atualizada", description: "Será usada no aplicativo, portal, recibos e nos próximos envios de WhatsApp." });
+    },
+    onError: (error: Error) => toast({ title: "Erro ao salvar logo", description: error.message, variant: "destructive" }),
+  });
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!organizationId) throw new Error("Organização não encontrada");
 
-      let logoUrl = (organization as any)?.logo_url || null;
-
-      if (logoFile) {
-        const ext = logoFile.name.split(".").pop();
-        const path = `${organizationId}/logo.${ext}`;
-        const { error: uploadErr } = await supabase.storage
-          .from("logos")
-          .upload(path, logoFile, { upsert: true });
-        if (uploadErr) throw uploadErr;
-        const { data: urlData } = supabase.storage.from("logos").getPublicUrl(path);
-        logoUrl = urlData.publicUrl;
-      } else if (!logoPreview) {
-        logoUrl = null;
-      }
+      const logoUrl = await selectedLogoUrl();
 
       const { error } = await supabase
         .from("organizations")
@@ -92,6 +121,7 @@ export default function Settings() {
       if (error) throw error;
     },
     onSuccess: () => {
+      setLogoFile(null);
       queryClient.invalidateQueries({ queryKey: ["organization-membership"] });
       toast({ title: "Configurações salvas com sucesso!" });
     },
@@ -184,7 +214,7 @@ export default function Settings() {
             <CardTitle className="text-base flex items-center gap-2">
               <Upload className="h-4 w-4 text-primary" /> Logo da Empresa
             </CardTitle>
-            <CardDescription>PNG ou JPG, máximo 2MB</CardDescription>
+            <CardDescription>Troque a logo usada no aplicativo, portal, recibos e WhatsApp. PNG ou JPG, máximo 2 MB. Depois clique em Salvar.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-6">
@@ -200,19 +230,25 @@ export default function Settings() {
                   htmlFor="logoUpload"
                   className="inline-flex items-center gap-2 cursor-pointer text-sm font-medium text-primary hover:underline"
                 >
-                  <Upload className="h-4 w-4" /> Enviar imagem
+                  <Upload className="h-4 w-4" /> Trocar logo
                 </Label>
                 <input
                   id="logoUpload"
                   type="file"
-                  accept="image/png,image/jpeg,image/webp"
+                  accept="image/png,image/jpeg"
                   className="hidden"
                   onChange={handleLogoChange}
+                  disabled={saveLogoMutation.isPending}
                 />
+                <Button type="button" size="sm" onClick={() => saveLogoMutation.mutate()}
+                  disabled={saveLogoMutation.isPending || saveMutation.isPending || (!logoFile && logoPreview === (organization?.logo_url || null))}>
+                  <Save className="h-4 w-4 mr-2" /> {saveLogoMutation.isPending ? "Salvando..." : "Salvar logo"}
+                </Button>
                 {logoPreview && (
                   <button
                     type="button"
                     onClick={removeLogo}
+                    disabled={saveLogoMutation.isPending}
                     className="inline-flex items-center gap-1 text-xs text-destructive hover:underline"
                   >
                     <X className="h-3 w-3" /> Remover

@@ -2,7 +2,7 @@ import { isSolDaVida, organizationLogo, SOL_DA_VIDA_LOGO } from "./organizationB
 import { sendEvolutionText } from "./evolutionSend.ts";
 
 function assert(value: unknown, message: string) { if (!value) throw new Error(message); }
-function database(name: string, logo_url: string | null = null) {
+function database(name: string, logo_url: string | null = SOL_DA_VIDA_LOGO) {
   return { from: () => ({ select: () => ({ eq: (_: string, id: string) => {
     assert(id === "tenant-sol", "lookup must use caller's tenant ID");
     return { maybeSingle: async () => ({ data: { name, logo_url }, error: null }) };
@@ -13,7 +13,7 @@ Deno.test("brand isolation and configured logo precedence", () => {
   assert(isSolDaVida("  Funerária Sol da Vida  "), "normalize accents");
   assert(!isSolDaVida("Julia_Auditoria"), "test tenant must remain independent");
   assert(!isSolDaVida("Outra Sol da Vida"), "no substring matching");
-  assert(organizationLogo({ name: "Sol da Vida" }) === SOL_DA_VIDA_LOGO, "default brand");
+  assert(organizationLogo({ name: "Sol da Vida" }) === null, "removed logo stays removed");
   assert(organizationLogo({ name: "Outra empresa" }) === null, "no tenant leakage");
   assert(organizationLogo({ name: "Sol da Vida", logo_url: "custom.png" }) === "custom.png", "custom precedence");
 });

@@ -36,9 +36,10 @@ jobs:
           deno check --node-modules-dir=auto supabase/functions/bip-receiver/index.ts
           deno check --node-modules-dir=auto supabase/functions/client-portal/index.ts
           deno check --node-modules-dir=auto supabase/functions/_shared/paymentReceipt.ts
+          deno check --node-modules-dir=auto supabase/functions/billing-cron/index.ts
 
       - name: Test tenant branding and media delivery
-        run: deno test --allow-read=supabase/functions/_shared/assets supabase/functions/_shared/organizationBranding_test.ts
+        run: deno test supabase/functions/_shared/organizationBranding_test.ts supabase/functions/_shared/logoMedia_test.ts
 
       - name: Setup Node
         uses: actions/setup-node@v4
