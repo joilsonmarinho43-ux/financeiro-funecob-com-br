@@ -25,6 +25,9 @@ export default function Settings() {
   const [primaryColor, setPrimaryColor] = useState("#0ea5e9");
   const [secondaryColor, setSecondaryColor] = useState("#1e293b");
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [messageImageFile, setMessageImageFile] = useState<File | null>(null);
+  const [messageImagePreview, setMessageImagePreview] = useState<string | null>(null);
+  const [messageImageEnabled, setMessageImageEnabled] = useState(true);
   const [logoFile, setLogoFile] = useState<File | null>(null);
 
   useEffect(() => () => {
@@ -42,6 +45,8 @@ export default function Settings() {
       setPrimaryColor(org.primary_color || "#0ea5e9");
       setSecondaryColor(org.secondary_color || "#1e293b");
       setLogoPreview(org.logo_url || null);
+      setMessageImagePreview(org.message_image_url || null);
+      setMessageImageEnabled(org.message_image_enabled !== false);
     }
   }, [organization]);
 
@@ -94,9 +99,46 @@ export default function Settings() {
     onSuccess: () => {
       setLogoFile(null);
       queryClient.invalidateQueries({ queryKey: ["organization-membership"] });
-      toast({ title: "Logo atualizada", description: "Será usada no aplicativo, portal, recibos e nos próximos envios de WhatsApp." });
+      toast({ title: "Logo atualizada", description: "Logo do aplicativo, portal e recibos atualizada." });
     },
     onError: (error: Error) => toast({ title: "Erro ao salvar logo", description: error.message, variant: "destructive" }),
+  });
+
+  useEffect(() => () => {
+    if (messageImagePreview?.startsWith("blob:")) URL.revokeObjectURL(messageImagePreview);
+  }, [messageImagePreview]);
+
+  const handleMessageImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!["image/png", "image/jpeg"].includes(file.type) || file.size > 2 * 1024 * 1024) {
+      toast({ title: "Imagem inválida", description: "Use PNG ou JPG de até 2 MB", variant: "destructive" });
+      return;
+    }
+    setMessageImageFile(file);
+    setMessageImagePreview(URL.createObjectURL(file));
+  };
+
+  const saveMessageImageMutation = useMutation({
+    mutationFn: async () => {
+      if (!organizationId) throw new Error("Organização não encontrada");
+      let imageUrl = messageImagePreview;
+      if (messageImageFile) {
+        const extension = messageImageFile.type === "image/png" ? "png" : "jpg";
+        const path = `${organizationId}/message-${crypto.randomUUID()}.${extension}`;
+        const { error } = await supabase.storage.from("logos").upload(path, messageImageFile, { upsert: false, contentType: messageImageFile.type });
+        if (error) throw error;
+        imageUrl = supabase.storage.from("logos").getPublicUrl(path).data.publicUrl;
+      }
+      const { error } = await supabase.from("organizations").update({ message_image_url: imageUrl, message_image_enabled: messageImageEnabled } as any).eq("id", organizationId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setMessageImageFile(null);
+      queryClient.invalidateQueries({ queryKey: ["organization-membership"] });
+      toast({ title: "Imagem das mensagens atualizada", description: "Será usada nos próximos envios de WhatsApp. A logo da empresa permanece separada." });
+    },
+    onError: (error: Error) => toast({ title: "Erro ao salvar imagem das mensagens", description: error.message, variant: "destructive" }),
   });
 
   const saveMutation = useMutation({
@@ -214,7 +256,7 @@ export default function Settings() {
             <CardTitle className="text-base flex items-center gap-2">
               <Upload className="h-4 w-4 text-primary" /> Logo da Empresa
             </CardTitle>
-            <CardDescription>Troque a logo usada no aplicativo, portal, recibos e WhatsApp. PNG ou JPG, máximo 2 MB. Depois clique em Salvar.</CardDescription>
+            <CardDescription>Troque a logo usada no aplicativo, portal e recibos. O WhatsApp usa esta logo quando não há uma imagem própria configurada. PNG ou JPG, máximo 2 MB. Depois clique em Salvar.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-6">
@@ -256,6 +298,34 @@ export default function Settings() {
                 )}
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2"><Upload className="h-4 w-4 text-primary" /> Imagem das mensagens do WhatsApp</CardTitle>
+            <CardDescription>Escolha uma imagem para cobranças e notificações, sem alterar a logo da empresa. PNG ou JPG, máximo 2 MB. Salvar não envia mensagens.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={messageImageEnabled} disabled={saveMessageImageMutation.isPending}
+                onChange={e => setMessageImageEnabled(e.target.checked)} /> Enviar imagem junto das mensagens
+            </label>
+            <div className="flex items-center gap-6">
+              <div className="h-20 w-20 rounded-xl border flex items-center justify-center overflow-hidden shrink-0">
+                {(messageImagePreview || logoPreview) ? <img src={messageImagePreview || logoPreview || ""} alt="Imagem das mensagens" className="h-full w-full object-contain" /> : <Upload className="h-8 w-8 text-muted-foreground" />}
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="messageImageUpload" className="cursor-pointer text-sm font-medium text-primary">Trocar imagem das mensagens</Label>
+                <input id="messageImageUpload" type="file" accept="image/png,image/jpeg" className="hidden"
+                  disabled={saveMessageImageMutation.isPending} onChange={handleMessageImageChange} />
+                <Button type="button" size="sm" disabled={saveMessageImageMutation.isPending}
+                  onClick={() => saveMessageImageMutation.mutate()}>{saveMessageImageMutation.isPending ? "Salvando..." : "Salvar imagem das mensagens"}</Button>
+                {messageImagePreview && <button type="button" className="text-xs text-primary" disabled={saveMessageImageMutation.isPending}
+                  onClick={() => { setMessageImageFile(null); setMessageImagePreview(null); }}>Usar logo da empresa</button>}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">{!messageImageEnabled ? "Envio somente por texto após salvar." : messageImagePreview ? "Imagem própria para as mensagens." : "As mensagens usarão a logo da empresa."}</p>
           </CardContent>
         </Card>
 

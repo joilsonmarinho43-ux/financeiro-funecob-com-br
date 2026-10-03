@@ -1,7 +1,17 @@
 import { logoStoragePath, loadOrganizationLogo } from "./logoMedia.ts";
 import { compactPixBlock, COMPACT_REMINDER_TEMPLATE } from "./compactReminder.ts";
 import { sendEvolutionText } from "./evolutionSend.ts";
+import { organizationMessageImage } from "./organizationBranding.ts";
 function assert(value: unknown, message: string) { if (!value) throw new Error(message); }
+
+Deno.test("WhatsApp image is independent from brand logo and can be disabled", () => {
+  const org = { logo_url: "brand.png", message_image_url: "campaign.jpg", message_image_enabled: true };
+  assert(organizationMessageImage(org) === "campaign.jpg", "campaign overrides image only");
+  assert(org.logo_url === "brand.png", "brand and receipts unchanged");
+  assert(organizationMessageImage({ ...org, message_image_enabled: false }) === null, "text-only mode");
+  assert(organizationMessageImage({ logo_url: "brand.png", message_image_url: null }) === "brand.png", "company logo fallback");
+  assert(organizationMessageImage({ logo_url: null }) === null, "no image remains text-only");
+});
 
 Deno.test("Storage logo is restricted to caller's organization and bucket", () => {
   const prefix = "https://api.test/storage/v1/object/public/logos/";

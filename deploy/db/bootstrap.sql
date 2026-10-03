@@ -48,6 +48,7 @@ END $$;
 
 GRANT anon, authenticated, service_role TO authenticator;
 GRANT anon, authenticated, service_role TO supabase_admin;
+GRANT anon, authenticated, service_role TO supabase_storage_admin;
 GRANT CONNECT, TEMPORARY ON DATABASE postgres TO authenticator, supabase_admin, supabase_auth_admin, supabase_storage_admin;
 
 CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin;
