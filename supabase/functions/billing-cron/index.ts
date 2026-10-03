@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
 
       // Build Pix block per invoice (includes item description and total amount)
       const buildPixBlock = (itemDesc: string, amountStr: string): string | null => {
-        if (settings.compact_reminders && settings.pix_key && settings.billing_mode !== "gateway") return compactPixBlock(settings.pix_key);
+        if (settings.compact_reminders && settings.pix_key && settings.billing_mode !== "gateway") return compactPixBlock(settings.pix_key, settings.pix_holder_name);
         if (settings.billing_mode === "gateway" && settings.gateway_provider) {
           return null; // gerado dinamicamente por fatura
         }
