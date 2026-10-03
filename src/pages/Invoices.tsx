@@ -42,7 +42,7 @@ import { Fab } from "@/components/ui/fab";
 type Invoice = Tables<"invoices"> & { clients?: { name: string } | null };
 
 export default function Invoices() {
-  const { organizationId } = useOrganization();
+  const { organizationId, organization } = useOrganization();
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -511,7 +511,7 @@ export default function Invoices() {
                     variant="outline"
                     size="sm"
                     className="h-8 text-xs"
-                    onClick={() => exportToPDF(filtered)}
+                    onClick={() => exportToPDF(filtered, "faturas", organization)}
                     disabled={filtered.length === 0}
                   >
                     <FileText className="h-3.5 w-3.5 mr-1" />

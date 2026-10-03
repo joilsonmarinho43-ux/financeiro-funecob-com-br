@@ -1,3 +1,4 @@
+import { organizationLogo } from "../../supabase/functions/_shared/organizationBranding";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,7 +24,7 @@ export function useOrganization() {
 
   return {
     organizationId: membership?.organization_id ?? null,
-    organization: membership?.organizations ?? null,
+    organization: membership?.organizations ? { ...membership.organizations, logo_url: organizationLogo(membership.organizations) } : null,
     memberRole: membership?.role ?? null,
     isLoading,
   };

@@ -144,7 +144,7 @@ function parseWebhookPayload(provider: string, body: any): { paid: boolean; exte
   }
 }
 
-async function trySendWhatsApp(instance: any, phone: string, message: string): Promise<boolean> {
+async function trySendWhatsApp(supabase: any, instance: any, phone: string, message: string): Promise<boolean> {
   try {
     if (!instance.api_url || !instance.api_key || !instance.name) return false;
     const _d = (phone || "").replace(/\D/g, "");
@@ -152,7 +152,7 @@ async function trySendWhatsApp(instance: any, phone: string, message: string): P
     const apiUrl = instance.api_url.replace(/\/$/, "");
     const apiKey = instance.api_key;
     const sendUrl = `${apiUrl}/message/sendText/${instance.name}`;
-    const result = await sendEvolutionText(sendUrl, apiKey, cleanPhone, message);
+    const result = await sendEvolutionText(sendUrl, apiKey, cleanPhone, message, { supabase, organizationId: instance.organization_id });
     if (!result.ok) {
       console.error(`WhatsApp provider rejected message [${result.status}]: ${result.body.slice(0, 200)}`);
     }
@@ -356,7 +356,7 @@ Deno.serve(async (req) => {
             .order("updated_at", { ascending: false })
             .limit(1)
             .maybeSingle();
-          if (ci?.api_url && ci?.api_key) directSent = await trySendWhatsApp(ci, client.phone, message);
+          if (ci?.api_url && ci?.api_key) directSent = await trySendWhatsApp(supabase, ci, client.phone, message);
         }
         if (!directSent) {
           const { data: mi } = await supabase
@@ -368,7 +368,7 @@ Deno.serve(async (req) => {
             .order("updated_at", { ascending: false })
             .limit(1)
             .maybeSingle();
-          if (mi?.api_url && mi?.api_key) directSent = await trySendWhatsApp(mi, client.phone, message);
+          if (mi?.api_url && mi?.api_key) directSent = await trySendWhatsApp(supabase, mi, client.phone, message);
         }
         if (!directSent) {
           // Last resort: queue
@@ -614,7 +614,7 @@ Deno.serve(async (req) => {
           .order("updated_at", { ascending: false })
           .limit(1)
           .maybeSingle();
-        if (ci?.api_url && ci?.api_key) directSent = await trySendWhatsApp(ci, client.phone, message);
+        if (ci?.api_url && ci?.api_key) directSent = await trySendWhatsApp(supabase, ci, client.phone, message);
       }
       if (!directSent) {
         const { data: mi } = await supabase
@@ -625,7 +625,7 @@ Deno.serve(async (req) => {
           .order("updated_at", { ascending: false })
           .limit(1)
           .maybeSingle();
-        if (mi?.api_url && mi?.api_key) directSent = await trySendWhatsApp(mi, client.phone, message);
+        if (mi?.api_url && mi?.api_key) directSent = await trySendWhatsApp(supabase, mi, client.phone, message);
       }
       if (!directSent) {
         await supabase.from("whatsapp_queue").insert({

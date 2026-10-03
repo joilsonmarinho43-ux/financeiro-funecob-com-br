@@ -310,7 +310,7 @@ export function AppSidebar() {
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           {orgLogo ? (
-            <img src={orgLogo} alt={orgName} className="h-8 w-8 rounded-lg object-cover shrink-0" />
+            <img src={orgLogo} alt={orgName} className="h-8 w-8 rounded-lg object-contain shrink-0" />
           ) : (
             <div className="h-8 w-8 rounded-lg gradient-primary flex items-center justify-center shrink-0">
               <span className="text-primary-foreground font-bold text-sm">{orgInitials}</span>

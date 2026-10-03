@@ -1,5 +1,7 @@
 // Recibo PDF + envio WhatsApp (texto enriquecido + anexo)
 // Usado por pix-ocr-settlement e auto-settlement-assign-client.
+import { sendEvolutionText } from "./evolutionSend.ts";
+import { isSolDaVida, organizationLogo, SOL_DA_VIDA_LOGO } from "./organizationBranding.ts";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 
 // --- Evolution API: fallback por variáveis de ambiente (VPS própria) ---
@@ -87,6 +89,7 @@ export async function fetchPaidInvoices(
 /** Gera o PDF do recibo. */
 export async function generateReceiptPdf(params: {
   orgName: string;
+  logoBytes?: Uint8Array;
   clientName: string;
   clientDocument?: string | null;
   receiptNo: string;
@@ -113,7 +116,14 @@ export async function generateReceiptPdf(params: {
   page.drawText(params.orgName.slice(0, 60), { x: left, y: 815, size: 14, font: bold, color: rgb(1, 1, 1) });
   page.drawText("RECIBO DE PAGAMENTO", { x: right - bold.widthOfTextAtSize("RECIBO DE PAGAMENTO", 12), y: 815, size: 12, font: bold, color: rgb(1, 1, 1) });
 
-  y = 770;
+  if (params.logoBytes) {
+    try {
+      const logo = await doc.embedPng(params.logoBytes);
+      const scale = Math.min(70 / logo.width, 65 / logo.height);
+      page.drawImage(logo, { x: left, y: 727, width: logo.width * scale, height: logo.height * scale });
+    } catch (error) { console.error("[paymentReceipt] logo unavailable", error); }
+  }
+  y = params.logoBytes ? 705 : 770;
   page.drawText(`Nº ${params.receiptNo}`, { x: left, y, size: 11, font: bold, color: navy });
   page.drawText(`Emitido em ${fmtDateBR(params.paymentDate)} ${params.paymentDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`, {
     x: right - font.widthOfTextAtSize(`Emitido em ${fmtDateBR(params.paymentDate)} ${params.paymentDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`, 9),
@@ -300,18 +310,17 @@ export async function sendWhatsAppWithReceipt(params: {
   text: string;
   pdfUrl?: string | null;
   receiptNo: string;
+  branding?: { supabase: any; organizationId: string };
 }): Promise<{ textSent: boolean; mediaSent: boolean }> {
   const base = params.apiUrl.replace(/\/$/, "");
   const headers = { "Content-Type": "application/json", apikey: params.apiKey };
 
   let textSent = false;
   try {
-    const r = await fetch(`${base}/message/sendText/${params.instanceName}`, {
-      method: "POST", headers,
-      body: JSON.stringify({ number: params.destination, textMessage: { text: params.text }, linkPreview: false }),
-    });
-    textSent = r.ok;
-    if (!r.ok) console.error("[paymentReceipt] sendText fail", r.status, (await r.text()).slice(0, 200));
+    const result = await sendEvolutionText(`${base}/message/sendText/${params.instanceName}`,
+      params.apiKey, params.destination, params.text, params.branding);
+    textSent = result.ok;
+    if (!result.ok) console.error("[paymentReceipt] confirmation fail", result.status);
   } catch (e) { console.error("[paymentReceipt] sendText error", e); }
 
   let mediaSent = false;
@@ -355,7 +364,7 @@ export async function deliverPaymentConfirmation(
   // 1) Dados do cliente + org + settings em paralelo
   const [{ data: client }, { data: org }, { data: settings }] = await Promise.all([
     supabase.from("clients").select("name, phone, document").eq("id", args.clientId).single(),
-    supabase.from("organizations").select("name").eq("id", args.organizationId).single(),
+    supabase.from("organizations").select("name, logo_url").eq("id", args.organizationId).single(),
     supabase.from("billing_settings").select("template_baixa, pix_holder_name").eq("organization_id", args.organizationId).maybeSingle(),
   ]);
   if (!client) return { ok: false, receiptNo };
@@ -381,7 +390,13 @@ export async function deliverPaymentConfirmation(
   // 3) Gerar PDF + upload
   let pdfUrl: string | null = null;
   try {
+    let logoBytes: Uint8Array | undefined;
+    if (isSolDaVida(org?.name) && organizationLogo(org) === SOL_DA_VIDA_LOGO) {
+      try { logoBytes = await Deno.readFile(new URL("./assets/sol-da-vida.png", import.meta.url)); }
+      catch (error) { console.error("[paymentReceipt] logo unavailable", error); }
+    }
     const pdfBytes = await generateReceiptPdf({
+      logoBytes,
       orgName: org?.name || "Sistema Financeiro",
       clientName: client.name || "Cliente",
       clientDocument: client.document,
@@ -465,6 +480,7 @@ export async function deliverPaymentConfirmation(
   // 7) Enviar texto + anexo
   const result = await sendWhatsAppWithReceipt({
     apiUrl, apiKey, instanceName, destination, text, pdfUrl, receiptNo,
+    branding: { supabase, organizationId: args.organizationId },
   });
 
   // 8) Log + histórico

@@ -1,3 +1,5 @@
+import { isSolDaVida, organizationLogo, SOL_DA_VIDA_LOGO } from "./organizationBranding.ts";
+
 export interface EvolutionSendResult {
   ok: boolean;
   status: number;
@@ -114,8 +116,32 @@ export async function sendEvolutionText(
   apiKey: string,
   number: string,
   rawText: string,
+  branding?: { supabase: any; organizationId: string },
 ): Promise<EvolutionSendResult> {
   const text = normalizeWhatsAppBold(rawText);
+  if (branding) {
+    const { data: org, error } = await branding.supabase.from("organizations")
+      .select("name, logo_url").eq("id", branding.organizationId).maybeSingle();
+    if (error) throw new Error("Não foi possível consultar a identidade da organização");
+    if (isSolDaVida(org?.name) && organizationLogo(org) === SOL_DA_VIDA_LOGO) {
+      // Bundled asset: no remote URL fetch, credentials or dependency on frontend availability.
+      const bytes = await Deno.readFile(new URL("./assets/sol-da-vida.png", import.meta.url));
+      let binary = "";
+      for (let offset = 0; offset < bytes.length; offset += 8192) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+      }
+      const media = { mediatype: "image", mimetype: "image/png", media: btoa(binary),
+        fileName: "sol-da-vida.png", caption: text };
+      const mediaUrl = sendUrl.replace("/message/sendText/", "/message/sendMedia/");
+      const legacyMedia = await postMessage(mediaUrl, apiKey, {
+        number, mediaMessage: media, options: { linkPreview: false },
+      }, "v1-branded-image");
+      if (legacyMedia.ok || ![400, 422].includes(legacyMedia.status) ||
+        !/requires property|mediatype|mediaMessage/i.test(legacyMedia.body)) return legacyMedia;
+      // Retry only a definitive schema rejection; never resend on an ambiguous outcome.
+      return postMessage(mediaUrl, apiKey, { number, ...media }, "v2-branded-image");
+    }
+  }
   const legacy = await postMessage(sendUrl, apiKey, {
     number,
     textMessage: { text },
