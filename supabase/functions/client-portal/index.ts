@@ -1,3 +1,4 @@
+import { organizationLogo } from "../_shared/organizationBranding.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://esm.sh/zod@3.23.8";
 
@@ -167,7 +168,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         client: portalToken.clients,
-        organization: portalToken.organizations,
+        organization: { ...portalToken.organizations, logo_url: organizationLogo(portalToken.organizations) },
         invoices: invoices || [],
         billing: billingSettings || null,
       }),

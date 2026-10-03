@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
     const maskedKey = apiKey.length > 4 ? apiKey.slice(0, 2) + "***" + apiKey.slice(-2) : "***";
     console.log(`[send-now] Sending to ${cleanPhone.slice(0, 4)}**** via ${instanceName} (key: ${maskedKey})`);
 
-    const sendResult = await sendEvolutionText(sendUrl, apiKey, destination, message);
+    const sendResult = await sendEvolutionText(sendUrl, apiKey, destination, message, { supabase, organizationId: organization_id });
     if (!sendResult.ok) {
       const errorBody = sendResult.body;
       console.error(`[send-now] API error: ${sendResult.status} - ${errorBody.slice(0, 300)}`);

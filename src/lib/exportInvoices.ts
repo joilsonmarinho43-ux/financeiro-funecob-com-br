@@ -58,11 +58,29 @@ export function exportToExcel(invoices: InvoiceRow[], filename = "faturas") {
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
-export function exportToPDF(invoices: InvoiceRow[], filename = "faturas") {
+export async function exportToPDF(invoices: InvoiceRow[], filename = "faturas", organization?: { name: string; logo_url?: string | null }) {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
 
+  if (organization?.logo_url) {
+    try {
+      const image = new Image();
+      image.crossOrigin = "anonymous";
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Tempo esgotado ao carregar logo")), 5000);
+        image.onload = () => { clearTimeout(timeout); resolve(); };
+        image.onerror = () => { clearTimeout(timeout); reject(new Error("Logo indisponível")); };
+        image.src = organization.logo_url!;
+      });
+      const scale = Math.min(25 / image.naturalWidth, 25 / image.naturalHeight);
+      doc.addImage(image, "PNG", 255, 8, image.naturalWidth * scale, image.naturalHeight * scale);
+    } catch (error) { console.warn("Relatório gerado sem logo", error); }
+  }
   doc.setFontSize(16);
   doc.text("Relatório de Faturas", 14, 15);
+  if (organization?.name) {
+    doc.setFontSize(11);
+    doc.text(organization.name.slice(0, 50), 105, 15);
+  }
 
   doc.setFontSize(9);
   doc.setTextColor(120);

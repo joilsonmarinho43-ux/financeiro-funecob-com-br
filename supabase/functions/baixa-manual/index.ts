@@ -218,7 +218,7 @@ Deno.serve(async (req) => {
 
           let errBody = "";
           try {
-            const result = await sendEvolutionText(sendUrl, apiKey, cleanPhone, message);
+            const result = await sendEvolutionText(sendUrl, apiKey, cleanPhone, message, { supabase, organizationId: organization_id });
             whatsapp_sent = result.ok;
             if (!result.ok) {
               errBody = result.body || `Resposta ${result.status} sem identificador de mensagem`;

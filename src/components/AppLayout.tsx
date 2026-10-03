@@ -1,4 +1,5 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { useOrganization } from "@/hooks/useOrganization";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Home, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   useOrgTheme();
+  const { organization } = useOrganization();
   const navigate = useNavigate();
 
   return (
@@ -16,6 +18,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="flex-1 flex flex-col min-w-0">
           <header className="h-14 flex items-center justify-between border-b px-4 bg-card shrink-0">
             <div className="flex items-center gap-2">
+              {organization?.logo_url && <img src={organization.logo_url} alt={organization.name} className="h-10 w-10 object-contain shrink-0" />}
               <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
               <Button
                 variant="ghost"

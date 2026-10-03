@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
         const sendUrl = apiUrl + "/message/sendText/" + instanceName;
         const variedMessage = varyMessage(item.message, config.randomness_level || "medium");
         console.log("[whatsapp-sender] Sending verified destination to " + phone.slice(0, 4) + "**** (attempt " + (retryCount + 1) + ")");
-        const sendResult = await sendEvolutionText(sendUrl, apiKey, destination, variedMessage);
+        const sendResult = await sendEvolutionText(sendUrl, apiKey, destination, variedMessage, { supabase, organizationId: item.organization_id });
         if (!sendResult.ok || !sendResult.messageId) throw new Error("API " + sendResult.status + " sem confirmação: " + sendResult.body.slice(0, 300));
         const providerMessageId = sendResult.messageId;
         const sentAt = new Date().toISOString();
