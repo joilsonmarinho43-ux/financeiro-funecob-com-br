@@ -9,3 +9,7 @@ export function organizationLogo(org?: { name?: string | null; logo_url?: string
   return org?.logo_url || null;
 }
 
+export function organizationMessageImage(org: { logo_url?: string | null; message_image_url?: string | null; message_image_enabled?: boolean } | null): string | null {
+  if (!org || org.message_image_enabled === false) return null;
+  return org.message_image_url || org.logo_url || null;
+}

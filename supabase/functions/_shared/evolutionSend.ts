@@ -1,4 +1,5 @@
 import { loadOrganizationLogo } from "./logoMedia.ts";
+import { organizationMessageImage } from "./organizationBranding.ts";
 
 export interface EvolutionSendResult {
   ok: boolean;
@@ -123,9 +124,9 @@ export async function sendEvolutionText(
     let logo: Awaited<ReturnType<typeof loadOrganizationLogo>> = null;
     try {
       const { data: org, error } = await branding.supabase.from("organizations")
-        .select("name, logo_url").eq("id", branding.organizationId).maybeSingle();
+        .select("name, logo_url, message_image_url, message_image_enabled").eq("id", branding.organizationId).maybeSingle();
       if (error) throw error;
-      if (org) logo = await loadOrganizationLogo(branding.supabase, branding.organizationId, org);
+      if (org) logo = await loadOrganizationLogo(branding.supabase, branding.organizationId, { ...org, logo_url: organizationMessageImage(org) });
     } catch (error) { console.error("[evolution] Logo unavailable; sending text", error); }
     if (logo) {
       const media = { mediatype: "image", mimetype: logo.mimetype, media: logo.base64,
