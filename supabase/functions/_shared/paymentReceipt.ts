@@ -1,7 +1,7 @@
 // Recibo PDF + envio WhatsApp (texto enriquecido + anexo)
 // Usado por pix-ocr-settlement e auto-settlement-assign-client.
 import { sendEvolutionText } from "./evolutionSend.ts";
-import { isSolDaVida, organizationLogo, SOL_DA_VIDA_LOGO } from "./organizationBranding.ts";
+import { loadOrganizationLogo } from "./logoMedia.ts";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 
 // --- Evolution API: fallback por variáveis de ambiente (VPS própria) ---
@@ -90,6 +90,7 @@ export async function fetchPaidInvoices(
 export async function generateReceiptPdf(params: {
   orgName: string;
   logoBytes?: Uint8Array;
+  logoMime?: string;
   clientName: string;
   clientDocument?: string | null;
   receiptNo: string;
@@ -118,7 +119,7 @@ export async function generateReceiptPdf(params: {
 
   if (params.logoBytes) {
     try {
-      const logo = await doc.embedPng(params.logoBytes);
+      const logo = params.logoMime === "image/jpeg" ? await doc.embedJpg(params.logoBytes) : await doc.embedPng(params.logoBytes);
       const scale = Math.min(70 / logo.width, 65 / logo.height);
       page.drawImage(logo, { x: left, y: 727, width: logo.width * scale, height: logo.height * scale });
     } catch (error) { console.error("[paymentReceipt] logo unavailable", error); }
@@ -390,13 +391,12 @@ export async function deliverPaymentConfirmation(
   // 3) Gerar PDF + upload
   let pdfUrl: string | null = null;
   try {
-    let logoBytes: Uint8Array | undefined;
-    if (isSolDaVida(org?.name) && organizationLogo(org) === SOL_DA_VIDA_LOGO) {
-      try { logoBytes = await Deno.readFile(new URL("./assets/sol-da-vida.png", import.meta.url)); }
-      catch (error) { console.error("[paymentReceipt] logo unavailable", error); }
-    }
+    let logo: Awaited<ReturnType<typeof loadOrganizationLogo>> = null;
+    try { if (org) logo = await loadOrganizationLogo(supabase, args.organizationId, org); }
+    catch (error) { console.error("[paymentReceipt] logo unavailable", error); }
     const pdfBytes = await generateReceiptPdf({
-      logoBytes,
+      logoBytes: logo?.bytes,
+      logoMime: logo?.mimetype,
       orgName: org?.name || "Sistema Financeiro",
       clientName: client.name || "Cliente",
       clientDocument: client.document,
@@ -496,7 +496,7 @@ export async function deliverPaymentConfirmation(
   });
   await supabase.from("auto_settlement_logs").insert({
     organization_id: args.organizationId, event_id: args.eventId, client_id: args.clientId,
-    action: "confirmation_sent",
+    action: result.textSent ? "confirmation_sent" : "confirmation_failed",
     details: {
       payment_event_id: args.eventId, client_id_baixa: args.clientId,
       telefone_origem: args.originPhone, telefone_destino: destination, telefone_cadastro: client.phone,
