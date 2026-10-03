@@ -28,14 +28,14 @@ jobs:
       - name: Type-check WhatsApp Edge Functions
         run: |
           set -e
-          deno check supabase/functions/whatsapp-sender/index.ts
-          deno check supabase/functions/whatsapp-webhook/index.ts
-          deno check supabase/functions/whatsapp-manager/index.ts
-          deno check supabase/functions/send-now/index.ts
-          deno check supabase/functions/baixa-manual/index.ts
-          deno check supabase/functions/bip-receiver/index.ts
-          deno check supabase/functions/client-portal/index.ts
-          deno check supabase/functions/_shared/paymentReceipt.ts
+          deno check --node-modules-dir=auto supabase/functions/whatsapp-sender/index.ts
+          deno check --node-modules-dir=auto supabase/functions/whatsapp-webhook/index.ts
+          deno check --node-modules-dir=auto supabase/functions/whatsapp-manager/index.ts
+          deno check --node-modules-dir=auto supabase/functions/send-now/index.ts
+          deno check --node-modules-dir=auto supabase/functions/baixa-manual/index.ts
+          deno check --node-modules-dir=auto supabase/functions/bip-receiver/index.ts
+          deno check --node-modules-dir=auto supabase/functions/client-portal/index.ts
+          deno check --node-modules-dir=auto supabase/functions/_shared/paymentReceipt.ts
 
       - name: Test tenant branding and media delivery
         run: deno test --allow-read=supabase/functions/_shared/assets supabase/functions/_shared/organizationBranding_test.ts
