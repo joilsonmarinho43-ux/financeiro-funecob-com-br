@@ -91,7 +91,7 @@ services:
 
   - name: realtime-v1
 
-    url: http://funecob-realtime:4000/socket/
+    url: http://funecob.funecob-realtime:4000/socket/
     protocol: http
     routes:
       - name: realtime-v1-all

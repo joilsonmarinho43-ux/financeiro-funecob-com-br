@@ -24,6 +24,7 @@ KONG="http://127.0.0.1:${KONG_HTTP_PORT:-54321}"
 if [ -n "${KONG_BIND_IP:-}" ] && [ "${KONG_BIND_IP}" != "127.0.0.1" ]; then
   KONG="http://${KONG_BIND_IP}:${KONG_HTTP_PORT:-54321}"
 fi
+WEB="http://${WEB_BIND_IP:-127.0.0.1}:${WEB_HTTP_PORT:-54320}"
 EV_HOST_URL="${EVOLUTION_API_URL//host.docker.internal/127.0.0.1}"
 
 container_healthy() {
@@ -49,12 +50,12 @@ check "Storage" container_healthy funecob-storage
 # A imagem do edge-runtime não possui curl/wget/bash: validamos o processo em
 # execução + a rota real publicada pelo Kong (resposta != 000/404 = worker vivo).
 check "Edge Functions (container)" container_running funecob-edge-functions
-CODE_FN="$(http_code -H "apikey: ${ANON_KEY}" "http://127.0.0.1:${KONG_HTTP_PORT:-54321}/functions/v1/client-portal")"
-check "Edge Functions (resposta)" sh -c "test '${CODE_FN}' != '000' && test '${CODE_FN}' != '404'"
+CODE_FN="$(http_code -H "apikey: ${ANON_KEY}" "${KONG}/functions/v1/client-portal")"
+check "Edge Functions (resposta)" test "$CODE_FN" = "400"
 check "Cron (agendador)" container_running funecob-cron
 check "Kong (API GW)" curl -fsS --max-time 10 "${KONG}/auth/v1/health"
 check "FUNecob Web" container_healthy funecob-web
-check "Frontend (host)" curl -fsS -o /dev/null --max-time 10 "http://127.0.0.1:${WEB_HTTP_PORT:-54320}/healthz"
+check "Frontend (host)" curl -fsS -o /dev/null --max-time 10 "${WEB}/healthz"
 
 echo "-------------- PostgreSQL: infraestrutura interna -------------"
 pg_has() {
@@ -89,13 +90,13 @@ CODE_REST="$(http_code -H "apikey: ${ANON_KEY}" "${KONG}/rest/v1/")"
 CODE_GQL="$(http_code -X POST -H "apikey: ${ANON_KEY}" -H 'Content-Type: application/json' -d '{"query":"{__typename}"}' "${KONG}/graphql/v1")"
 CODE_STG="$(http_code -H "apikey: ${ANON_KEY}" "${KONG}/storage/v1/bucket")"
 CODE_FNR="$(http_code -H "apikey: ${ANON_KEY}" "${KONG}/functions/v1/client-portal")"
-CODE_RT="$(http_code -H "apikey: ${ANON_KEY}" "${KONG}/realtime/v1/websocket")"
+CODE_RT="$(http_code --http1.1 -H "apikey: ${ANON_KEY}" -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" "${KONG}/realtime/v1/websocket?apikey=${ANON_KEY}&vsn=1.0.0")"
 check "/auth/v1/health" is_2xx "$CODE_AUTH"
 check "/rest/v1/ (apikey)" is_2xx "$CODE_REST"
-check "/graphql/v1 (roteada)" test "$CODE_GQL" != "404"
+check "/graphql/v1 (resposta 2xx)" is_2xx "$CODE_GQL"
 check "/storage/v1/ (roteada)" test "$CODE_STG" != "404"
 check "/functions/v1/ (roteada)" test "$CODE_FNR" != "404"
-check "/realtime/v1/ (roteada)" test "$CODE_RT" != "404"
+check "/realtime/v1/ (WebSocket 101)" test "$CODE_RT" = "101"
 
 echo "---------------- infraestrutura reutilizada ------------------"
 check "Evolution API (existente)" curl -fsS -o /dev/null --max-time 8 -H "apikey: ${EVOLUTION_API_KEY}" "${EV_HOST_URL%/}/"
