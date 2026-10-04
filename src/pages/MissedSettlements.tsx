@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertTriangle, Download, Eye, ExternalLink, RefreshCw, CheckCircle2, Clock } from "lucide-react";
+import { AlertTriangle, Download, Eye, RefreshCw, CheckCircle2, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -402,11 +401,6 @@ export default function MissedSettlements() {
                                 <Button size="sm" variant="ghost" onClick={() => setViewEvent(r)}>
                                   <Eye className="h-4 w-4" />
                                 </Button>
-                                <Button size="sm" variant="ghost" asChild>
-                                  <Link to="/admin/auto-settlement" title="Abrir em Liquidação Auto">
-                                    <ExternalLink className="h-4 w-4" />
-                                  </Link>
-                                </Button>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -464,11 +458,6 @@ export default function MissedSettlements() {
                     </pre>
                   </details>
                 )}
-                <div className="pt-2">
-                  <Button asChild size="sm">
-                    <Link to="/admin/auto-settlement">Vincular cliente em Liquidação Auto</Link>
-                  </Button>
-                </div>
               </div>
             )}
           </DialogContent>

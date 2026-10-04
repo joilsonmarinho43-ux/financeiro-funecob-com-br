@@ -27,7 +27,8 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/hooks/useOrganization";
-import { format, parseISO, isAfter, isBefore, startOfDay } from "date-fns";
+import { useSearchParams } from "react-router-dom";
+import { addDays, format, parseISO, isAfter, isBefore, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import {
@@ -47,6 +48,9 @@ export default function Invoices() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const dueWindow = searchParams.get("vencimento");
+  const dueDays = dueWindow && /^(3|7|10)$/.test(dueWindow) ? Number(dueWindow) : null;
 
   const [statusFilter, setStatusFilter] = useState<string>("ativas");
   const [search, setSearch] = useState("");
@@ -306,6 +310,12 @@ export default function Invoices() {
     }
     if (statusFilter === "cancelado" && inv.status !== "cancelado") return false;
 
+    if (dueWindow === "hoje" || dueDays !== null) {
+      if (inv.status !== "aberto") return false;
+      const due = parseISO(inv.due_date);
+      if (isBefore(due, today) || isAfter(due, addDays(today, dueDays ?? 0))) return false;
+    }
+
     if (search) {
       const s = search.toLowerCase();
       const clientName = (inv.clients?.name || "").toLowerCase();
@@ -452,7 +462,7 @@ export default function Invoices() {
                   />
                 </div>
 
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); if (dueWindow) setSearchParams({}); }}>
                   <SelectTrigger className="w-full sm:w-[180px]">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
