@@ -1,0 +1,81 @@
+name: Validate local OCR and exact monthly settlement
+on:
+  push:
+    branches: [fix/local-ocr-20261004]
+    paths: [deploy/install-local-ocr.py, .github/workflows/local-ocr-validation.yml]
+  pull_request:
+    paths: [deploy/install-local-ocr.py, .github/workflows/local-ocr-validation.yml]
+permissions:
+  contents: read
+jobs:
+  local-ocr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: local-test-only
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: local-test-only
+      PGDATABASE: postgres
+      OCR_LANG: por+eng
+      PYTHONPATH: /tmp/local-ocr-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install local OCR dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y python3-pil tesseract-ocr tesseract-ocr-por tesseract-ocr-eng poppler-utils postgresql-client fonts-dejavu-core
+      - name: Extract and compile installer payload
+        run: |
+          /usr/bin/python3 - <<'PY'
+          import ast, base64, json, zlib
+          from pathlib import Path
+          source=Path('deploy/install-local-ocr.py').read_text()
+          compile(source,'installer','exec')
+          tree=ast.parse(source)
+          payload=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='PAYLOAD' for t in n.targets))
+          files=json.loads(zlib.decompress(base64.b85decode(payload)))
+          root=Path('/tmp/local-ocr-test'); root.mkdir()
+          for name,text in files.items(): (root/name).write_text(text)
+          for path in root.glob('*.py'): compile(path.read_text(),str(path),'exec')
+          sql=(root/'exact_fifo.sql').read_text().replace('public.','fifo_test.').replace('pg_catalog, public','pg_catalog, fifo_test')
+          test=(root/'exact_fifo_test.sql').read_text().replace('-- __FUNCTIONS__',sql)
+          (root/'test.sql').write_text('BEGIN; CREATE SCHEMA fifo_test;\n'+test+'\nROLLBACK;')
+          PY
+      - name: Receipt parser and FIFO selection tests
+        run: |
+          /usr/bin/python3 -m unittest discover -s /tmp/local-ocr-test -v
+          node --test /tmp/local-ocr-test/exactFifo.test.mjs
+      - name: PNG, PDF and elevated cents OCR
+        run: |
+          /usr/bin/python3 - <<'PY'
+          import io
+          from PIL import Image,ImageDraw,ImageFont
+          from server import extract
+          font=lambda n:ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',n)
+          im=Image.new('RGB',(1100,900),'white'); draw=ImageDraw.Draw(im)
+          draw.multiline_text((40,40),'Comprovante de Pix\n03/10/2026 as 20:22:28\nR$ 48,50\nOrigem e destino\nCliente Teste',font=font(36),fill='black',spacing=22)
+          for fmt,mime in [('PNG','image/png'),('PDF','application/pdf')]:
+              output=io.BytesIO(); im.save(output,format=fmt)
+              result=extract(output.getvalue(),mime)
+              assert result['amount']==48.5,(fmt,result['amount'])
+          im=Image.new('RGB',(1100,900),'white'); draw=ImageDraw.Draw(im)
+          draw.text((40,40),'Comprovante de Pix',font=font(36),fill='black')
+          draw.text((40,110),'R$ 48',font=font(90),fill='black')
+          draw.text((315,110),'50',font=font(50),fill='black')
+          output=io.BytesIO(); im.save(output,format='PNG')
+          assert extract(output.getvalue(),'image/png')['amount']==48.5
+          print('PNG/PDF/superscript cents: OK')
+          PY
+      - name: PostgreSQL settlement tests in rolled-back isolated schema
+        run: |
+          psql -v ON_ERROR_STOP=1 -c 'CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;'
+          psql -v ON_ERROR_STOP=1 -f /tmp/local-ocr-test/test.sql
