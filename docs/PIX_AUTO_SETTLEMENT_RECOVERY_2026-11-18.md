@@ -25,3 +25,11 @@
 
 ## Importante
 Este PR não comprova que os incidentes passados foram causados por qualquer uma das falhas acima. É necessária auditoria dos eventos e transações reais. Não alterar dados financeiros históricos sem conciliação.
+
+## Evidência adicional da RPC real (trecho fornecido em 18/11/2026)
+A definição parcial obtida do banco `funecob-db` mostra um laço que **insere mensalidades futuras já com `status='pago'` e `paid_date=CURRENT_DATE`**, registra `auto_settlement_allocations` como `was_generated=true`, cria `auto_settlement_credits` para sobra e marca o evento `conciliado`. Esse comportamento é incompatível com uma política conservadora de conciliação sem autorização explícita para antecipação. O trecho isolado **não** comprova a causa histórica do incidente nem permite reconstruir com segurança a função completa.
+
+### Ação bloqueadora adicional
+- Obter o início e corpo integral da RPC com `pg_get_functiondef` antes de propor substituição SQL.
+- Desabilitar a geração/quitacão automática de competências futuras no banco antes de reativar qualquer liquidação, preservando apenas conciliação de faturas existentes expressamente identificadas.
+- Não aplicar `CREATE OR REPLACE FUNCTION` com corpo parcial: isso poderia eliminar validações existentes.
