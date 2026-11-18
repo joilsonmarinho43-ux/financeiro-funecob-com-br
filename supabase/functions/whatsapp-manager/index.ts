@@ -512,15 +512,12 @@ Deno.serve(async (req) => {
       let qr = await requestQrCode(apiCall, instApiUrl, instApiKey, inst.name);
       let recovered = false;
 
-      // Sem QR (ou credencial recusada) → derruba a sessão presa e tenta de novo.
-      if (!qr.ok || !qr.qrCode) {
-        await apiCall(`${instApiUrl}/instance/logout/${encodeURIComponent(inst.name)}`, {
-          method: "DELETE",
-          headers: { apikey: instApiKey },
-        }).catch(() => null);
-        await new Promise((r) => setTimeout(r, 1500));
-        qr = await requestQrCode(apiCall, instApiUrl, instApiKey, inst.name);
-        recovered = true;
+      // Nunca fazer logout como efeito colateral de consultar um QR Code.
+      // Em especial, 401/403/404 indicam problemas que logout não resolve.
+      if (qr.ok && !qr.qrCode) {
+        console.warn("[whatsapp-manager] QR unavailable without session mutation", {
+          instance: inst.name, status: qr.status,
+        });
       }
 
       if (!qr.ok && !qr.qrCode) {
@@ -587,30 +584,59 @@ Deno.serve(async (req) => {
       const instApiUrl = resolveApiUrl(inst.api_url, apiHost);
       const instApiKey = inst.api_key || globalApiKey;
       const attempts: any[] = [];
-
-      for (const step of [
-        { label: "restart-put", method: "PUT", path: `/instance/restart/${encodeURIComponent(inst.name)}` },
-        { label: "restart-post", method: "POST", path: `/instance/restart/${encodeURIComponent(inst.name)}` },
-        { label: "logout-delete", method: "DELETE", path: `/instance/logout/${encodeURIComponent(inst.name)}` },
-        { label: "delete-delete", method: "DELETE", path: `/instance/delete/${encodeURIComponent(inst.name)}` },
-        { label: "delete-delete-force", method: "DELETE", path: `/instance/delete/${encodeURIComponent(inst.name)}?force=true` },
-      ]) {
-        try {
-          const resp = await apiCall(`${instApiUrl}${step.path}`, { method: step.method, headers: { "Content-Type": "application/json", apikey: instApiKey } });
-          const text = await resp.text();
-          attempts.push({ step: step.label, ok: resp.ok, status: resp.status, body: text.slice(0, 200) });
-        } catch (e) {
-          attempts.push({ step: step.label, ok: false, error: String(e instanceof Error ? e.message : e) });
+      const encodedName = encodeURIComponent(inst.name);
+      // Confirme a existência no servidor configurado antes de alterar a sessão.
+      const listResp = await apiCall(`${instApiUrl}/instance/fetchInstances`, {
+        method: "GET", headers: { apikey: instApiKey },
+      });
+      if (!listResp.ok) {
+        return new Response(JSON.stringify({
+          error: "Não foi possível verificar as instâncias na Evolution API; nenhuma sessão foi alterada.",
+          provider_status: listResp.status,
+        }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const listData = await listResp.json().catch(() => null);
+      if (!Array.isArray(listData)) {
+        return new Response(JSON.stringify({
+          error: "Resposta inesperada da Evolution API ao listar instâncias; nenhuma sessão foi alterada.",
+        }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const exists = listData.some((entry: any) =>
+        String(entry?.name || entry?.instance?.instanceName || entry?.instance?.name || "") === inst.name
+      );
+      let qrCode: string | null = null;
+      if (!exists) {
+        const created = await createEvolutionInstance(apiCall, instApiUrl, instApiKey, inst.name, pixWebhookUrl);
+        attempts.push({ step: "create_missing", ok: created.ok, status: created.status, has_qr: !!created.qrCode });
+        if (!created.ok) {
+          return new Response(JSON.stringify({
+            error: "A instância não existe na Evolution API e a recriação falhou.",
+            provider_status: created.status, attempts,
+          }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        qrCode = created.qrCode;
+      } else {
+        // Reiniciar somente; nunca fazer logout ou excluir uma sessão existente.
+        const restart = await apiCall(`${instApiUrl}/instance/restart/${encodedName}`, {
+          method: "PUT", headers: { apikey: instApiKey },
+        });
+        attempts.push({ step: "restart", ok: restart.ok, status: restart.status });
+        if (!restart.ok) {
+          return new Response(JSON.stringify({
+            error: "A instância existe, mas não foi possível reiniciá-la; nenhuma exclusão foi realizada.",
+            provider_status: restart.status, attempts,
+          }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
       }
-
-      const created = await createEvolutionInstance(apiCall, instApiUrl, instApiKey, inst.name, pixWebhookUrl);
-      attempts.push({ step: "create", ok: created.ok, status: created.status, body: created.body, has_qr: !!created.qrCode });
-
-      let qrCode = created.qrCode;
       if (!qrCode) {
         const qr = await requestQrCode(apiCall, instApiUrl, instApiKey, inst.name);
-        attempts.push({ step: "connect", ok: qr.ok, status: qr.status, body: qr.body, has_qr: !!qr.qrCode, shape: responseShape(qr.data) });
+        attempts.push({ step: "connect", ok: qr.ok, status: qr.status, has_qr: !!qr.qrCode });
+        if (!qr.ok) {
+          return new Response(JSON.stringify({
+            error: "A instância foi verificada, mas a Evolution API recusou a geração do QR.",
+            provider_status: qr.status, attempts,
+          }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
         qrCode = qr.qrCode;
       }
 
