@@ -776,6 +776,20 @@ async function handleMessage(supabase: any, payload: any, instanceName: string, 
     return; // not a PIX receipt — ignore
   }
 
+  // Text-only PIX claims and media fetch failures cannot be OCR-validated.
+  // Record for manual review; do not forward an empty image_base64 (HTTP 400).
+  if (!body.image_base64) {
+    await createFallbackEvent(
+      supabase,
+      body,
+      "pendente_revisao",
+      body.ocr_error === "media_fetch_failed"
+        ? "mídia indisponível; revisão manual obrigatória"
+        : "mensagem de texto não comprova recebimento PIX; revisão manual obrigatória",
+    );
+    return;
+  }
+
   // Forward to pix-ocr-settlement
   try {
     const res = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/pix-ocr-settlement`, {
