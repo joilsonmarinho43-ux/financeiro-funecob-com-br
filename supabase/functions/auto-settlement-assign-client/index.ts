@@ -1,7 +1,6 @@
 // Vincula manualmente um evento auto_settlement_events a um cliente
-// e dispara o processamento (quitação de faturas + WhatsApp).
+// sem quitar faturas ou enviar confirmação de pagamento.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { deliverPaymentConfirmation } from "../_shared/paymentReceipt.ts";
 import { requireOrgAuth } from "../_shared/requireOrgAuth.ts";
 
 const corsHeaders = {
@@ -54,10 +53,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Vincula cliente e marca como 'recebido' para reprocessar
-    await supabase.from("auto_settlement_events")
-      .update({ client_id, status: "recebido", error_message: null, updated_at: new Date().toISOString() })
-      .eq("id", event_id);
+    // Vínculo cadastral não comprova liquidação bancária.
+    const { error: linkError } = await supabase.from("auto_settlement_events")
+      .update({ client_id, status: "pendente_revisao",
+        error_message: "cliente vinculado; confirmação bancária e competência pendentes",
+        updated_at: new Date().toISOString() })
+      .eq("id", event_id)
+      .neq("status", "conciliado");
+    if (linkError) throw linkError;
 
     await supabase.from("auto_settlement_logs").insert({
       organization_id: ev.organization_id, event_id, client_id,
@@ -84,54 +87,20 @@ Deno.serve(async (req) => {
       }, { onConflict: "organization_id,lid" });
       if (!mapErr) lid_learned = true;
 
-      // Reprocessa outros eventos pendente_revisao do mesmo LID
-      const { data: others } = await supabase
-        .from("auto_settlement_events")
-        .select("id")
-        .eq("organization_id", ev.organization_id)
-        .eq("phone", ev.phone)
-        .is("client_id", null)
-        .in("status", ["pendente_revisao", "erro"]);
-      for (const o of others || []) {
-        if (o.id === event_id) continue;
-        await supabase.from("auto_settlement_events")
-          .update({ client_id, status: "recebido", error_message: null, updated_at: new Date().toISOString() })
-          .eq("id", o.id);
-        const { error: rErr } = await supabase.rpc("auto_settlement_process_payment", { p_event_id: o.id });
-        if (!rErr) auto_resolved_count++;
-      }
+      // Não associar outros comprovantes automaticamente: um mesmo LID pode
+      // encaminhar comprovantes de clientes diferentes.
+
     }
 
-    // Dispara processamento (quita faturas / gera crédito)
-    const { data: result, error: rpcErr } = await supabase
-      .rpc("auto_settlement_process_payment", { p_event_id: event_id });
-
-    if (rpcErr) {
-      await supabase.from("auto_settlement_events")
-        .update({ status: "erro", error_message: rpcErr.message })
-        .eq("id", event_id);
-      return new Response(JSON.stringify({ error: rpcErr.message }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Envia confirmação WhatsApp + recibo PDF (não bloqueante)
-    let whatsapp_sent = false;
-    if (ev.amount_detected) {
-      const r = await deliverPaymentConfirmation(supabase, {
-        organizationId: ev.organization_id,
-        eventId: event_id,
-        clientId: client_id,
-        originPhone: ev.phone || "",
-        totalAmount: Number(ev.amount_detected),
-        txid: ev.txid,
-      });
-      whatsapp_sent = r.ok;
-    }
-
+    // A atribuição do cliente não efetua baixa, crédito nem confirmação WhatsApp.
     return new Response(JSON.stringify({
-      success: true, result, whatsapp_sent, client_name: cli.name,
-      lid_learned, auto_resolved_count,
+      success: true,
+      status: "pendente_revisao",
+      settlement_performed: false,
+      whatsapp_sent: false,
+      client_name: cli.name,
+      lid_learned,
+      auto_resolved_count,
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("[assign-client] error", e);
