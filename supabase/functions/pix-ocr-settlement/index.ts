@@ -355,6 +355,24 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Idempotency: avoid reprocessing the same WhatsApp message on webhook retries.
+    // A database UNIQUE constraint is still required to close concurrent races.
+    if (message_id) {
+      const { data: previous, error: lookupError } = await supabase
+        .from("auto_settlement_events")
+        .select("id,status")
+        .eq("organization_id", organization_id)
+        .eq("whatsapp_message_id", message_id)
+        .limit(1)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (previous) {
+        return new Response(JSON.stringify({
+          ok: true, event_id: previous.id, status: previous.status, duplicate: true,
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     const normalizedPhone = normalizePhone(phone || "");
     const { data: clients, error: clientsError } = await supabase
       .from("clients")
@@ -477,6 +495,15 @@ Deno.serve(async (req) => {
     }
     const verifiedClient = identityVerified ? client : null;
 
+    // FAIL CLOSED: OCR/WhatsApp metadata is not proof that money reached the
+    // organization's bank account. Do not invoke the financial settlement RPC
+    // until a separately verified bank transaction and invoice allocation are
+    // implemented and validated end-to-end.
+    if (eventStatus === "recebido") {
+      eventStatus = "pendente_revisao";
+      errorMessage = "baixa automática bloqueada: recebimento bancário não verificado";
+    }
+
     const { data: event, error: eventError } = await supabase
       .from("auto_settlement_events")
       .insert({
@@ -496,9 +523,7 @@ Deno.serve(async (req) => {
 
     console.log("[pix-ocr] event created", { event_id: event.id, client_id: client?.id, amount, score: scoreResult.score });
 
-    if (eventStatus === "recebido" && identityVerified && client && amount) {
-      await processEvent(supabase, event.id, organization_id);
-    }
+    // Settlement intentionally disabled for unverified receipt images.
 
     return new Response(JSON.stringify({
       ok: true,
