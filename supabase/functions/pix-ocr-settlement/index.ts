@@ -1,9 +1,8 @@
 // PIX OCR Settlement — decoupled module
 // Receives WhatsApp PIX receipt image, runs OCR directly via Google Gemini,
-// processes settlement via auto_settlement_process_payment RPC.
+// records OCR evidence for manual review; never settles invoices.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { recordTrustedPayer, findTrustedPayer } from "../_shared/pix/trustedPayers.ts";
-import { deliverPaymentConfirmation } from "../_shared/paymentReceipt.ts";
+import { findTrustedPayer } from "../_shared/pix/trustedPayers.ts";
 import { computeScore, decisionAllowsAuto } from "../_shared/pix/score.ts";
 import { autoIdentityVerified, normalizeBrazilianPhone, uniquePhoneMatch } from "../_shared/pix/identity.ts";
 import { recordProviderFailure, recordProviderSuccess } from "../_shared/pix/ocrStats.ts";
@@ -237,91 +236,6 @@ async function runOcrAmountOnly(mediaUrl: string, mimeType: string): Promise<{ a
   }
 }
 
-async function processEvent(supabase: any, eventId: string, organizationId: string) {
-  try {
-    const { data: ev } = await supabase
-      .from("auto_settlement_events")
-      .select("*")
-      .eq("id", eventId)
-      .maybeSingle();
-
-    if (!ev) return;
-    if (["duplicado", "conciliado"].includes(ev.status)) return;
-
-    const { data: result, error } = await supabase.rpc(
-      "auto_settlement_process_payment",
-      { p_event_id: eventId }
-    );
-
-    if (error) throw error;
-
-    console.log("settlement result", eventId, result);
-
-    /*
-     * A BAIXA E A CONFIRMAÇÃO SÃO ETAPAS SEPARADAS.
-     *
-     * O RPC é responsável pela baixa financeira.
-     * Se a confirmação via WhatsApp/PDF falhar depois da baixa,
-     * isso NÃO pode transformar o pagamento em erro nem provocar
-     * uma nova baixa no retry.
-     */
-    if (
-      result?.success &&
-      result?.skipped !== "duplicate_recent_paid" &&
-      ev.client_id &&
-      ev.amount_detected
-    ) {
-      // Register trusted payer (helps future third-party PIX)
-      try {
-        const payerName =
-          ev?.ocr_payload?.sender_name ||
-          ev?.ocr_payload?.push_name ||
-          null;
-
-        await recordTrustedPayer(
-          supabase,
-          organizationId,
-          ev.client_id,
-          payerName,
-          ev.payer_document,
-          Number(ev.amount_detected)
-        );
-      } catch (e) {
-        console.warn("[trusted-payer] record failed", e);
-      }
-
-      /*
-       * Não reenviar confirmação se ela já foi registrada.
-       */
-      const { data: confirmationLog } = await supabase
-        .from("auto_settlement_logs")
-        .select("id")
-        .eq("event_id", ev.id)
-        .eq("action", "confirmation_sent")
-        .limit(1)
-        .maybeSingle();
-
-      if (!confirmationLog?.id) {
-        try {
-          await deliverPaymentConfirmation(supabase, {
-            organizationId,
-            eventId: ev.id,
-            clientId: ev.client_id,
-            originPhone: ev.phone,
-            totalAmount: Number(ev.amount_detected),
-            txid: ev.txid || ev.end_to_end_id || ev.pix_end_to_end_id || ev.ocr_payload?.end_to_end_id || null,
-          });
-        } catch (e) {
-          console.warn("[confirmation] delivery failed after successful settlement", e);
-        }
-      }
-    }
-  } catch (e) {
-    console.error("[pix-ocr] processEvent failed", e);
-    throw e;
-  }
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -353,6 +267,24 @@ Deno.serve(async (req) => {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Idempotency: avoid reprocessing the same WhatsApp message on webhook retries.
+    // A database UNIQUE constraint is still required to close concurrent races.
+    if (message_id) {
+      const { data: previous, error: lookupError } = await supabase
+        .from("auto_settlement_events")
+        .select("id,status")
+        .eq("organization_id", organization_id)
+        .eq("whatsapp_message_id", message_id)
+        .limit(1)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (previous) {
+        return new Response(JSON.stringify({
+          ok: true, event_id: previous.id, status: previous.status, duplicate: true,
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
 
     const normalizedPhone = normalizePhone(phone || "");
@@ -477,6 +409,15 @@ Deno.serve(async (req) => {
     }
     const verifiedClient = identityVerified ? client : null;
 
+    // FAIL CLOSED: OCR/WhatsApp metadata is not proof that money reached the
+    // organization's bank account. Do not invoke the financial settlement RPC
+    // until a separately verified bank transaction and invoice allocation are
+    // implemented and validated end-to-end.
+    if (eventStatus === "recebido") {
+      eventStatus = "pendente_revisao";
+      errorMessage = "baixa automática bloqueada: recebimento bancário não verificado";
+    }
+
     const { data: event, error: eventError } = await supabase
       .from("auto_settlement_events")
       .insert({
@@ -496,9 +437,7 @@ Deno.serve(async (req) => {
 
     console.log("[pix-ocr] event created", { event_id: event.id, client_id: client?.id, amount, score: scoreResult.score });
 
-    if (eventStatus === "recebido" && identityVerified && client && amount) {
-      await processEvent(supabase, event.id, organization_id);
-    }
+    // Settlement intentionally disabled for unverified receipt images.
 
     return new Response(JSON.stringify({
       ok: true,
